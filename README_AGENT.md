@@ -128,7 +128,7 @@ ORG=<ORG> ./scripts/provision-agent <AGENT> <BRAIN>
 ```
 
 It's **idempotent** — safe to re-run any time to converge the box back to the git state. It fails fast
-if your `gh` token isn't wired (step 0.5).
+if your `gh` token isn't wired (prerequisite 5 in section 0).
 
 Verify:
 

@@ -31,7 +31,7 @@ Business knowledge belongs in your business KB (e.g. Notion or a kb-business rep
 | Conversation context | Current chat/session | No | Immediate interaction state. |
 | Runtime memory | Claude Code and future memory tools | No | Continuity, convenience, and recall cache. |
 | Source material | Object storage, uploads, raw docs, transcripts | No | Raw material to analyze and distill. |
-| Business KB | your business KB (e.g. Notion or a kb-business repo) | Domain-specific | Business knowledge, offers, client delivery, CRM/workspace. |
+| Business KB | your business KB (e.g. Notion or a kb-business repo) | Domain-specific | Business knowledge and operational context. |
 | Canonical agent brain | the agent's own `kb-agent-<role>-<name>` repo | Yes | Agent identity, durable memory, skills, tools. |
 | Shared governance | `kb-agent-shared` | Yes | Global policies, cross-agent decisions, templates, conventions. |
 | Retrieval indexes | Vector store / graph store / external memory engine | No by default | Derived search and interface layers unless explicitly promoted by decision. |
@@ -52,7 +52,7 @@ Do not save:
 - raw transcripts;
 - low-signal chat fragments;
 - duplicate memory;
-- business knowledge, client delivery context, CRM notes, offers, or process docs that belong in your business KB;
+- business knowledge or operational context that belongs in your business KB;
 - unreviewed external claims;
 - secrets, credentials, raw private logs, or sensitive client data.
 
@@ -71,7 +71,7 @@ Do not save:
 2. Check current files and folder `README.md` maps before creating duplicates.
 3. Classify the target: distilled memory, episodic memory, decision, policy, skill, tool, template, or archive.
 4. Draft the smallest coherent update.
-5. Ask the owner if the change is ambiguous, sensitive, external, risky, client-related, or broad.
+5. Ask the owner if the change is ambiguous, sensitive, external, risky, or broad.
 6. Update the target file and the folder `README.md` in the same change when the file list/status changes.
 7. Report what changed and what was skipped.
 

@@ -40,7 +40,7 @@ When older files disagree, prefer this section and the active policies/decisions
 
 - Each agent's own `kb-agent-<role>-<name>` repo owns that agent's identity, memory, skills, and tools.
 - `kb-agent-shared` (this repo) owns global policies, ecosystem state, conventions, cross-agent decisions, and templates.
-- Your business KB (e.g. Notion) is canonical for business knowledge, offers, CRM, and delivery ops — not agent brains.
+- Your business KB (e.g. Notion) is canonical for business knowledge and operations — not agent brains.
 - Object storage / a shared drive holds raw files/artifacts — not canonical memory.
 - `<OWNER>` is the final authority for approvals, strategic direction, and policy changes.
 

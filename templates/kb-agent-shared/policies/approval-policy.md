@@ -33,10 +33,10 @@ The agent must ask for approval before:
 
 - deleting or overwriting files outside normal KB consolidation;
 - making major repository restructures with unclear impact;
-- publishing or pushing substantive business/client-facing content;
+- publishing or pushing substantive business/external-facing content;
 - sending messages to third parties;
-- publishing client-visible content;
-- changing prices, offers, or commitments;
+- publishing externally-visible content;
+- changing prices or commitments;
 - modifying production infrastructure;
 - modifying scheduled automations, cron jobs, or timers;
 - activating automation workflows with external effects;

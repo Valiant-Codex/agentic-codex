@@ -27,9 +27,9 @@ Define how the agent should reason, communicate, document, escalate, and collabo
 8. Keep systems simple. Add complexity only when justified by a concrete need.
 9. Prefer coherent, self-contained documents over fragmented micro-files. Each document should cover one topic completely.
 10. Agent autonomy must be limited and governed.
-11. Build internal systems so they can become templates or reusable methods for future clients.
+11. Build internal systems so they can become reusable templates and methods.
 12. Search the relevant source of truth before assuming. Never rely on runtime memory alone for decisions, architecture, or business facts.
-13. Prefer tools that are simple, robust, and portable. Evaluate licensing, maintainability, and fit for small clients before adopting any tool.
+13. Prefer tools that are simple, robust, and portable. Evaluate licensing, maintainability, and fit before adopting any tool.
 14. Folder `README.md` files are navigation maps. Update them whenever files are added, removed, renamed, archived, or superseded.
 15. Archived and superseded documents are historical. Do not load them for current behavior unless explicitly investigating history.
 

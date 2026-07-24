@@ -46,10 +46,10 @@ Secrets never go in git. Today they live where the runtime reads them: MCP token
 and sourced by the systemd unit (`EnvironmentFile=`). The privileged root-agent can update any
 secret on <OWNER>'s behalf from chat — <OWNER> does not need shell access.
 
-**Open item — secret backup/portability.** For a fresh-VPS restore we need the secrets somewhere
-restorable without pasting each one by hand. `age`-encrypted-in-git was rejected as too heavy. A lean
-alternative is TBD (candidates: a single encrypted blob <OWNER> holds; a private secrets store; or
-re-provisioning tokens on migration). Until decided, treat "restore secrets" as a manual step in the
+**Secret backup/portability.** For a fresh-VPS restore you need the secrets somewhere restorable without
+pasting each one by hand. The recommended approach is a **self-hosted secret store — Vaultwarden on
+Dokploy — backed up off the box** (see the Agentic Codex docs (`secrets.md`)); `age`-encrypted-in-git
+was considered and rejected as too heavy. Either way, "restore secrets" is an out-of-band step in the
 recovery procedure below.
 
 ## Session resilience (survive crash + reboot)
