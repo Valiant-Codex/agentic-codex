@@ -4,18 +4,18 @@
 **Run your own fleet of AI agents on a VPS — with brains you can read, own, and move.**
 Framework-agnostic. Portable. Minimal attack surface. Reachable from web, mobile, and desktop.
 
-*By [Valiant Codex](https://github.com/Valiant-Codex) · created by Dario Casilli. MIT licensed.*
+*By [Valiant Codex](https://github.com/Valiant-Codex) · created by Dario Valiant Casilli. MIT licensed.*
 
 ---
 
 ## What this is
 
 Agentic Codex is a **blueprint + ready-to-use templates** for running one or more AI agents as
-long-lived [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions on a plain Ubuntu VPS,
+long-lived [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions on a plain Debian-based VPS,
 where:
 
 - **Each agent's "brain" is a Git repo** — its identity, memory, skills, and tools are plain Markdown
-  you can read, diff, edit from your phone, and move to another machine or another agent framework.
+  you can read, diff, edit from your phone, and move to another machine or another agent framework seamlessly.
 - **The runtime is supervised and self-healing** — sessions survive crashes and reboots (systemd, no
   tmux) and are reachable from any device via Claude Code **Remote Control** (web, iOS/Android, desktop).
 - **Portability and security are one clean boundary** — Git is the portable source of truth; a single
@@ -72,11 +72,11 @@ The design goal is that a person does **only** the irreducible setup, and the ag
 reading [`README_AGENT.md`](README_AGENT.md). The human steps:
 
 1. **Subscribe to Claude** (a plan that includes Claude Code).
-2. **Rent an Ubuntu VPS.**
+2. **Rent a VPS (choose a debian-based distribution, like Ubuntu).**
 3. **Create a Unix user** for your root agent, give it `sudo`, and enable *linger*
    (`sudo loginctl enable-linger <user>` — this keeps the agent's sessions running even when no one is
    logged in, so they survive reboots).
-4. **Create a GitHub organization.**
+4. **Create a free GitHub organization.**
 5. **Create a GitHub account** (a bot/machine user) for the root agent and give it permission to
    create and write repos in your org; make a token and wire it on the box.
 6. **Install Claude Code as that user, log in once, clone this repo, start a session, and say:**
