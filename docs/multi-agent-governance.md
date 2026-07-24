@@ -61,6 +61,13 @@ short runbook:
 The policy behind it:
 [`../templates/kb-agent-shared/policies/github-access-policy.md`](../templates/kb-agent-shared/policies/github-access-policy.md).
 
+Applying a coordinated change across several brains — *without* granting any agent standing write on
+another's repo — has its own runbook: the privileged agent edits on-box as each target's Unix user and
+commits with that agent's own bot token. See
+[`../templates/kb-agent-shared/runbooks/fleet-brain-change.md`](../templates/kb-agent-shared/runbooks/fleet-brain-change.md).
+The full create/manage/decommission lifecycle is
+[`../templates/kb-agent-shared/runbooks/manage-agents.md`](../templates/kb-agent-shared/runbooks/manage-agents.md).
+
 ## When to add an agent at all
 
 Don't spawn an agent per task. Add one when a body of work has a **distinct lane, a distinct privilege

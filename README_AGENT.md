@@ -160,9 +160,10 @@ curl "$HC_URL"                          # clears it
 ## 7. (Optional) add more agents
 
 For each additional agent, the model is one Unix user + one GitHub bot account + one brain repo from
-`templates/kb-agent-template`, in its own lane. Follow
-[`templates/kb-agent-shared/runbooks/provision-agent-github-access.md`](templates/kb-agent-shared/runbooks/provision-agent-github-access.md)
-for the bot/token, then `ORG=<ORG> ./scripts/provision-agent <user> <brain>` for the box. Give
+`templates/kb-agent-template`, in its own lane. The full create/manage/decommission lifecycle is the
+[`manage-agents`](templates/kb-agent-shared/runbooks/manage-agents.md) runbook — it uses
+[`provision-agent-github-access`](templates/kb-agent-shared/runbooks/provision-agent-github-access.md)
+for the bot/token and `ORG=<ORG> ./scripts/provision-agent <user> <brain>` for the box. Give
 privileged work to as few agents as possible — see
 [`docs/multi-agent-governance.md`](docs/multi-agent-governance.md).
 

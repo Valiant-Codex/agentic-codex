@@ -33,7 +33,9 @@ Two properties keep it trustworthy:
 2. Create a check on healthchecks.io — **period ~5 min, grace ~20 min** — and connect it to **Telegram**
    (or email/Slack/etc.).
 3. Put its ping URL into `/etc/agentic-monitor.env` (mode 600, **not in Git**) as `HC_URL`.
-   Optionally add a second check as `UPDATE_HC_URL` for the weekly update report.
+   Optionally add a second check as `UPDATE_HC_URL` for the weekly update report — that report feeds the
+   [patch-management runbook](../templates/kb-agent-shared/runbooks/patch-management.md) (security auto,
+   feature bumps deliberate).
 
 ```ini
 # /etc/agentic-monitor.env   (mode 600 — the ping URL is a capability, keep it secret)
