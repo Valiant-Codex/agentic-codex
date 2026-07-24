@@ -44,17 +44,17 @@ These were the design drivers — if you share them, this repo is for you:
 ## The mental model
 
 ```
-                    ┌─────────────────────────────────────────────┐
-   Your devices     │                 Debian-based VPS              │
-  (web / mobile /   │                                               │
-   desktop)         │   root-agent (sudo)   cos-agent   dev-agent   │
-        │           │      │  Unix user        │           │        │
-        │  Claude   │   ┌──┴───────────────────┴───────────┴────┐   │
-        └──Remote──▶│   │ claude --remote-control  (systemd)    │   │
-           Control  │   └───────────────────────────────────────┘   │
+                    ┌────────────────────────────────────────────---─┐
+   Your devices     │                 Debian-based VPS               │
+  (web / mobile /   │                                                │
+   desktop)         │   root-agent (sudo)   cos-agent   dev-agent    │
+        │           │      │  Unix user        │           │         │
+        │  Claude   │   ┌──┴───────────────────┴───────────┴────┐    │
+        └──Remote──▶│   │ claude --remote-control  (systemd)    │    │
+           Control  │   └───────────────────────────────────────┘    │
                     │        each brain = a Git repo (Markdown)      │
                     │   host layer: claude-topic · kb-sync · monitor │
-                    └─────────────────────────────────────────────┘
+                    └─────────────---────────────────────────────────┘
                                      ▲ git ▼
                           GitHub org: brains + infra + governance
 ```
