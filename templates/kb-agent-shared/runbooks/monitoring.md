@@ -12,7 +12,7 @@ timestamp: 2026-07-24T00:00:00Z
 ---
 # Monitoring & Alerting
 
-Design + rationale: `docs/monitoring.md`. This is the operational side.
+Design + rationale: the Agentic Codex docs (`monitoring.md`). This is the operational side.
 
 ## What runs
 
@@ -55,7 +55,7 @@ Design + rationale: `docs/monitoring.md`. This is the operational side.
 
 Clone `<ORG>/infra`, run `scripts/install-host-services` (installs kb-sync + agentic-monitor +
 timers), then set `/etc/agentic-monitor.env` (`HC_URL` from your healthchecks.io check). See
-`docs/config-model.md`.
+the Agentic Codex docs (`config-model.md`).
 
 ## Not covered (by choice)
 

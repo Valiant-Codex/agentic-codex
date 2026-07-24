@@ -73,8 +73,9 @@ reading [`README_AGENT.md`](README_AGENT.md). The human steps:
 
 1. **Subscribe to Claude** (a plan that includes Claude Code).
 2. **Rent an Ubuntu VPS.**
-3. **Create a Unix user** for your root agent, give it `sudo`, and enable linger
-   (`sudo loginctl enable-linger <user>`).
+3. **Create a Unix user** for your root agent, give it `sudo`, and enable *linger*
+   (`sudo loginctl enable-linger <user>` — this keeps the agent's sessions running even when no one is
+   logged in, so they survive reboots).
 4. **Create a GitHub organization.**
 5. **Create a GitHub account** (a bot/machine user) for the root agent and give it permission to
    create and write repos in your org; make a token and wire it on the box.
@@ -100,7 +101,8 @@ templates/
 LICENSE                   ← MIT
 ```
 
-Start with [`docs/architecture.md`](docs/architecture.md) for the full picture, then
+Full docs index: [`docs/`](docs/README.md). Start with
+[`docs/architecture.md`](docs/architecture.md) for the full picture, then
 [`docs/config-model.md`](docs/config-model.md) for the portability/security boundary that makes it
 tick.
 

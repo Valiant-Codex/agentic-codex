@@ -8,7 +8,7 @@
 # Canonical source: <ORG>/infra (bin/claude-topic + systemd/claude-topic@.service).
 # The wrapper is installed to /usr/local/bin/claude-topic (root-owned, 0755) so no agent
 # can rewrite what another agent executes — it is NOT carried in kb-agent-shared and
-# NOT touched by kb-sync. See docs/config-model.md (the provisioning security boundary).
+# NOT touched by kb-sync. See the Agentic Codex docs (config-model.md) (the provisioning security boundary).
 #
 # Under systemd, sessions survive crashes (Restart=always) and reboot (user service
 # + `loginctl enable-linger <agent>`) with no tmux — Remote Control is the access path.

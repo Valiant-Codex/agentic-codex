@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # agentic-monitor — host-level health check + heartbeat to an external dead-man's switch.
 #
-# The single monitoring component (see docs/monitoring.md). Runs on the HOST (systemd timer,
+# The single monitoring component (see the Agentic Codex docs (monitoring.md)). Runs on the HOST (systemd timer,
 # ~5 min), OUTSIDE Docker, so it survives a Dokploy/Docker failure. Each run does a few binary
 # local checks, then pings healthchecks.io:
 #   - all ok            -> ping <HC_URL>              (heartbeat)
@@ -38,7 +38,7 @@ discover_agents() {
   for h in /home/*; do
     [ -d "$h" ] || continue
     u="$(basename "$h")"
-    compgen -G "$h"/github/*/kb-agent-*-*/ >/dev/null 2>&1 && echo "$u"
+    compgen -G "$h/github/*/kb-agent-*-*/" >/dev/null 2>&1 && echo "$u"
   done
 }
 AGENTS="${AGENTS:-$(discover_agents)}"
@@ -52,7 +52,7 @@ if command -v docker >/dev/null 2>&1; then
   else
     bad=$(timeout 20 docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null \
           | grep -iE 'unhealthy|restarting' | awk '{print $1}')
-    for x in $MONITOR_EXCLUDE_CONTAINERS; do bad=$(printf '%s\n' "$bad" | grep -v "$x"); done
+    for x in $MONITOR_EXCLUDE_CONTAINERS; do bad=$(printf '%s\n' "$bad" | grep -vF -- "$x"); done
     bad=$(printf '%s' "$bad" | grep -v '^$' | paste -sd, -)
     [ -n "$bad" ] && problems+=("containers:$bad")
     # critical containers that must be present+running (catches exited/vanished, incl. no-healthcheck ones)
@@ -76,6 +76,8 @@ if [ -n "${mt:-}" ] && [ "${mt:-0}" -gt 0 ] 2>/dev/null; then
 fi
 
 # 2c) HTTP reachability (e.g. traefik/dokploy) — alarm only if nothing responds at all.
+# -k skips TLS verify: intended for LOCAL liveness (http://localhost) — don't point this at a
+# remote HTTPS endpoint expecting cert validation.
 for chk in $MONITOR_HTTP_CHECKS; do
   lbl="${chk%%=*}"; url="${chk#*=}"
   code=$(curl -sk -o /dev/null -w '%{http_code}' -m 8 "$url" 2>/dev/null || echo 000)

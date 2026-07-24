@@ -10,8 +10,8 @@ timestamp: 2026-07-24T00:00:00Z
 ---
 # Runbooks
 
-Operational runbooks for running agents on a VPS. Design rationale lives in `docs/config-model.md`
-and `docs/monitoring.md`; these are the hands-on procedures.
+Operational runbooks for running agents on a VPS. Design rationale lives in the Agentic Codex docs (`config-model.md`)
+and the Agentic Codex docs (`monitoring.md`); these are the hands-on procedures.
 
 | Runbook | What it covers |
 |---|---|

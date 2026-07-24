@@ -129,7 +129,7 @@ enable --now claude-topic@<key>`).
 ## Fresh-VPS recovery / migration (disaster recovery)
 
 The bring-up is a single privileged step — `infra/scripts/provision-agent` — not a manual checklist. See
-`docs/config-model.md` for why (git = portable source of truth; provisioning = apply + security
+the Agentic Codex docs (`config-model.md`) for why (git = portable source of truth; provisioning = apply + security
 boundary; kb-sync auto-syncs only inert data).
 
 Bring an agent up on a new box:
@@ -149,6 +149,6 @@ Bring an agent up on a new box:
 
 ## Related
 
-- `docs/config-model.md` — the runtime pattern (topics, restart mechanics, ownership) and the
+- the Agentic Codex docs (`config-model.md`) — the runtime pattern (topics, restart mechanics, ownership) and the
   provisioning / portability / security boundary.
-- `docs/monitoring.md` — how topic sessions are monitored for liveness.
+- the Agentic Codex docs (`monitoring.md`) — how topic sessions are monitored for liveness.

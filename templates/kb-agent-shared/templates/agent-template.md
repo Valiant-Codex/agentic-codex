@@ -15,7 +15,7 @@ New agents are scaffolded from the **`<ORG>/kb-agent-template`** repository (whi
 `kb-agent-shared` through a `shared` symlink to the sibling clone), not from this file. This document
 is the checklist for what that brain should contain and how the pieces fit. For the *why* and the
 boundary contract of a new agent, write a decision in `decisions/` first (see
-`docs/multi-agent-governance.md` for a worked example).
+the Agentic Codex docs (`multi-agent-governance.md`) for a worked example).
 
 ## Repo shape (`kb-agent-<role>-<name>`)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # provision-agent — bring an agent up on THIS box from git + secrets.
 #
-# Tier-3 of the config model (see docs/config-model.md): the explicit, reviewable step that
+# Tier-3 of the config model (see the Agentic Codex docs (config-model.md)): the explicit, reviewable step that
 # APPLIES what git carries — clones the brain + shared sibling, wires the symlinks, installs
 # the root-owned topic wrapper + per-user systemd unit, materializes settings as a real copy
 # (not a live symlink into the auto-synced repo), and enables linger + topic sessions. Secrets
@@ -15,15 +15,19 @@
 set -euo pipefail
 
 # --- self-elevate (runuser + /usr/local/bin + linger need root) ---
-[ "$(id -u)" = 0 ] || exec sudo -E "$0" "$@"
+# Forward ORG/INFRA explicitly (don't rely on `sudo -E`, which a `!setenv` sudoers strips).
+[ "$(id -u)" = 0 ] || exec sudo ORG="${ORG:-}" INFRA="${INFRA:-}" "$0" "$@"
 
 U="${1:?usage: [ORG=<github-org>] provision-agent <unix-user> <brain-repo>}"
 BRAIN="${2:?usage: [ORG=<github-org>] provision-agent <unix-user> <brain-repo>}"
 ORG="${ORG:?set ORG=<your-github-org> (the GitHub org that owns the brain + infra repos)}"
 ORG_URL="https://github.com/${ORG}"
-# infra (source of the wrapper + unit) lives in the provisioner's own clone; discover it.
-INFRA="${INFRA:-$(ls -d /home/*/github/*/infra/ 2>/dev/null | head -1)}"; INFRA="${INFRA%/}"
-[ -n "$INFRA" ] && [ -d "$INFRA" ] || { echo "FATAL: cannot find the infra clone; set INFRA=/path/to/infra"; exit 1; }
+# infra (source of the wrapper + unit) lives in the provisioner's own clone; discover it
+# (first git checkout named 'infra' under any agent home). Override with INFRA=/path/to/infra.
+if [ -z "${INFRA:-}" ]; then
+  for d in /home/*/github/*/infra; do [ -d "$d/.git" ] && INFRA="$d" && break; done
+fi
+[ -n "${INFRA:-}" ] && [ -d "$INFRA/.git" ] || { echo "FATAL: cannot find an 'infra' git clone; set INFRA=/path/to/infra"; exit 1; }
 
 H="$(getent passwd "$U" | cut -d: -f6)" || true
 [ -n "${H:-}" ] || { echo "FATAL: no such user '$U'"; exit 1; }

@@ -14,7 +14,7 @@ timestamp: 2026-07-24T00:00:00Z
 This repository (`kb-agent-shared`) is the **shared governance layer** for all of `<ORG>`'s agents:
 global policies, ecosystem state, conventions, cross-agent decisions, and templates. Each agent has
 its own repository (`kb-agent-<role>-<name>`) that reaches this repo through a `shared` symlink to a
-**sibling clone** at `../kb-agent-shared` (not a git submodule — see `docs/config-model.md`).
+**sibling clone** at `../kb-agent-shared` (not a git submodule — see the Agentic Codex docs (`config-model.md`)).
 
 Read your **own** agent repo first (its `CLAUDE.md` and `system-prompt.md`), then read from `shared/`
 only what the task needs. Keep the initial context small.
@@ -31,8 +31,8 @@ When older files disagree, prefer this section and the active policies/decisions
 
 **Runtimes / interfaces**
 
-- **Claude Code** on the VPS (over tmux topic sessions) is the primary/sole operational runtime and
-  tool host. See `docs/config-model.md`.
+- **Claude Code** on the VPS (Remote-Control sessions supervised by systemd user services — no tmux)
+  is the primary/sole operational runtime and tool host. See the Agentic Codex docs (`config-model.md`).
 - An interactive reasoning/drafting cockpit can read/write selected GitHub and your business KB when authorized.
 - Runtime memories (LLM runtime / vector stores) are caches/working memory, not canonical truth.
 
@@ -52,14 +52,14 @@ Give each agent a short, memorable name and one of the shared archetypes:
 - **root-agent** — narrow, privileged infrastructure/operations agent on `<VPS_HOST>`, runs with sudo (`kb-agent-ops-<name>`).
 - **dev-agent** — dedicated build/dev agent for the website, small web apps, and automation
   engineering; self-contained token + deploy rights, never root (`kb-agent-dev-<name>`).
-  See `docs/multi-agent-governance.md`.
+  See the Agentic Codex docs (`multi-agent-governance.md`).
 - Scaffold further agents from `kb-agent-template`.
 
 **Deprecated / historical**
 
 - Retired runtimes and superseded KB-sync layers stay recorded in `decisions/` but do not override this
   section unless explicitly reintroduced.
-- Superseded work-management tooling: see `docs/multi-agent-governance.md`. Your current work tracker
+- Superseded work-management tooling: see the Agentic Codex docs (`multi-agent-governance.md`). Your current work tracker
   (e.g. Jira/Linear) is the active choice.
 
 ## Bootstrap Order

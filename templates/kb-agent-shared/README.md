@@ -21,7 +21,7 @@ agent**: global policies, ecosystem state, conventions, cross-agent decision rec
 It is **not** any single agent's brain. Each agent's identity, memory, skills, and tool notes live in
 that agent's own repository (`kb-agent-<role>-<name>`), which reaches this repo through a `shared`
 symlink to a **sibling clone** at `../kb-agent-shared` (not a git submodule — see
-`docs/config-model.md`). New agents are scaffolded from a `kb-agent-template`.
+the Agentic Codex docs (`config-model.md`)). New agents are scaffolded from a `kb-agent-template`.
 
 Business knowledge, client work, offers, CRM notes, delivery processes, and operating dashboards belong
 in your business KB (e.g. Notion) or another explicit business source of truth, not in any agent repository.

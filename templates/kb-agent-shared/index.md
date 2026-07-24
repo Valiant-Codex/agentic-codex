@@ -22,12 +22,10 @@ Start with [`bootstrap.md`](bootstrap.md). Use this file only when you need to n
 ## Areas
 
 - [`policies/`](policies/) — global policies that apply to every agent.
-- [`reference/`](reference/) — shared reference notes (e.g. the Claude Code + tmux VPS runtime).
 - [`runbooks/`](runbooks/) — operational runbooks (e.g. agent operations, portability, and VPS recovery).
-- [`decisions/`](decisions/) — cross-agent / ecosystem decision records, including superseded history.
+- [`decisions/`](decisions/) — cross-agent / ecosystem decision records (starts empty; add your own).
 - [`handoffs/`](handoffs/) — cross-agent handoff channel (specs/deliverables passed between agents).
 - [`templates/`](templates/) — reusable OKF templates for new documents.
-- [`archive/`](archive/) — historical material that should not be loaded by default.
 
 ## Note
 

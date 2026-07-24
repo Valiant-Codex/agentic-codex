@@ -4,6 +4,10 @@ secrets.env
 .env
 .env.*
 *.env
+*.key
+*.crt
+*.pem
+hosts.yml
 
 # Volatile runtime state (machine-local, not part of the durable brain)
 .claude/settings.local.json

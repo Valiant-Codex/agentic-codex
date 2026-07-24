@@ -23,7 +23,10 @@ You cannot do these for yourself; verify them, don't assume them:
 5. Your **GitHub bot account** exists with rights to **create + write repos** in `<ORG>`, and its token
    is wired for your Unix user: `gh auth status` succeeds and `gh api user -q .login` returns your bot
    name. Git identity is set (`git config --global user.name/user.email`).
-6. This repo (`agentic-codex`) is cloned and you were told to read this file.
+6. This repo (`agentic-codex`) is cloned — these steps assume **`~/agentic-codex`** — and you were told
+   to read this file.
+7. **Runtime deps present:** `git` and `python3` (default on Ubuntu; `claude-topic` uses `python3` to
+   read session IDs), plus **Node** in `~/.local/node` if any MCP server runs via `npx`.
 
 Quick self-check:
 
@@ -59,6 +62,8 @@ Fix these once and reuse them everywhere (write them into a scratch note):
 | `<BRAIN>` | your brain repo | `kb-agent-ops-root-agent` |
 | `<VPS_HOST>` | the box's hostname | `acme-ops-01` |
 | `<TZ>` | timezone | `Europe/Rome` |
+| `<OWNER>` | you, the human owner | `Jordan` |
+| `<HC_URL>` | healthchecks.io ping URL — a **secret**, set in step 6 | `https://hc-ping.com/…` |
 
 Workspace convention: all repos live under `~/github/<ORG>/`.
 
@@ -68,29 +73,29 @@ You have create+write on `<ORG>`. Create three repos and seed them from this rep
 replacing placeholders as you go. Keep repos **private** to start.
 
 ```bash
+AC=~/agentic-codex                        # where you cloned this repo (step 0)
 BASE=~/github/<ORG>; mkdir -p "$BASE"; cd "$BASE"
 
-# a) shared governance
-gh repo create <ORG>/kb-agent-shared --private
-git init kb-agent-shared && cp -r <path-to>/agentic-codex/templates/kb-agent-shared/* kb-agent-shared/
-
-# b) host layer
-gh repo create <ORG>/infra --private
-git init infra && cp -r <path-to>/agentic-codex/templates/infra/* infra/
-
-# c) your own brain
-gh repo create <ORG>/<BRAIN> --private
-git init <BRAIN> && cp -r <path-to>/agentic-codex/templates/kb-agent-template/* <BRAIN>/
+# a) copy each template into a new local repo dir ('/.' also copies dotfiles like .gitignore)
+cp -r "$AC/templates/kb-agent-shared/."   ./kb-agent-shared
+cp -r "$AC/templates/infra/."             ./infra
+cp -r "$AC/templates/kb-agent-template/." ./<BRAIN>
 ```
 
-Then, in each repo: replace the placeholders (`<ORG>`, `<AGENT>`, `<ROLE>`, `<VPS_HOST>`, `<TZ>`,
-`<OWNER>`) with real values, review the diff, and push to `main`. Fill your brain's
-`system-prompt.md` with your real identity, scope, and human-confirm gates (start from the template's
-root-agent example). Set `deploy/topics.tsv` to the session(s) you want.
-
-Wire the shared symlink each brain expects (sibling clone, not a submodule):
+Now **replace the placeholders** (`<ORG>`, `<AGENT>`, `<ROLE>`, `<VPS_HOST>`, `<TZ>`, `<OWNER>`) with
+real values in the copied files, and fill your brain's `system-prompt.md` with your real identity,
+scope, and human-confirm gates (start from the template's root-agent example). Set
+`deploy/topics.tsv` to the session(s) you want. **Review the diffs**, then create the private remotes
+and push:
 
 ```bash
+# b) commit + create the private remote + push, per repo (run AFTER substituting placeholders)
+for r in kb-agent-shared infra <BRAIN>; do
+  ( cd "$r" && git init -q && git add -A && git commit -qm "seed from agentic-codex" )
+  gh repo create "<ORG>/$r" --private --source="$r" --remote=origin --push
+done
+
+# c) wire the shared symlink each brain expects (sibling clone, not a submodule)
 ln -sfn ../kb-agent-shared "$BASE/<BRAIN>/shared"
 ```
 

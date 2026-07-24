@@ -10,7 +10,7 @@
 #
 # Managed by kb-sync.timer (every 15 min). This is Tier-2 of the config model: it refreshes
 # ONLY inert data (governance markdown, brain content). It must NEVER install an executable
-# or grant a permission — that is provisioning's job (Tier-3). See docs/config-model.md.
+# or grant a permission — that is provisioning's job (Tier-3). See the Agentic Codex docs (config-model.md).
 #
 # Agents are auto-discovered: any Unix user with a ~/github/<org>/kb-agent-<role>-<name>
 # brain. Override with AGENTS="user1 user2" in /etc/agentic-monitor.env if needed.
@@ -25,7 +25,7 @@ discover_agents() {
     u="$(basename "$h")"
     # a real brain repo is kb-agent-<role>-<name> (two dashes) — this glob excludes
     # kb-agent-shared and kb-agent-template, which are single-token and never match.
-    compgen -G "$h"/github/*/kb-agent-*-*/ >/dev/null 2>&1 && echo "$u"
+    compgen -G "$h/github/*/kb-agent-*-*/" >/dev/null 2>&1 && echo "$u"
   done
 }
 

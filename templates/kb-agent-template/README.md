@@ -40,7 +40,7 @@ runtimes without forking its identity:
 
 Both are short and both say: *canonical identity is in `system-prompt.md`; read it first.* Edit identity
 in one place (`system-prompt.md`); never let the adapters drift into a second source of truth. See
-`docs/portability.md` in the repo root.
+the Agentic Codex write-up (`docs/portability.md` in the agentic-codex repo).
 
 ## Repo shape
 
@@ -70,7 +70,8 @@ shared -> ../kb-agent-shared
 
 Clone both repos as siblings under `~/github/<ORG>/`, and a sync timer fast-forwards them (no submodule
 commands). If `shared/` does not resolve, clone `<ORG>/kb-agent-shared` next to this repo. See
-`docs/config-model.md` in the repo root for why sibling-clone over submodule.
+the Agentic Codex write-up (`docs/config-model.md` in the agentic-codex repo) for why sibling-clone
+over submodule.
 
 ## How a root agent scaffolds a new brain
 

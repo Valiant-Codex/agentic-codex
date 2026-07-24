@@ -90,7 +90,7 @@ Three example archetype agents: **root-agent** (privileged infra/ops, has sudo),
 
 Read is **org-wide** (base permission `read`); the RW/R/— entries above therefore encode **write** intent — `—` still means "no write", not "no read".
 
-**Applying a change to another agent's brain never requires granting cross-repo write.** The root-agent does it on-box as that agent's Unix user, committing with that agent's **own** bot token; fleet-common content belongs in `kb-agent-shared` (written once, read by all). Broad cross-brain write is therefore kept **off** the injection-exposed agents by design — see `docs/multi-agent-governance.md`.
+**Applying a change to another agent's brain never requires granting cross-repo write.** The root-agent does it on-box as that agent's Unix user, committing with that agent's **own** bot token; fleet-common content belongs in `kb-agent-shared` (written once, read by all). Broad cross-brain write is therefore kept **off** the injection-exposed agents by design — see the Agentic Codex docs (`multi-agent-governance.md`).
 
 > The dev-agent also holds a **hosting-platform deploy token** (e.g. Dokploy) scoped to the website project only, and may build automation workflows via an n8n MCP/API. Those are outside this GitHub-only matrix. The dev-agent never has root, never touches Dokploy/Cloudflare/backups (the root-agent's host layer).
 
