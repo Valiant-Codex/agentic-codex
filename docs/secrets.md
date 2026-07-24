@@ -47,9 +47,16 @@ Why this fits:
 - **Already in the stack** — it's just another Dokploy app alongside the rest (see
   [`app-layer.md`](app-layer.md)).
 
-> Keep Vaultwarden's own admin token and the DB backup outside the machine it runs on — that's the one
-> secret you must be able to restore *before* the box exists. A password-manager entry the owner holds,
-> or an encrypted export, covers it.
+> ⚠️ **Back up Vaultwarden off the box, regularly.** Vaultwarden holds the very secrets a VPS rebuild
+> needs — so if it lives *only* on the VPS and the box is lost (disk failure, provider incident,
+> accidental wipe), you lose the keys to your own recovery. Treat its data as critical:
+> - schedule a **regular, automated backup** of the Vaultwarden data (its SQLite DB / `data/` volume, or
+>   a Bitwarden-format encrypted vault export) to storage **outside the VPS** — object storage, another
+>   host, or the owner's machine;
+> - keep Vaultwarden's **admin token** and the **backup's decryption passphrase** somewhere restorable
+>   *before* the box exists (a password-manager entry the owner holds) — they're the one thing you can't
+>   fetch from the store you're trying to restore;
+> - **test a restore** occasionally — an untested backup is a guess, not a safety net.
 
 ## The restore flow (what "portable secrets" actually means)
 

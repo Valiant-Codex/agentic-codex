@@ -41,7 +41,8 @@ the foundations are" — a reminder that the privilege is a liability to handle,
   console). Durin also runs the daily VPS backups.
 - **Celebrimbor** deploys the website and builds **n8n** workflows with its own deploy token.
 - **Vaultwarden** runs as a Dokploy app and holds every agent's secrets, so a box rebuild restores
-  secrets from one place ([`secrets.md`](secrets.md)).
+  secrets from one place — and is itself **backed up off the box, regularly**, since a VPS incident
+  would otherwise take the secrets down with it ([`secrets.md`](secrets.md)).
 - **Monitoring**: `agentic-monitor` heartbeats a **healthchecks.io** check that fans out to
   **Telegram** — silence is the alarm ([`monitoring.md`](monitoring.md)).
 

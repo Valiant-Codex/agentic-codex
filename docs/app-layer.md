@@ -51,7 +51,8 @@ In the reference deployment (see [`reference-architecture.md`](reference-archite
 - the **dev-agent (Celebrimbor)** deploys the marketing website and builds n8n automation workflows
   with its own deploy rights — routed through *its* token, not through root;
 - **Vaultwarden** runs as a Dokploy app and holds every agent's secret, so a box rebuild restores
-  secrets from one place.
+  secrets from one place — and is itself **backed up off the box, regularly** (a VPS incident would
+  otherwise take the secret store down with everything else; see [`secrets.md`](secrets.md)).
 
 ## Why this is docs-only
 
