@@ -13,6 +13,10 @@ Before starting, confirm the human prerequisites are done (see below). Then work
 
 ## 0. Human prerequisites (must already be true)
 
+> **Setting these up by hand as a non-technical human?** The
+> [getting-started guide](docs/getting-started.md) walks every prerequisite below through with a
+> concrete Hetzner + Tailscale example.
+
 You cannot do these for yourself; verify them, don't assume them:
 
 1. A **Claude subscription** with Claude Code, installed on the VPS for your Unix user.

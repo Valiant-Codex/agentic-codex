@@ -1,6 +1,9 @@
 <!-- title: Docs -->
 # Docs — how and why it works
 
+**New to servers?** Start with **[getting-started.md](getting-started.md)** — a click-by-click VPS +
+Tailscale setup walkthrough for the human prerequisites.
+
 The write-up behind the templates. Read in this order for the full picture:
 
 1. **[architecture.md](architecture.md)** — the three layers (brains, governance, host) and how they fit.

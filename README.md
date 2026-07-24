@@ -69,7 +69,9 @@ These were the design drivers — if you share them, this repo is for you:
 ## What a human has to do (the whole list)
 
 The design goal is that a person does **only** the irreducible setup, and the agent does the rest by
-reading [`README_AGENT.md`](README_AGENT.md). The human steps:
+reading [`README_AGENT.md`](README_AGENT.md). **New to servers?** The
+[getting-started guide](docs/getting-started.md) walks the steps below through click-by-click — renting
+a VPS, reaching it via Tailscale, and locking it down so nothing is exposed. The human steps:
 
 1. **Subscribe to Claude** (a plan that includes Claude Code).
 2. **Rent a VPS (choose a debian-based distribution, like Ubuntu).**
