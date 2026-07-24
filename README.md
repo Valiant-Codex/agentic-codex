@@ -24,8 +24,8 @@ where:
 - **The surface is small and yours** — no extra gateway to keep patched, no black-box memory layer,
   secrets never live in Git.
 
-It is the write-up of a system that actually runs a small consulting practice's agents day to day.
-The reference architecture that inspired it is described in
+It is the write-up of a system that actually runs a real fleet of agents day to day. The reference
+architecture that inspired it is described in
 [`docs/reference-architecture.md`](docs/reference-architecture.md).
 
 ## Why it looks the way it does
@@ -115,4 +115,4 @@ The application layer (Dokploy / n8n / Cloudflare) is **documented, not template
 
 ## License
 
-[MIT](LICENSE). Use it, fork it, build your practice on it. Attribution appreciated, not required.
+[MIT](LICENSE). Use it, fork it, make it your own. Attribution appreciated, not required.

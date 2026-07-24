@@ -2,10 +2,9 @@
 # Reference architecture
 
 Agentic Codex is the distilled, genericized version of a system that runs in production for
-**[Valiant Codex](https://github.com/Valiant-Codex)** — a small AI-agents-and-automation consulting
-practice. This page describes that concrete deployment as a worked example, so the abstract templates
-have a real referent. (No hostnames, tokens, emails, or other secrets appear here — those never leave
-the private side.)
+**[Valiant Codex](https://github.com/Valiant-Codex)**. This page describes that concrete deployment as
+a worked example, so the abstract templates have a real referent. (No hostnames, tokens, emails, or
+other secrets appear here — those never leave the private side.)
 
 ## The fleet
 

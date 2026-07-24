@@ -36,4 +36,4 @@ config model, say so explicitly and describe the trade-off.
 
 This project was distilled and sanitized from the production system that runs
 [Valiant Codex](https://github.com/Valiant-Codex)'s agents — see `docs/reference-architecture.md`.
-MIT licensed; build your own practice on it.
+MIT licensed; make it your own.

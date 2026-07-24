@@ -21,9 +21,9 @@ Define which system is authoritative for each class of information used by the a
 |---|---|---|
 | Agent identity, prompts, context, durable memory, skills, tool registry | the agent's own `kb-agent-<role>-<name>` repo | Canonical durable brain for that agent. |
 | Global policies, cross-agent decisions, templates, conventions | `kb-agent-shared` | Shared governance layer, included as a `shared/` clone/symlink in each agent repo. |
-| Business knowledge, approved business processes, offer design, client-facing methods | your business KB (e.g. Notion or a kb-business repo) | Business KB is separate from agent brain. |
-| Business workspace, dashboard, CRM/light delivery operations | your business KB (e.g. Notion or a kb-business repo) | Operational business interface, not canonical agent memory. |
-| Task and work management | your work tracker (e.g. Jira or Linear) | Keep work tracking out of the agent brain; use a dedicated tracker that is resellable/consultable for clients. |
+| Business/domain knowledge, approved processes, methods | your business KB (e.g. Notion or a kb-business repo) | Business KB is separate from agent brain. |
+| Business workspace, dashboard, light operations | your business KB (e.g. Notion or a kb-business repo) | Operational interface, not canonical agent memory. |
+| Task and work management | your work tracker (e.g. Jira or Linear) | Keep work tracking out of the agent brain; use a dedicated tracker. |
 | Raw files, artifacts, uploaded docs, research source material | object storage or direct uploads | Source material only; promote distilled knowledge into canonical locations. |
 | Runtime/interface | Claude Code (on the VPS) | Interaction, reasoning, tool execution, channel layer. Not durable canonical memory. |
 | Runtime memories, vector stores, graph stores, external memory engines | Derived/cache/interface layers | Useful for retrieval and continuity; not source of truth unless explicitly promoted by decision record. |
