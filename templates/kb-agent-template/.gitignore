@@ -1,0 +1,21 @@
+# Secrets — MCP/runtime credentials are injected at runtime, never committed
+secrets.env
+*.secret
+.env
+.env.*
+*.env
+
+# Volatile runtime state (machine-local, not part of the durable brain)
+.claude/settings.local.json
+settings.local.json
+.claude.json
+.claude.json.bak
+deploy/topics.state
+hosts.yml
+
+# Node / tooling
+node_modules/
+
+# OS / editor
+.DS_Store
+*.swp

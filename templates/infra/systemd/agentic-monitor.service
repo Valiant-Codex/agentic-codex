@@ -1,0 +1,8 @@
+[Unit]
+Description=Host health check + dead-man's-switch heartbeat (agentic-monitor)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/agentic-monitor

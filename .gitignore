@@ -1,0 +1,17 @@
+# Secrets and volatile runtime state must never be committed.
+# This repo carries TEMPLATES only — real config lives on the box, out of git.
+*.env
+!*.env.example
+*.key
+*.crt
+*.pem
+secrets.env
+hosts.yml
+.claude/settings.local.json
+.claude.json
+topics.state
+
+# OS / editor noise
+.DS_Store
+*.swp
+*~

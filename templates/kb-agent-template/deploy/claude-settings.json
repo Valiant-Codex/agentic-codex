@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/home/<AGENT>/.local/bin/node *)",
+      "Bash(/home/<AGENT>/.local/node/bin/npx *)",
+      "Bash(/home/<AGENT>/.local/bin/topic *)",
+      "Bash(topic *)"
+    ]
+  },
+  "disableClaudeAiConnectors": true,
+  "theme": "dark",
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "skipWorkflowUsageWarning": true
+}

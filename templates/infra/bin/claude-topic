@@ -1,0 +1,336 @@
+#!/usr/bin/env bash
+# claude-topic — manage this agent's Claude Code Remote Control topic sessions.
+#
+# Topics are supervised by systemd USER services (claude-topic@<key>), which run
+# `claude --remote-control` in a pty (via the unit). This is the single, robust,
+# reboot/crash-surviving model — no tmux. The wrapper is the control surface;
+# it is root-owned at /usr/local/bin/claude-topic (canonical source:
+# <ORG>/infra bin/claude-topic) and discovers the calling agent's own repo
+# for its topic registry. The command is named after the unit it drives.
+# `topic` remains as a compatibility symlink.
+#
+# Error-handling contract (the failure modes this guards against):
+#   - an unknown/typo'd key must never reach systemctl: `claude-topic@<typo>` is a
+#     valid template instance, so it WOULD start, fail in `run`, and fail-loop
+#     against Restart=always until StartLimitBurst. Keys are validated first.
+#   - a restart must never silently start a NEW conversation: that orphans history
+#     (incident 2026-07-17, topic `ideas`). If no sessionId is stored we capture the
+#     live one first, and refuse rather than guess when there is nothing to resume.
+#   - `stop` records the live sessionId before killing the process, so the topic can
+#     be resumed later instead of coming back blank.
+#   - every command reports what actually happened, and exits nonzero when it didn't.
+set -euo pipefail
+
+PROG="${0##*/}"
+HOME_DIR="${HOME:-}"
+SESS_DIR="${HOME_DIR}/.claude/sessions"
+PROJ_DIR="${HOME_DIR}/.claude/projects"   # per-cwd conversation transcripts (<sessionId>.jsonl)
+# systemd --user needs these; default them if the caller's env lacks them.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
+
+err() { printf '%s: %s\n' "$PROG" "$*" >&2; }
+die() { err "$*"; exit 1; }
+
+[ -n "$HOME_DIR" ] || die "HOME is not set"
+
+# This agent's own repo (its kb-agent-<role>-<name>, not shared/template).
+AGENT_REPO="$(ls -d "$HOME_DIR"/github/*/kb-agent-*-*/ 2>/dev/null | grep -vE 'kb-agent-shared|kb-agent-template' | head -1 || true)"
+AGENT_REPO="${AGENT_REPO%/}"
+REG="${AGENT_REPO}/deploy/topics.tsv"          # versioned: key<TAB>Display Name
+STATE_DIR="${HOME_DIR}/.config/agent"
+STATE="${STATE_DIR}/topics.state"              # runtime: key<TAB>sessionId
+
+svc()       { echo "claude-topic@${1}.service"; }
+# awk (exact field match), not grep -P: keys may contain '.', a regex metachar.
+reg_name()  { [ -f "$REG" ]   && awk -F'\t' -v k="$1" '$1==k{print $2; exit}' "$REG"   || true; }
+state_sid() { [ -f "$STATE" ] && awk -F'\t' -v k="$1" '$1==k{print $2; exit}' "$STATE" || true; }
+reg_has()   { [ -f "$REG" ]   && awk -F'\t' -v k="$1" '$1==k{f=1} END{exit !f}' "$REG"; }
+save_sid()  {
+  mkdir -p "$STATE_DIR"
+  { [ -f "$STATE" ] && awk -F'\t' -v k="$1" '$1!=k' "$STATE" || true; printf '%s\t%s\n' "$1" "$2"; } > "$STATE.tmp"
+  mv "$STATE.tmp" "$STATE"
+}
+del_sid()   { [ -f "$STATE" ] || return 0; awk -F'\t' -v k="$1" '$1!=k' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"; }
+reg_del()   { [ -f "$REG" ]   || return 0; awk -F'\t' -v k="$1" '$1!=k' "$REG"   > "$REG.tmp"   && mv "$REG.tmp"   "$REG";   }
+# `claude --resume <id>` hard-fails ("No conversation found with session ID") when the
+# transcript was never written — e.g. a session killed seconds after creation. Under
+# Restart=always that fail-loops the unit into 'failed' via StartLimitBurst, so check first.
+transcript_exists() {
+  local sid="$1" f
+  [ -n "$sid" ] && [ -d "$PROJ_DIR" ] || return 1
+  for f in "$PROJ_DIR"/*/"$sid".jsonl; do [ -e "$f" ] && return 0; done
+  return 1
+}
+reg_add()   { mkdir -p "$(dirname "$REG")"; reg_has "$1" || printf '%s\t%s\n' "$1" "$2" >> "$REG"; }
+
+usage() {
+  # $PROG, not a hardcoded name: this is reachable as `claude-topic` or as the
+  # legacy `topic` symlink, and the help should match how it was invoked.
+  cat <<EOF
+Usage (systemd-managed topics — no tmux):
+  $PROG list                        list topics: key, state, sessionId, display name
+  $PROG new <key> "<Display Name>"  register + start a new topic under systemd
+  $PROG restart <key>               systemctl restart (resumes the same sessionId)
+  $PROG stop <key>                  stop + disable the topic's service (survives as state)
+  $PROG remove <key>                unregister the topic for good (registry + state + unit)
+  $PROG status <key>                service state + stored/live sessionId
+  $PROG remember <key>              record the running topic's live sessionId to state
+  $PROG run <key>                   foreground launch (invoked by the systemd unit)
+
+Flags:
+  restart --new <key>               allow starting a FRESH conversation when no
+                                    sessionId is stored (default: refuse, to protect
+                                    history — see the 2026-07-17 incident)
+EOF
+}
+
+# --- preflight ---------------------------------------------------------------
+require_systemd() {
+  systemctl --user show-environment >/dev/null 2>&1 || die \
+    "cannot reach the systemd user manager for '$(id -un)' (XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR).
+  If this user has no login session, lingering must be enabled:  sudo loginctl enable-linger $(id -un)"
+}
+require_registry() {
+  [ -n "$AGENT_REPO" ] || die "no agent repo found under $HOME_DIR/github/<org> (expected kb-agent-<role>-<name>/)"
+  [ -f "$REG" ] || die "topic registry not found: $REG"
+}
+# systemd instance names and the TSV registry both constrain what a key may contain.
+require_valid_key() {
+  case "$1" in
+    '' ) die "empty topic key" ;;
+    *[!A-Za-z0-9._-]* ) die "invalid topic key '$1' — allowed: letters, digits, '.', '_', '-'" ;;
+  esac
+}
+
+# --- introspection -----------------------------------------------------------
+# The claude process pid for a running topic = the child of the service MainPID (script).
+claude_pid_for() {
+  local mp; mp="$(systemctl --user show -p MainPID --value "$(svc "$1")" 2>/dev/null || true)"
+  [ -n "${mp:-}" ] && [ "$mp" != 0 ] || return 0
+  pgrep -P "$mp" -f 'claude' 2>/dev/null | head -1 || true
+}
+# Live sessionId from the running claude's session file.
+session_id_live() {
+  local cp f; cp="$(claude_pid_for "$1")"; [ -n "$cp" ] || return 0
+  f="${SESS_DIR}/${cp}.json"
+  [ -f "$f" ] && python3 -c "import json;print(json.load(open('$f')).get('sessionId',''))" 2>/dev/null || true
+}
+# Poll for the sessionId of a just-(re)started topic — the session file is written a
+# beat after exec, so reading it immediately reports empty on a perfectly good start.
+wait_session_id() {
+  local key="$1" i sid
+  for i in $(seq 1 30); do sid="$(session_id_live "$key")"; [ -n "$sid" ] && { echo "$sid"; return 0; }; sleep 0.5; done
+  return 0
+}
+svc_state() { systemctl --user is-active "$(svc "$1")" 2>/dev/null || true; }
+list_keys() {
+  systemctl --user list-units 'claude-topic@*' --all --no-legend --plain 2>/dev/null \
+    | awk '{print $1}' | sed -n 's/^claude-topic@\(.*\)\.service$/\1/p' | sort -u
+}
+reg_keys() { [ -f "$REG" ] && awk -F'\t' 'NF && $1 !~ /^#/ {print $1}' "$REG" || true; }
+all_keys() { { reg_keys; list_keys; } | sort -u; }
+# No `| grep -q`: SIGPIPE + pipefail would make a match look like a failure.
+unit_known() { local k; for k in $(list_keys); do [ "$k" = "$1" ] && return 0; done; return 1; }
+known_key()  { reg_has "$1" || unit_known "$1"; }
+require_known_key() {
+  known_key "$1" && return 0
+  die "unknown topic '$1' — not in $REG and no claude-topic@$1 service on this box.
+  Known topics: $(all_keys | paste -sd' ' - || true)"
+}
+
+# --- commands ----------------------------------------------------------------
+cmd_list() {
+  require_systemd
+  printf '%-18s %-12s %-38s %s\n' KEY STATE SESSION_ID DISPLAY
+  local k st
+  for k in $(all_keys); do
+    if unit_known "$k"; then st="$(svc_state "$k")"; [ -n "$st" ] || st=unknown
+    else st="not-started"; fi
+    printf '%-18s %-12s %-38s %s\n' "$k" "$st" "$(state_sid "$k")" "$(reg_name "$k")"
+  done
+}
+
+cmd_status() {
+  local k="$1" stored live
+  require_valid_key "$k"; require_systemd; require_known_key "$k"
+  stored="$(state_sid "$k")"; live="$(session_id_live "$k")"
+  echo "key:        $k"
+  echo "display:    $(reg_name "$k")"
+  echo "state:      $(svc_state "$k") / enabled=$(systemctl --user is-enabled "$(svc "$k")" 2>/dev/null || true)"
+  echo "sessionId:  ${stored:-<none stored>}  (live: ${live:-<not running>})"
+  [ -z "$stored" ] || [ -z "$live" ] || [ "$stored" = "$live" ] || \
+    err "warning: live sessionId differs from stored — '$PROG remember $k' to reconcile"
+  reg_has "$k" || err "warning: '$k' has a service but no entry in $REG — it cannot be restarted until registered"
+  systemctl --user show -p MainPID -p NRestarts -p ActiveEnterTimestamp "$(svc "$k")" 2>/dev/null | sed 's/^/  /'
+}
+
+cmd_new() {
+  local key="$1" name="$2" existing sid
+  require_valid_key "$key"; require_systemd
+  [ -n "$name" ] || die "empty display name"
+  case "$name" in *$'\t'*) die "display name may not contain a tab (the registry is TSV)" ;; esac
+  [ -n "$AGENT_REPO" ] || die "no agent repo found under $HOME_DIR/github/<org> (expected kb-agent-<role>-<name>/)"
+  existing="$(reg_name "$key")"
+  [ -z "$existing" ] || [ "$existing" = "$name" ] || \
+    die "'$key' is already registered as \"$existing\" — pick another key, or edit $REG to rename it"
+  if [ "$(svc_state "$key")" = active ]; then die "topic '$key' is already running — use '$PROG restart $key'"; fi
+  sid="$(state_sid "$key")"
+  [ -z "$sid" ] || err "note: '$key' has a stored sessionId ($sid) — it will RESUME that conversation, not start a blank one"
+
+  reg_add "$key" "$name"
+  systemctl --user reset-failed "$(svc "$key")" 2>/dev/null || true
+  systemctl --user enable --now "$(svc "$key")" || die "failed to start $(svc "$key") — journalctl --user -u $(svc "$key") -n 50"
+  # Capture the sessionId claude just created so future restarts --resume it.
+  sid="$(wait_session_id "$key")"
+  if [ -n "$sid" ]; then save_sid "$key" "$sid"; else
+    err "warning: no sessionId visible after 15s — run '$PROG remember $key' once it registers"
+  fi
+  [ "$(svc_state "$key")" = active ] || die "'$key' is '$(svc_state "$key")' after start — journalctl --user -u $(svc "$key") -n 50"
+  echo "started '$key' (\"$name\") under systemd; sessionId: ${sid:-<pending>}"
+}
+
+cmd_restart() {
+  local key="" allow_new=0 stored live got st
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --new) allow_new=1 ;;
+      -*)    die "unknown flag '$1' for restart" ;;
+      *)     [ -z "$key" ] || die "restart takes one key (got '$key' and '$1')"; key="$1" ;;
+    esac
+    shift
+  done
+  [ -n "$key" ] || { usage; exit 2; }
+  require_valid_key "$key"; require_systemd; require_registry; require_known_key "$key"
+
+  # Without a display name, `topic run` exits 1 and Restart=always fail-loops the unit.
+  [ -n "$(reg_name "$key")" ] || \
+    die "'$key' has no display name in $REG — refusing to restart (the service would fail-loop)"
+
+  stored="$(state_sid "$key")"
+  if [ "$allow_new" = 1 ]; then
+    # --new means "start fresh": clear the stored id, or `run` would resume it anyway.
+    [ -z "$stored" ] || err "warning: discarding stored sessionId $stored for '$key' (--new)"
+    del_sid "$key"; stored=""
+    err "warning: '$key' will start a NEW conversation — prior history stays on disk but is no longer resumed"
+  else
+    if [ -z "$stored" ]; then
+      live="$(session_id_live "$key")"
+      [ -n "$live" ] || die "no stored or live sessionId for '$key' — a restart would start a BLANK conversation
+  and orphan its history (incident 2026-07-17). Re-run with '$PROG restart --new $key' if that is what you want."
+      save_sid "$key" "$live"; stored="$live"
+      err "note: no sessionId was stored for '$key' — captured the live one ($live) before restarting"
+    fi
+    transcript_exists "$stored" || die \
+      "stored sessionId $stored for '$key' has no conversation on disk ($PROJ_DIR/*/$stored.jsonl).
+  'claude --resume' would fail and systemd would fail-loop the topic into 'failed'. If it was just
+  created, wait for it to write its transcript; otherwise start over with '$PROG restart --new $key'."
+  fi
+
+  systemctl --user restart "$(svc "$key")" || die "systemctl restart failed for $(svc "$key")"
+  got="$(wait_session_id "$key")"
+  st="$(svc_state "$key")"
+  [ "$st" = active ] || die "'$key' is '$st' after restart — journalctl --user -u $(svc "$key") -n 50"
+  # A restart of a stopped (hence disabled) topic starts it without re-enabling: it would
+  # run now and be gone after the next reboot, and agentic-monitor only checks is-active.
+  # `restart` is the "make this topic run" verb, so restore the reboot invariant.
+  if [ "$(systemctl --user is-enabled "$(svc "$key")" 2>/dev/null || true)" != enabled ]; then
+    systemctl --user enable "$(svc "$key")" >/dev/null 2>&1 \
+      && err "note: '$key' was disabled — re-enabled so it survives a reboot" \
+      || err "warning: '$key' is running but NOT enabled — it will not come back after a reboot"
+  fi
+  if [ -z "$got" ]; then
+    err "warning: '$key' is active but reported no sessionId within 15s — check '$PROG status $key'"
+  elif [ -z "$stored" ]; then
+    # Came up with --new: persist the conversation it just created, otherwise the next
+    # restart has nothing to resume and blanks it again.
+    save_sid "$key" "$got"
+    err "note: recorded new sessionId $got for '$key' — future restarts will resume it"
+  elif [ "$got" != "$stored" ]; then
+    err "warning: '$key' resumed $got but $stored was stored — the conversation may have changed"
+  fi
+  echo "restarted '$key' (\"$(reg_name "$key")\"); sessionId: ${got:-<pending>}"
+}
+
+cmd_stop() {
+  local key="$1" before sid
+  require_valid_key "$key"; require_systemd
+  if ! unit_known "$key"; then
+    # Distinguish "registered but not running" from "no such topic at all" — after a
+    # `stop` the unit is unloaded, so both would otherwise report the same thing.
+    reg_has "$key" && die "'$key' is registered but not running (not-started) — nothing to stop"
+    die "unknown topic '$key' — no claude-topic@$key service and no entry in $REG.
+  Known topics: $(all_keys | paste -sd' ' - || true)"
+  fi
+  before="$(svc_state "$key")"
+  [ "$before" = active ] || err "note: '$key' was already '$before'"
+  # Record the live sessionId first, so this topic can be resumed rather than restarted blank.
+  sid="$(session_id_live "$key")"
+  if [ -n "$sid" ] && [ "$sid" != "$(state_sid "$key")" ]; then
+    save_sid "$key" "$sid"; err "note: recorded live sessionId $sid before stopping"
+  fi
+  systemctl --user disable --now "$(svc "$key")" >/dev/null 2>&1 || \
+    die "failed to stop/disable $(svc "$key") — journalctl --user -u $(svc "$key") -n 50"
+  local kept; kept="$(state_sid "$key")"
+  echo "stopped and disabled '$key' — it will NOT return at boot; '$PROG restart $key' resumes sessionId ${kept:-<none>}"
+}
+
+# Fully forget a topic: unregister from topics.tsv + clear its saved sessionId + disable the unit.
+# Use this (not just `stop`) when a topic is gone for good — otherwise it lingers in the registry
+# and agentic-monitor keeps reporting it as "down". `stop` keeps it for later; `remove` deletes it.
+cmd_remove() {
+  local key="$1"
+  require_valid_key "$key"; require_systemd
+  reg_has "$key" || unit_known "$key" || die "unknown topic '$key' — nothing to remove.
+  Known topics: $(all_keys | paste -sd' ' - || true)"
+  systemctl --user disable --now "$(svc "$key")" >/dev/null 2>&1 || true
+  systemctl --user reset-failed "$(svc "$key")" >/dev/null 2>&1 || true
+  reg_del "$key"; del_sid "$key"
+  echo "removed '$key' — unregistered from ${REG##*/}, cleared state, unit disabled. Gone for good."
+}
+
+cmd_remember() {
+  local key="$1" sid
+  require_valid_key "$key"; require_systemd; require_known_key "$key"
+  [ "$(svc_state "$key")" = active ] || die "'$key' is not running ($(svc_state "$key")) — nothing live to remember"
+  sid="$(session_id_live "$key")"
+  [ -n "$sid" ] || die "'$key' is running but has not written a session file yet — retry in a few seconds"
+  save_sid "$key" "$sid"; echo "remembered '$key' -> $sid"
+}
+
+# Foreground launcher for the systemd unit: resolve name + sessionId, exec claude.
+# Diagnostics go to stderr, i.e. the journal — this runs unattended under systemd.
+cmd_run() {
+  local key="$1" name sid
+  require_valid_key "$key"; require_registry
+  name="$(reg_name "$key")"; [ -n "$name" ] || die "no display name for '$key' in $REG"
+  command -v claude >/dev/null 2>&1 || die "claude not found in PATH ($PATH)"
+  sid="$(state_sid "$key")"
+  if [ -n "$sid" ]; then
+    # claude's own failure here is ANSI-mangled in the journal; log the cause in plain text.
+    transcript_exists "$sid" || err \
+      "warning: no transcript for sessionId $sid — 'claude --resume' will likely fail and this unit will fail-loop; fix with '$PROG restart --new $key'"
+    exec claude --resume "$sid" --remote-control "$name"
+  else
+    err "no stored sessionId for '$key' — starting a NEW conversation"
+    exec claude --remote-control "$name"
+  fi
+}
+
+main() {
+  [ $# -ge 1 ] || { usage; exit 2; }
+  local cmd="$1"; shift
+  case "$cmd" in
+    list)             cmd_list ;;
+    status)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_status "$1" ;;
+    new)              [ $# -ge 2 ] || { usage; exit 2; }; cmd_new "$1" "$2" ;;
+    restart)          [ $# -ge 1 ] || { usage; exit 2; }; cmd_restart "$@" ;;
+    stop)             [ $# -ge 1 ] || { usage; exit 2; }; cmd_stop "$1" ;;
+    remove)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_remove "$1" ;;
+    remember)         [ $# -ge 1 ] || { usage; exit 2; }; cmd_remember "$1" ;;
+    run)              [ $# -ge 1 ] || { usage; exit 2; }; cmd_run "$1" ;;
+    help|-h|--help)   usage ;;
+    *)                err "unknown command '$cmd'"; usage; exit 2 ;;
+  esac
+}
+main "$@"

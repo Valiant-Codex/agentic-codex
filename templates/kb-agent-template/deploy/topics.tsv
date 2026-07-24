@@ -1,0 +1,4 @@
+# Remote-Control topic sessions for this agent, one per line.
+# Format:  key<TAB>Display Name   (key = systemd instance / topic id; Display Name shown in the UI)
+<AGENT>	<AGENT> (<VPS_HOST>)
+<AGENT>-misc	<AGENT> (misc)

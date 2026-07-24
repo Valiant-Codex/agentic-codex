@@ -1,0 +1,47 @@
+# Claude Code Remote Control topic — resilient systemd USER unit (agent-agnostic).
+#
+# `%i` is the topic key. ExecStart runs the root-owned wrapper `/usr/local/bin/claude-topic
+# run %i`, which resolves the display name from the agent's own deploy/topics.tsv and
+# the resume sessionId from ~/.config/agent/topics.state, then execs
+# `claude --resume <id> --remote-control '<Name>'` in the foreground.
+#
+# Canonical source: <ORG>/infra (bin/claude-topic + systemd/claude-topic@.service).
+# The wrapper is installed to /usr/local/bin/claude-topic (root-owned, 0755) so no agent
+# can rewrite what another agent executes — it is NOT carried in kb-agent-shared and
+# NOT touched by kb-sync. See docs/config-model.md (the provisioning security boundary).
+#
+# Under systemd, sessions survive crashes (Restart=always) and reboot (user service
+# + `loginctl enable-linger <agent>`) with no tmux — Remote Control is the access path.
+#
+# Install (per agent, once; run when the target topic is idle), as that agent's user:
+#   sudo install -m0755 -o root -g root infra/bin/claude-topic /usr/local/bin/claude-topic   # once, global
+#   ln -sfn /usr/local/bin/claude-topic ~/.local/bin/claude-topic
+#   install -m0644 infra/systemd/claude-topic@.service \
+#           ~/.config/systemd/user/claude-topic@.service   # real copy, not a symlink
+#   sudo loginctl enable-linger <agent-user>
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now claude-topic@<key>.service
+
+[Unit]
+Description=Claude Code Remote Control topic %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+# systemd's default PATH lacks ~/.local/bin (claude) and ~/.local/node/bin (npx, for
+# MCP servers) — set it so `topic run` can exec them. /usr/local/bin holds the wrapper.
+Environment=PATH=%h/.local/bin:%h/.local/node/bin:/usr/local/bin:/usr/bin:/bin
+# claude is a TUI: without a pty it falls into non-interactive --print mode and exits.
+# `script` allocates a pty and stays in the foreground so systemd supervises claude
+# directly (Restart=always works). The wrapper is the root-owned /usr/local/bin/claude-topic.
+ExecStart=/usr/bin/script -qfec "/usr/local/bin/claude-topic run %i" /dev/null
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

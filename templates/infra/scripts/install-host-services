@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# install-host-services — install/refresh the HOST-level systemd services from this infra repo:
+# kb-sync (git sync), agentic-monitor (health check + dead-man's-switch heartbeat), and
+# agentic-update-check (weekly update report).
+#
+# This is the portable host bootstrap: on a fresh VPS, clone <ORG>/infra and run this, then
+# `provision-agent <user> <brain>` per agent. Idempotent; run as the root-agent user (self-elevates).
+# Per-agent topic units are handled by provision-agent, not here.
+set -euo pipefail
+[ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
+HERE="$(cd "$(dirname "$0")/.." && pwd)"   # infra repo root
+
+echo "== install-host-services (from $HERE) =="
+
+# kb-sync
+install -m0755 "$HERE/scripts/kb-sync"                 /usr/local/bin/kb-sync
+install -m0644 "$HERE/systemd/kb-sync.service"         /etc/systemd/system/kb-sync.service
+install -m0644 "$HERE/systemd/kb-sync.timer"           /etc/systemd/system/kb-sync.timer
+echo "  [ok] kb-sync"
+
+# agentic-monitor
+install -m0755 "$HERE/scripts/agentic-monitor"         /usr/local/bin/agentic-monitor
+install -m0644 "$HERE/systemd/agentic-monitor.service" /etc/systemd/system/agentic-monitor.service
+install -m0644 "$HERE/systemd/agentic-monitor.timer"   /etc/systemd/system/agentic-monitor.timer
+if [ ! -f /etc/agentic-monitor.env ]; then
+  install -m0600 "$HERE/systemd/agentic-monitor.env.example" /etc/agentic-monitor.env
+  echo "  [WARN] created /etc/agentic-monitor.env from example — set HC_URL (secret) before it is useful."
+else
+  echo "  [ok] /etc/agentic-monitor.env already present (left as-is)"
+fi
+echo "  [ok] agentic-monitor"
+
+# agentic-update-check (weekly update-availability report)
+install -m0755 "$HERE/scripts/agentic-update-check"          /usr/local/bin/agentic-update-check
+install -m0644 "$HERE/systemd/agentic-update-check.service"  /etc/systemd/system/agentic-update-check.service
+install -m0644 "$HERE/systemd/agentic-update-check.timer"    /etc/systemd/system/agentic-update-check.timer
+echo "  [ok] agentic-update-check"
+
+systemctl daemon-reload
+systemctl enable --now kb-sync.timer agentic-monitor.timer agentic-update-check.timer >/dev/null 2>&1 || true
+echo "  [ok] timers enabled"
+systemctl list-timers kb-sync.timer agentic-monitor.timer agentic-update-check.timer --no-pager 2>/dev/null | grep -E "kb-sync|agentic-monitor|agentic-update" || true
+echo "== done =="

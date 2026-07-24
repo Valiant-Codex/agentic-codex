@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# kb-sync — keep every agent's git clones current with their remotes.
+#
+# For each agent Unix user, fast-forwards every repo under
+# ~/github/<org>/* — including the standalone kb-agent-shared clone that each brain
+# reaches via the committed `shared -> ../kb-agent-shared` symlink, so governance stays
+# fresh with no submodule and no pointer bump. Fail-safe: fast-forward only — on a
+# non-ff / dirty repo it logs "skip" and moves on, never forcing or merging. Runs as each
+# user via runuser so file ownership and the per-user gh credential are honoured.
+#
+# Managed by kb-sync.timer (every 15 min). This is Tier-2 of the config model: it refreshes
+# ONLY inert data (governance markdown, brain content). It must NEVER install an executable
+# or grant a permission — that is provisioning's job (Tier-3). See docs/config-model.md.
+#
+# Agents are auto-discovered: any Unix user with a ~/github/<org>/kb-agent-<role>-<name>
+# brain. Override with AGENTS="user1 user2" in /etc/agentic-monitor.env if needed.
+set -uo pipefail
+
+[ -r /etc/agentic-monitor.env ] && . /etc/agentic-monitor.env
+
+discover_agents() {
+  local h u
+  for h in /home/*; do
+    [ -d "$h" ] || continue
+    u="$(basename "$h")"
+    # a real brain repo is kb-agent-<role>-<name> (two dashes) — this glob excludes
+    # kb-agent-shared and kb-agent-template, which are single-token and never match.
+    compgen -G "$h"/github/*/kb-agent-*-*/ >/dev/null 2>&1 && echo "$u"
+  done
+}
+
+AGENTS="${AGENTS:-$(discover_agents)}"
+
+for u in $AGENTS; do
+  home="$(getent passwd "$u" | cut -d: -f6)" || continue
+  # each org workspace dir under ~/github (usually one: ~/github/<org>)
+  for base in "$home"/github/*/; do
+    [ -d "$base" ] || continue
+    for repo in "$base"*/; do
+      [ -e "${repo}.git" ] || continue
+      name="$(basename "$repo")"
+      if runuser -u "$u" -- git -C "$repo" pull --ff-only --quiet 2>/dev/null; then
+        status="ok"
+      else
+        status="skip(non-ff/dirty)"
+      fi
+      echo "$(date -Is) ${u}/${name}: ${status}"
+    done
+  done
+done

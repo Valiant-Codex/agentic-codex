@@ -1,0 +1,15 @@
+{
+  "//": "MCP server structure only. NEVER commit secrets here. Values like ${VAR} are resolved at runtime from an untracked env file (see .gitignore). Delete the example below or add your own servers.",
+  "mcpServers": {
+    "example-server": {
+      "//": "Example stdio MCP server. Rename, or remove this block if unused.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server"],
+      "env": {
+        "EXAMPLE_API_URL": "${EXAMPLE_API_URL}",
+        "EXAMPLE_API_KEY": "${EXAMPLE_API_KEY}"
+      }
+    }
+  }
+}
