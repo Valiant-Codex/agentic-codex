@@ -16,7 +16,7 @@ Before starting, confirm the human prerequisites are done (see below). Then work
 You cannot do these for yourself; verify them, don't assume them:
 
 1. A **Claude subscription** with Claude Code, installed on the VPS for your Unix user.
-2. An **Ubuntu VPS** you're running on.
+2. A **Debian-based VPS** (e.g. Ubuntu) you're running on.
 3. Your **Unix user exists, has `sudo`, and linger is enabled** (`loginctl show-user $(whoami) -p Linger`
    → `Linger=yes`).
 4. A **GitHub organization** (`<ORG>`) exists.
@@ -25,7 +25,7 @@ You cannot do these for yourself; verify them, don't assume them:
    name. Git identity is set (`git config --global user.name/user.email`).
 6. This repo (`agentic-codex`) is cloned — these steps assume **`~/agentic-codex`** — and you were told
    to read this file.
-7. **Runtime deps present:** `git` and `python3` (default on Ubuntu; `claude-topic` uses `python3` to
+7. **Runtime deps present:** `git` and `python3` (default on Debian-based distros; `claude-topic` uses `python3` to
    read session IDs), plus **Node** in `~/.local/node` if any MCP server runs via `npx`.
 
 Quick self-check:

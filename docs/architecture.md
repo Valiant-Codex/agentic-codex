@@ -1,7 +1,7 @@
 <!-- title: Architecture -->
 # Architecture
 
-Agentic Codex runs AI agents as long-lived **Claude Code** sessions on a single Ubuntu VPS. Three
+Agentic Codex runs AI agents as long-lived **Claude Code** sessions on a single Debian-based VPS. Three
 layers, each with a clear owner and a clear trust level.
 
 ```
@@ -13,7 +13,7 @@ layers, each with a clear owner and a clear trust level.
                     │ git (portable source of truth)
                     ▼
 ┌───────────────────────────────────────────────────────────────────────┐
-│  Ubuntu VPS  <VPS_HOST>                                                 │
+│  Debian-based VPS  <VPS_HOST>                                           │
 │                                                                         │
 │   Host layer (root):  claude-topic wrapper · kb-sync · agentic-monitor  │
 │                                                                         │
@@ -78,13 +78,13 @@ their Unix user for maintenance. The security posture that matters is: **one** p
 kept off broad content-ingesting integrations; everyone else unprivileged. See
 [`multi-agent-governance.md`](multi-agent-governance.md).
 
-## Why Claude Code, why Ubuntu
+## Why Claude Code, why a Debian base
 
 - **Claude Code + Remote Control** is the happy path because it surfaces each long-lived session on
   web, iOS/Android, and desktop at once — you talk to your agents from anywhere, no extra gateway to
   run and patch. The brains themselves are framework-agnostic ([`portability.md`](portability.md)), so
   this is a runtime choice, not a lock-in.
-- **Ubuntu** because the resilience model is plain **systemd** (user services + timers + linger) — no
+- **A Debian-based distro** because the resilience model is plain **systemd** (user services + timers + linger) — no
   bespoke supervisor.
 
 ## The property that ties it together

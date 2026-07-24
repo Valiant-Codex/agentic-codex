@@ -45,7 +45,7 @@ These were the design drivers — if you share them, this repo is for you:
 
 ```
                     ┌─────────────────────────────────────────────┐
-   Your devices     │                 Ubuntu VPS                    │
+   Your devices     │                 Debian-based VPS              │
   (web / mobile /   │                                               │
    desktop)         │   root-agent (sudo)   cos-agent   dev-agent   │
         │           │      │  Unix user        │           │        │
@@ -108,7 +108,7 @@ tick.
 
 ## Status & scope
 
-The **happy path is Claude Code on Ubuntu**. The templates are the same shape running in production for
+The **happy path is Claude Code on a Debian-based VPS**. The templates are the same shape running in production for
 the reference deployment. Adapt the placeholders (`<ORG>`, `<VPS_HOST>`, `<AGENT>`, …) to your setup.
 The application layer (Dokploy / n8n / Cloudflare) is **documented, not templated** here — see
 [`docs/app-layer.md`](docs/app-layer.md).

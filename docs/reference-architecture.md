@@ -8,7 +8,7 @@ other secrets appear here — those never leave the private side.)
 
 ## The fleet
 
-Three agents run as Claude Code sessions on one Ubuntu VPS, each a distinct Unix user with its own
+Three agents run as Claude Code sessions on one Debian-based VPS, each a distinct Unix user with its own
 GitHub bot account and brain repo. They're named after Tolkien's smiths and delvers — a small,
 memorable convention, not a requirement.
 
