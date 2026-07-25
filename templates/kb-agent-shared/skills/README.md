@@ -18,7 +18,7 @@ Skills that every agent uses. Each lives here once (canonical) and is symlinked 
 | Skill | Purpose |
 |---|---|
 | `skillify/` | Author, update, or retire an agent skill in the v2 format (folder + SKILL.md, progressive disclosure, lifecycle). The executable companion to `policies/skills-policy.md`. |
-| `agent-audit/` | Interactive, human-in-the-loop tune-up of one agent's brain with <OWNER> (skills, SOUL, OPERATING, memory). The only path that changes capability/identity; consumes the nightly `dream-log.md` suggestions. |
+| `agent-audit/` | Interactive, human-in-the-loop tune-up of one agent's brain with <OWNER> (skills, SOUL, OPERATING, memory). The periodic pass where accumulated experience becomes durable change; enforces that no scheduled job alters skills or identity. |
 
 See `policies/skills-policy.md` for the authoring rules and lifecycle.
 

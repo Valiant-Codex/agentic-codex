@@ -122,10 +122,6 @@ systemctl --user daemon-reload
 claude-topic new <key> "<Display Name>"           # register + start under systemd
 ```
 
-To migrate an already-running tmux topic to systemd (one-time, when idle): `claude-topic remember <key>` to
-capture its sessionId, kill the tmux session, then `claude-topic restart <key>` (or `systemctl --user
-enable --now claude-topic@<key>`).
-
 ## Fresh-VPS recovery / migration (disaster recovery)
 
 The bring-up is a single privileged step — `infra/scripts/provision-agent` — not a manual checklist. See

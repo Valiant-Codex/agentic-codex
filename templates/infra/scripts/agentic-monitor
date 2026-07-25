@@ -13,7 +13,7 @@
 # Config (NOT in git — secret-ish capability URL): /etc/agentic-monitor.env, mode 600:
 #   HC_URL=https://hc-ping.com/<uuid>
 #   DISK_MAX=90                         # optional, percent
-#   MONITOR_EXCLUDE_CONTAINERS="qdrant" # optional, substring match, space-separated (known-noise)
+#   MONITOR_EXCLUDE_CONTAINERS="" # optional, substring match, space-separated (known-noise)
 # Dry run (no ping): agentic-monitor --dry-run
 set -uo pipefail
 

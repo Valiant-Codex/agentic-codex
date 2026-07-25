@@ -9,9 +9,6 @@ tags:
 - canonical-brain
 status: active
 timestamp: 2026-07-10T00:00:00Z
-supersedes:
-- decisions/2026-07-03-openclaw-first-memory-stack.md
-- decisions/2026-06-28-memory-stack-design.md
 ---
 # Memory Policy
 
@@ -25,7 +22,7 @@ The agent's own `kb-agent-<role>-<name>` repository is its canonical durable bra
 
 Runtime memories and external memory systems are useful working layers, but durable agent knowledge should be distilled into GitHub Markdown/OKF files.
 
-Business knowledge belongs in Notion or another explicit business source of truth, not in any agent repository.
+Business knowledge belongs in your explicit business source of truth (e.g. a wiki or Notion), not in any agent repository.
 
 ## Memory Layers
 

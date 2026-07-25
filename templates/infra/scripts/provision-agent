@@ -66,6 +66,10 @@ asU "mkdir -p '$H/.local/bin' && ln -sfn /usr/local/bin/claude-topic '$H/.local/
 # with no per-skill registration. Without this an agent's skills are invisible to the runtime.
 asU "mkdir -p '$H/.claude' && [ ! -e '$H/.claude/skills' ] || [ -L '$H/.claude/skills' ] || mv '$H/.claude/skills' '$H/.claude/skills.bak.$(date +%s)'"
 asU "ln -sfn '$BASE/$BRAIN/skills' '$H/.claude/skills'"
+# Fleet-common skills: symlink every shared/skills/<name> into the brain's skills/, so they are
+# discovered through the whole-dir symlink above. Auto-discovers whatever the shared layer ships,
+# so adding a fleet-common skill needs no per-agent step. Idempotent; never clobbers a real dir.
+asU 'shopt -s nullglob; cd "'"$BASE/$BRAIN"'" && mkdir -p skills && for s in shared/skills/*/; do n=$(basename "$s"); [ -e "skills/$n" ] || ln -s "../shared/skills/$n" "skills/$n"; done'
 echo "  [ok] symlinks: shared, ~/CLAUDE.md, ~/.local/bin/claude-topic"
 
 # 4) Settings — install the curated, portable source as a REAL copy (not a symlink).

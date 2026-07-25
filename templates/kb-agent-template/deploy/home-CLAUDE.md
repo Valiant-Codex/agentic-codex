@@ -12,13 +12,15 @@ The shared governance layer `kb-agent-shared` is a standalone sibling clone at
 `shared -> ../kb-agent-shared`; a sync timer keeps it fresh (no submodule commands).
 
 At the start of substantial work, load the smallest useful context:
-1. Read ~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/system-prompt.md
-   (canonical identity, threat model, and human-confirm gates)
-2. Read ~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/shared/bootstrap.md
+1. Read ~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/SOUL.md (who you are: identity, voice, principles)
+   and OPERATING.md (what you do: scope, threat model, human-confirm gates)
+2. Read ~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/shared/owner-profile.md
+   (who <OWNER> and the org are, and how to work with them)
+3. Read ~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/shared/bootstrap.md
    (ecosystem state and the governance contract)
-3. Read ~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/shared/policies/approval-policy.md
+4. Read ~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/shared/policies/approval-policy.md
    before risky actions
-4. Load your own tools/, skills/, memory/ and shared/decisions/* only as needed
+5. Load your own tools/, skills/, memory/ and shared/decisions/* only as needed
 
 If shared/ does not resolve, clone kb-agent-shared as a sibling under ~/github/<ORG>/.
 

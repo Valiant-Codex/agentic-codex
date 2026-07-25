@@ -11,11 +11,13 @@ timestamp: 2026-07-24T00:00:00Z
 ---
 # Agent Template
 
-New agents are scaffolded from the **`Valiant-Codex/kb-agent-template`** repository and provisioned onto
+New agents are scaffolded from your own `kb-agent-template` repo (copied from this framework's
+`templates/kb-agent-template/`) and provisioned onto
 a box with `infra/scripts/provision-agent` (which clones the brain + `kb-agent-shared` as a sibling and
 wires the `shared/` symlink — no submodule commands). This document is the checklist for what a brain
 should contain and how the pieces fit. For the *why* and boundary contract of a new agent, write a
-decision in `decisions/` first (see `2026-07-21-add-celebrimbor-build-agent.md` as the worked example).
+decision in `decisions/` first — state what it owns, what it must delegate, and why it deserves its own
+Unix user and token.
 
 ## Repo shape (`kb-agent-<role>-<name>`)
 

@@ -28,7 +28,7 @@ Agents may **write and maintain their own skills** — reusable procedures they 
 1. **Git is the control plane.** Every skill change is a commit — diffable, reviewable, and revertible by <OWNER>. Nothing self-modifies invisibly. This is precisely what unbounded self-writing agents lack.
 2. **Write real, not speculative.** One skill = one procedure the agent actually performs. Don't pre-write skills for things that haven't happened.
 3. **Scope correctly.** An agent writes agent-specific skills only in its own `kb-agent-<role>-<name>`. Genuinely fleet-common procedures go in `kb-agent-shared/skills/` (symlinked into each agent). Cross-agent or privileged procedures live in the repo of the agent that owns them (e.g. agent lifecycle → the ops agent's `manage-agents`).
-4. **Prune and mark, don't accrete.** Review skills periodically; when a procedure changes, update the skill; when it's obsolete, mark it **superseded** in place (see `kb-agent-<ROLE>-<AGENT>/skills/restart-vps-topic/SKILL.md`) or move the folder to `skills-archive/` (outside `skills/`, so the harness stops loading it) rather than deleting silently.
+4. **Prune and mark, don't accrete.** Review skills periodically; when a procedure changes, update the skill; when it's obsolete, mark it **superseded** in place (a banner at the top pointing at the replacement, so the reasoning survives) or move the folder to `skills-archive/` (outside `skills/`, so the harness stops loading it) rather than deleting silently.
 5. **Keep them lean.** A skill points to `shared/runbooks/*` for deep detail instead of duplicating it; it sequences the job and records the gotchas.
 
 ## Approval

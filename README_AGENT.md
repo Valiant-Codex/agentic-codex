@@ -86,11 +86,23 @@ cp -r "$AC/templates/infra/."             ./infra
 cp -r "$AC/templates/kb-agent-template/." ./<BRAIN>
 ```
 
+> **The brain repo name is a hard requirement, not an example.** It must be
+> `kb-agent-<ROLE>-<AGENT>` where `<AGENT>` is exactly the Unix user. All three host scripts discover
+> the brain by that shape (`kb-agent-*-<user>`); with any other name `kb-sync` skips the agent and the
+> monitor never checks its sessions — **both silently**.
+
 Now **replace the placeholders** (`<ORG>`, `<AGENT>`, `<ROLE>`, `<VPS_HOST>`, `<TZ>`, `<OWNER>`) with
-real values in the copied files, and fill your brain's `SOUL.md + OPERATING.md` with your real identity,
-scope, and human-confirm gates (start from the template's root-agent example). Set
-`deploy/topics.tsv` to the session(s) you want. **Review the diffs**, then create the private remotes
-and push:
+real values in the copied files, and fill in — these three are what make an agent useful from its first
+turn, so do not skip them:
+
+1. your brain's **`SOUL.md`** (who the agent is: identity, voice, principles) and **`OPERATING.md`**
+   (what it does: scope, boundaries, human-confirm gates), starting from the template's root-agent example;
+2. **`kb-agent-shared/owner-profile.md`** — who *you* are, how you want to be worked with, and what your
+   org is. It ships as a skeleton of prompts; every agent loads it every session, so if you leave it
+   unfilled your agents read placeholder text as fact about you;
+3. `deploy/topics.tsv` — the session(s) you want.
+
+**Review the diffs**, then create the private remotes and push:
 
 ```bash
 # b) commit + create the private remote + push, per repo (run AFTER substituting placeholders)
