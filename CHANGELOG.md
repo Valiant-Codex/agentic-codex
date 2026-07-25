@@ -6,6 +6,20 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [Unreleased]
+
+### Fixed
+- **`templates/infra/scripts/provision-agent` now creates the `~/.claude/skills` whole-directory
+  symlink.** Without it an adopter's skills were silently invisible to the runtime, contradicting the
+  auto-registration promised in `docs/skills.md`.
+
+### Removed
+- **The `dream` nightly-consolidation script, prompt and units are no longer shipped in
+  `templates/infra/`.** The version published in v0.2.0 was an early draft that failed open, granted the
+  model `Bash(git *)`, had no secret scan before committing, and cleaned the worktree destructively — not
+  something to hand to strangers as root bash. The mechanism is now documented as experimental in
+  `docs/memory.md` (reference implementation only). **If you copied it from v0.2.0, do not run it.**
+
 ## [0.2.0] — 2026-07-25 — Brain framework v2
 
 ### Added

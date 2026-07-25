@@ -36,15 +36,8 @@ install -m0644 "$HERE/systemd/agentic-update-check.service"  /etc/systemd/system
 install -m0644 "$HERE/systemd/agentic-update-check.timer"    /etc/systemd/system/agentic-update-check.timer
 echo "  [ok] agentic-update-check"
 
-# dream (nightly memory consolidation) — installed but NOT auto-enabled (opt-in per agent).
-install -m0755 "$HERE/scripts/dream"                    /usr/local/bin/dream
-install -D -m0644 "$HERE/dream/consolidate-prompt.md"   /usr/local/share/dream/consolidate-prompt.md
-install -m0644 "$HERE/systemd/dream@.service"           /etc/systemd/system/dream@.service
-install -m0644 "$HERE/systemd/dream@.timer"             /etc/systemd/system/dream@.timer
-echo "  [ok] dream (opt-in: run 'sudo systemctl enable --now dream@<user>.timer' per agent when ready)"
-
 systemctl daemon-reload
 systemctl enable --now kb-sync.timer agentic-monitor.timer agentic-update-check.timer >/dev/null 2>&1 || true
-echo "  [ok] host timers enabled (dream timers left disabled — opt-in)"
+echo "  [ok] timers enabled"
 systemctl list-timers kb-sync.timer agentic-monitor.timer agentic-update-check.timer --no-pager 2>/dev/null | grep -E "kb-sync|agentic-monitor|agentic-update" || true
 echo "== done =="

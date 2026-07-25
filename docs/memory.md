@@ -18,7 +18,14 @@ High-signal facts are **distilled from the working tier into the canonical tier*
 
 ## Nightly "dreaming" (automatic, low-risk only)
 
-A per-agent timer (`dream@<user>.timer`, ~05:00, opt-in, disabled by default) runs `infra/scripts/dream`:
+> **⚠️ Experimental — not shipped in the templates.** The nightly job below exists in the reference
+> implementation and is **deliberately not published here yet**: it is Claude-Code-specific (it depends
+> on `claude -p` and three of its flags), it runs unattended as root, and it has only days of production
+> evidence. **You do not need it to get the value of this framework** — the two-tier model above works
+> with a periodic human-run pass (see the `agent-audit` runbook). It is described for reference so you
+> can judge the design, not as a step to install.
+
+A per-agent timer (`dream@<user>.timer`, ~05:00, opt-in, disabled by default) runs a `dream` script:
 
 1. **Mirror (deterministic).** Copy the runtime auto-memory into `memory/auto/` and commit. No model, no
    judgment, no risk.
