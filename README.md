@@ -8,6 +8,12 @@ Portable brains, Claude Code runtime. Minimal attack surface. Reachable from web
 
 ---
 
+> **What this repo is.** A **starting example**: adopt it, then own your instance. It is deliberately
+> *not* a live mirror of the fleet it was distilled from — that fleet is private and evolves to fit its
+> owner. What flows upstream here is **framework-level** change (the memory model, a new mechanism, a new
+> fleet-common skill, a change to the brain shape) plus **every safety or correctness fix**. Day-to-day
+> fleet-specific divergence is expected and is not a defect.
+
 ## What this is
 
 Agentic Codex is a **blueprint + ready-to-use templates** for running one or more AI agents as
