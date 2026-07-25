@@ -58,7 +58,8 @@ are auto-discovered. Fleet-common skills live once in `kb-agent-shared/skills/` 
 ## Cross-cutting rules
 
 - **Boundaries:** keep each agent in its lane; name the agent that owns work outside scope. Cross-agent
-  handoffs go through `shared/handoffs/`.
+  handoffs are relayed by the owner in chat (the sending agent writes the brief as Markdown, the owner
+  pastes it into the receiving agent's session) — there is no handoff directory.
 - **Access:** one agent = one Unix user + one GitHub bot account; least-privilege per
   `policies/github-access-policy.md` and `runbooks/provision-agent-github-access.md`.
 - **Governance freshness:** `shared/` stays current via kb-sync (no submodule commands). Runtime and

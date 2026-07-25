@@ -47,7 +47,7 @@ back, and move it to another box or another framework. See [`portability.md`](po
 
 `kb-agent-shared` holds what must be **identical across every agent**: global policies (approval,
 memory, source-of-truth, access), OKF templates, cross-agent decision records, runbooks, and a
-cross-agent handoff channel. Every brain reaches it through a committed symlink
+shared governance layer every brain reads. Every brain reaches it through a committed symlink
 `shared -> ../kb-agent-shared` to a **sibling clone** (not a git submodule — no pinning, no
 detached-HEAD, always-latest via `kb-sync`).
 

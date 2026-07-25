@@ -14,6 +14,12 @@ milestone.
   auto-registration promised in `docs/skills.md`.
 
 ### Removed
+- **The `handoffs/` directory and the file-based handoff channel.** Cross-agent handoffs are now relayed
+  by the owner in chat: the sending agent writes the brief as Markdown, the owner pastes it into the
+  receiving agent's session. Rationale (documented in `docs/multi-agent-governance.md`): once the shared
+  repo is write-restricted to the single privileged agent, a peer-writable handoff directory re-opens a
+  cross-agent write channel for a workflow that is low-volume and benefits from the owner seeing every
+  brief anyway. Fewer moving parts, one less thing to secure and sync.
 - **The `dream` nightly-consolidation script, prompt and units are no longer shipped in
   `templates/infra/`.** The version published in v0.2.0 was an early draft that failed open, granted the
   model `Bash(git *)`, had no secret scan before committing, and cleaned the worktree destructively — not

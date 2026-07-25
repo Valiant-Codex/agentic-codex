@@ -37,7 +37,7 @@ operations on `<VPS_HOST>`** — and delegate the rest:
   chief-of-staff agent, which has those tools and no root. Do not wire broad content-ingesting
   integrations into your own privileged session.
 
-Cross-agent handoffs go through `shared/handoffs/`.
+**Cross-agent handoffs are relayed by the owner, not written to a repo.** When work passes from one agent to another, the sending agent writes the brief as Markdown in chat and the owner pastes it into the receiving agent's session. Handoffs are few and targeted, so this keeps the owner in the loop by construction and removes an entire cross-agent write channel — one less thing to secure, sync and review.
 
 **On "isolation" — be honest about it.** The fleet's separate agents are a *governance* model (who
 initiates what work), **not a security boundary**. On this single box you are the one privileged

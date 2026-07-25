@@ -20,9 +20,13 @@ Give privileged work to as **few** agents as possible. The reference shape:
 | **cos-agent** | none | Broad chief-of-staff: research, business reasoning, orchestration, content, email. Has tools, no root. |
 | **dev-agent** | none (own deploy token) | Build/deploy: website, small web apps, automations. Its own scoped token; never root. |
 
-Cross-agent work goes through a lightweight, git-native **handoff channel**
-(`kb-agent-shared/handoffs/`) — one file per significant handoff, so hand-offs leave a trace instead of
-living only in a chat window.
+**Cross-agent handoffs are relayed by the owner, not written to a repo.** When work passes from one agent to another, the sending agent writes the brief as Markdown in chat and the owner pastes it into the receiving agent's session. Handoffs are few and targeted, so this keeps the owner in the loop by construction and removes an entire cross-agent write channel — one less thing to secure, sync and review.
+
+> **Why not files in the shared repo?** The reference implementation did exactly that for a
+> while — one Markdown file per handoff in `kb-agent-shared/handoffs/`, which does leave a nice audit
+> trail. It was removed once the shared repo became write-restricted to the single privileged agent: a
+> peer-writable handoff directory would have re-opened a cross-agent write channel for a workflow that
+> is low-volume and benefits from the owner seeing every brief anyway.
 
 ## The honest part: lanes are not a security boundary
 

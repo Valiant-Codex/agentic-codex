@@ -27,7 +27,7 @@ the foundations are" — a reminder that the privilege is a liability to handle,
   repo of OKF-style Markdown (identity, memory, skills, tools), reaching shared governance through a
   `shared -> ../kb-agent-shared` sibling-clone symlink.
 - **Governance** — `kb-agent-shared`: the policies, templates, decisions, runbooks, and cross-agent
-  handoff channel every agent reads. New agents are scaffolded from `kb-agent-template`.
+  governance layer every agent reads. New agents are scaffolded from `kb-agent-template`.
 - **Host** — `infra`: the `claude-topic` wrapper, systemd units, `kb-sync`, `agentic-monitor`,
   `provision-agent`. Installed by Durin.
 - **Config model** — the three tiers exactly as in [`config-model.md`](config-model.md): Git is the

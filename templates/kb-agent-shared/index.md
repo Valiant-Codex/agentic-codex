@@ -24,7 +24,7 @@ Start with [`bootstrap.md`](bootstrap.md). Use this file only when you need to n
 - [`policies/`](policies/) — global policies that apply to every agent.
 - [`runbooks/`](runbooks/) — operational runbooks (e.g. agent operations, portability, and VPS recovery).
 - [`decisions/`](decisions/) — cross-agent / ecosystem decision records (starts empty; add your own).
-- [`handoffs/`](handoffs/) — cross-agent handoff channel (specs/deliverables passed between agents).
+- *(No handoff directory: cross-agent handoffs are relayed by the owner in chat — see `docs/multi-agent-governance.md`.)*
 - [`templates/`](templates/) — reusable OKF templates for new documents.
 
 ## Note
