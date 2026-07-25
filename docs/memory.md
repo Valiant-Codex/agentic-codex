@@ -42,9 +42,10 @@ separate, asynchronous role that cannot touch the interactive identity.
 
 ## The autonomy line
 
-**Memory = automatic; capability/identity = human-gated.** The nightly job *proposes* (memory + a
-dream-log); the [`agent-audit`](skills.md) skill — which the owner triggers — *disposes*, turning
-suggestions into real skill/identity changes with the owner approving each diff. This gives
+**Memory = automatic; capability/identity = never unattended.** The nightly job is path-scoped to
+`memory/` by its wrapper, so the strongest thing it can do about a skill or an identity file is leave a
+suggestion. Those changes happen only in a session with the owner present — ad hoc, or as the periodic
+[`agent-audit`](skills.md) sweep — always as reviewable commits. This gives
 improvement-over-time with minimal interaction while structurally preventing self-rewriting drift, which
 the memory-poisoning and agent-misevolution literature is unanimous must be gated and enforced *outside*
 the agent.

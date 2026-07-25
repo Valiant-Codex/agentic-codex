@@ -46,12 +46,19 @@ discovered through the whole-dir symlink. Two ship with the framework:
 - **`skillify`** — the executable companion to `policies/skills-policy.md`: how to author, update, and
   retire a skill in this format, including the naming taxonomy and lifecycle.
 - **`agent-audit`** — an interactive, human-in-the-loop tune-up of one agent's brain (skills, `SOUL.md`,
-  `OPERATING.md`, memory). It is the **only** path that changes an agent's capabilities or identity, and
-  it consumes the nightly memory-consolidation suggestions (see [`memory.md`](memory.md)).
+  `OPERATING.md`, memory). It is the periodic, human-in-the-loop sweep
+  where accumulated suggestions become real changes (see [`memory.md`](memory.md)).
 
 ## The guardrail
 
 **Git is the control plane.** Every skill change is a diffable, revertible commit the owner can veto —
 nothing self-modifies invisibly. Agents may author skills in their own repo (and genuinely fleet-common
-ones in `shared/skills/`), but capability and identity changes flow through `agent-audit` with the owner
-in the loop. This is what separates "improves over time" from "drifts out of control."
+ones in `shared/skills/`), but always in a session with the owner present — **no scheduled job ever
+changes a skill or an identity file.** This is what separates "improves over time" from "drifts out of
+control."
+
+> **A caveat worth knowing:** a `SKILL.md` is *instructions a model will follow*, not inert data. If your
+> shared layer is auto-synced (see [`config-model.md`](config-model.md)) then a skill written in the
+> shared repo reaches every agent's context without review. Either keep fleet-common skills in the
+> privileged agent's own repo, or accept that the shared repo's write access is as trusted as the agents
+> that load it.
