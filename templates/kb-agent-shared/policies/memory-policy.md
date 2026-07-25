@@ -8,13 +8,16 @@ tags:
 - github
 - canonical-brain
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-07-10T00:00:00Z
+supersedes:
+- decisions/2026-07-03-openclaw-first-memory-stack.md
+- decisions/2026-06-28-memory-stack-design.md
 ---
 # Memory Policy
 
 ## Purpose
 
-Define how the agent manages durable agent memory across GitHub, the runtime (Claude Code), the business KB, object storage, and future memory/retrieval layers.
+Define how the agent manages durable agent memory across GitHub, ChatGPT, Claude Code, Notion, Drive, and future memory/retrieval layers.
 
 ## Core Principle
 
@@ -22,25 +25,25 @@ The agent's own `kb-agent-<role>-<name>` repository is its canonical durable bra
 
 Runtime memories and external memory systems are useful working layers, but durable agent knowledge should be distilled into GitHub Markdown/OKF files.
 
-Business knowledge belongs in your business KB (e.g. Notion or a kb-business repo), not in any agent repository.
+Business knowledge belongs in Notion or another explicit business source of truth, not in any agent repository.
 
 ## Memory Layers
 
 | Layer | System | Canonical? | Role |
 |---|---|---:|---|
 | Conversation context | Current chat/session | No | Immediate interaction state. |
-| Runtime memory | Claude Code and future memory tools | No | Continuity, convenience, and recall cache. |
-| Source material | Object storage, uploads, raw docs, transcripts | No | Raw material to analyze and distill. |
-| Business KB | your business KB (e.g. Notion or a kb-business repo) | Domain-specific | Business knowledge and operational context. |
+| Runtime memory | ChatGPT memory, Claude Code, future memory tools | No | Continuity, convenience, and recall cache. |
+| Source material | Drive, uploads, raw docs, transcripts | No | Raw material to analyze and distill. |
+| Business KB | Notion / explicit business source of truth | Domain-specific | Business knowledge, offers, client delivery, CRM/workspace. |
 | Canonical agent brain | the agent's own `kb-agent-<role>-<name>` repo | Yes | Agent identity, durable memory, skills, tools. |
 | Shared governance | `kb-agent-shared` | Yes | Global policies, cross-agent decisions, templates, conventions. |
-| Retrieval indexes | Vector store / graph store / external memory engine | No by default | Derived search and interface layers unless explicitly promoted by decision. |
+| Retrieval indexes | Vector store / graph store / Basic Memory / Mem0 / Cognee / Letta | No by default | Derived search and interface layers unless explicitly promoted by decision. |
 
 ## What To Save In Your Agent Repository
 
 Save durable, high-signal knowledge when:
 
-- the owner approves a decision affecting architecture, policy, strategy, or operating model.
+- <OWNER> approves a decision affecting architecture, policy, strategy, or operating model.
 - A stable preference or constraint should survive runtime migration.
 - A skill or runbook should be reused.
 - A tool registry entry governs how the agent should use an integration.
@@ -52,7 +55,7 @@ Do not save:
 - raw transcripts;
 - low-signal chat fragments;
 - duplicate memory;
-- business knowledge or operational context that belongs in your business KB;
+- business knowledge, client delivery context, CRM notes, offers, or process docs that belong in Notion;
 - unreviewed external claims;
 - secrets, credentials, raw private logs, or sensitive client data.
 
@@ -71,7 +74,7 @@ Do not save:
 2. Check current files and folder `README.md` maps before creating duplicates.
 3. Classify the target: distilled memory, episodic memory, decision, policy, skill, tool, template, or archive.
 4. Draft the smallest coherent update.
-5. Ask the owner if the change is ambiguous, sensitive, external, risky, or broad.
+5. Ask <OWNER> if the change is ambiguous, sensitive, external, risky, client-related, or broad.
 6. Update the target file and the folder `README.md` in the same change when the file list/status changes.
 7. Report what changed and what was skipped.
 
@@ -81,14 +84,30 @@ Use `status: superseded` when a document remains useful historical context but s
 
 Use `status: archived` when a document should not be loaded operationally except for historical investigation.
 
-The agent must not load `archive/` in normal operation.
+The agent must not load `archive/` during normal operation.
 
 ## Runtime Memory Rule
 
-Claude Code and other runtime memories may help continuity, but they do not override the canonical repositories. When runtime memory conflicts with a canonical repository, prefer the canonical repository and create a correction if needed.
+ChatGPT/Claude Code/other runtime memories may help continuity, but they do not override the canonical repositories. When runtime memory conflicts with a canonical repository, prefer the canonical repository and create a correction if needed.
+
+## Two-Tier Durable Memory
+
+In practice durable memory has two tiers, and the distinction matters for portability:
+
+- **Working tier — runtime auto-memory** (Claude Code's per-runtime memory store, git-ignored): fast,
+  auto-captured during sessions, a convenient recall cache. It is **not canonical** and does **not**
+  travel with the brain across a re-provision or a framework switch.
+- **Canonical tier — the git brain** (`memory/distilled-memory.md` + `memory/episodic/`): reviewed,
+  portable, and inspectable/editable by <OWNER> in GitHub.
+
+High-signal facts must be **distilled from the working tier into the canonical tier** via the Promotion
+Workflow above, so the durable brain — not a runtime cache — is the source of truth (<OWNER>'s priorities:
+everything editable in GitHub; plug-and-play portability). Run this distillation periodically; the
+`agent-audit` skill drives the cadence with <OWNER> in the loop. When a runtime cache conflicts with git,
+git wins.
 
 ## Future Memory Tools
 
-Vector stores, graph stores, or similar external memory systems may be evaluated as interface/retrieval layers.
+Basic Memory, Mem0/OpenMemory, Cognee, Letta, vector stores, graph stores, or similar systems may be evaluated as interface/retrieval layers.
 
-They do not replace the canonical repositories unless the owner approves a new decision record.
+They do not replace the canonical repositories unless <OWNER> approves a new decision record.

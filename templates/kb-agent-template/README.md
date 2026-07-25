@@ -31,31 +31,34 @@ the worked example, entirely with placeholders. Fill them in and the same shape 
 
 ## The portability pattern
 
-The **canonical identity + operating contract lives in `system-prompt.md`** — framework-agnostic
-Markdown. The two adapters are thin pointers back to it, so the same brain runs under different agent
-runtimes without forking its identity:
+The **canonical identity + operating contract lives in `SOUL.md`** (who the agent *is* — durable
+identity, voice, principles) **and `OPERATING.md`** (what it *does* — scope, threat model, gates,
+bootstrap) — framework-agnostic Markdown. The two adapters are thin pointers back to them, so the same
+brain runs under different agent runtimes without forking its identity:
 
 - `CLAUDE.md` — adapter for **Claude Code**.
 - `AGENTS.md` — adapter for other frameworks that read `AGENTS.md` (Codex, Cursor, …).
 
-Both are short and both say: *canonical identity is in `system-prompt.md`; read it first.* Edit identity
-in one place (`system-prompt.md`); never let the adapters drift into a second source of truth. See
-the Agentic Codex write-up (`docs/portability.md` in the agentic-codex repo).
+Both are short and both say: *identity is in `SOUL.md`, operating contract in `OPERATING.md`; read them
+first.* Edit identity/contract in those files; never let the adapters drift into a second source of
+truth. Splitting durable *who-you-are* from mutable *what-you-do* is deliberate: it keeps identity from
+drifting when operational instructions change. See the Agentic Codex write-up (`docs/portability.md`).
 
 ## Repo shape
 
 | Path | Purpose |
 |---|---|
-| `system-prompt.md` | **Canonical** behavioral prompt: identity, mission/scope, threat model, human-confirm gates. |
-| `CLAUDE.md` | Thin Claude Code adapter → `system-prompt.md`. |
-| `AGENTS.md` | Thin generic adapter → `system-prompt.md`. |
+| `SOUL.md` | **Canonical** durable identity: who the agent is, voice, principles (loaded every session). |
+| `OPERATING.md` | **Canonical** operating contract: mission/scope, threat model, human-confirm gates, bootstrap. |
+| `CLAUDE.md` | Thin Claude Code adapter → `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`. |
+| `AGENTS.md` | Thin generic adapter → `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`. |
 | `deploy/home-CLAUDE.md` | The `~/CLAUDE.md` bootstrap symlinked into the home dir. |
 | `deploy/topics.tsv` | Remote-Control topic sessions (`key<TAB>Display Name`). |
 | `deploy/claude-settings.json` | Curated, portable runtime settings (permissions, notifications). |
 | `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. |
 | `tools/` | This agent's tool notes. |
-| `skills/` | This agent's runbooks / skills. |
-| `memory/` | This agent's durable memory. |
+| `skills/` | This agent's skills, **folder-per-skill** (`<name>/SKILL.md`); fleet-common ones symlink `shared/skills/*`. See `docs/skills.md`. |
+| `memory/` | This agent's durable memory — two-tier (`distilled-memory.md` + `episodic/` + machine-mirrored `auto/`). See `docs/memory.md`. |
 | `context/` | Working context and scratch notes. |
 | `shared/` | Symlink → sibling clone `../kb-agent-shared` (global policies, decisions, runtime reference). |
 

@@ -1,45 +1,32 @@
 ---
-type: template
-title: Skill Template
-description: OKF-compatible reusable agent skill template (merged with runbook template).
+name: <lowercase-hyphens>
+description: <what this skill does AND when to use it — this is what the harness matches on>
+type: skill
+title: <Skill Title>
 tags:
-- template
-- okf
 - skill
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: <ISO-8601>
 ---
-# Skill Title
+# <Skill Title>
 
-## Purpose
+> Copy this folder to `skills/<name>/SKILL.md` and fill it in. Keep the body under ~5k tokens; push
+> deep detail into a `references/` file and long/deterministic steps into `scripts/`. See the
+> `skillify` skill for the full authoring/lifecycle procedure.
 
-What capability does this skill provide?
+## When to use
 
-## When To Use
-
-When should an agent apply this skill?
-
-## Prerequisites
-
-What must be true before starting?
-
-## Inputs
-
-What information is required?
+When should an agent reach for this skill? Be specific — this mirrors the `description` trigger.
 
 ## Procedure
 
 1. Step one.
 2. Step two.
 
-## Outputs
+## Gotchas
 
-What should the skill produce?
+The things that actually bite — learned the hard way.
 
-## Validation
+## Related
 
-How do we know it worked?
-
-## Recovery
-
-How do we recover if it fails?
+- Links to `shared/runbooks/*`, policies, or sibling skills (don't duplicate their content here).

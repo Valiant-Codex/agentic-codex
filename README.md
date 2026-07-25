@@ -35,7 +35,7 @@ These were the design drivers — if you share them, this repo is for you:
 | Goal | How it's met |
 |---|---|
 | **Own your agents' memory** | Brains are Git repos of Markdown (an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspired structure), not a vendor's memory store. |
-| **Framework portability** | Canonical identity lives in `system-prompt.md`; thin adapters (`CLAUDE.md`, `AGENTS.md`) point to it, so the same brain works across agent runtimes. See [`docs/portability.md`](docs/portability.md). |
+| **Framework portability** | Canonical identity lives in `SOUL.md + OPERATING.md`; thin adapters (`CLAUDE.md`, `AGENTS.md`) point to it, so the same brain works across agent runtimes. See [`docs/portability.md`](docs/portability.md). |
 | **Talk to agents from anywhere** | Claude Code Remote Control surfaces each session on web/mobile/desktop — the reason this happy path is Claude Code. |
 | **Minimal attack surface** | One privileged agent, unprivileged others; no extra always-on gateway; a root-owned wrapper no agent can rewrite. |
 | **Recover / migrate in minutes** | `clone + provision-agent`. Nothing important lives only on the box. See [`docs/config-model.md`](docs/config-model.md). |
@@ -102,7 +102,7 @@ docs/                     ← the write-up: how and why it works
 templates/
   infra/                  ← the host layer (root-owned wrapper, systemd, monitor, provisioning)
   kb-agent-shared/        ← shared governance (policies, templates, runbooks) every agent reads
-  kb-agent-template/      ← one agent brain scaffold (system-prompt.md + CLAUDE.md/AGENTS.md adapters)
+  kb-agent-template/      ← one agent brain scaffold (SOUL.md + OPERATING.md + CLAUDE.md/AGENTS.md adapters)
 LICENSE                   ← MIT
 ```
 

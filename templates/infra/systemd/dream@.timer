@@ -1,0 +1,17 @@
+# Nightly "dreaming" timer for one agent — %i is the agent Unix user.
+# ~05:00 with up to 30 min random spread so per-agent runs don't all fire at once.
+# Persistent=true runs a missed job (box was off) on next boot.
+#
+# DISABLED by default (opt-in). Enable per agent once validated:
+#   sudo systemctl enable --now dream@durin.timer
+# Canonical source: Valiant-Codex/infra.
+[Unit]
+Description=Nightly dreaming for %i (~05:00, staggered)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

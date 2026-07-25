@@ -9,17 +9,20 @@ and the *deployment* is portable across machines.
 
 The trick is a strict split between the canonical identity and the runtime adapter.
 
-- **`system-prompt.md` is canonical.** It holds the agent's identity, voice, mission/scope,
-  human-confirm gates, and bootstrap order — as plain, framework-agnostic Markdown. This is the file
-  that carries the value.
+- **`SOUL.md` + `OPERATING.md` are canonical**, split by *durability*. `SOUL.md` holds *who the agent
+  is* (identity, voice, principles) — durable, changed rarely; `OPERATING.md` holds *what it does*
+  (mission/scope, threat model, human-confirm gates, bootstrap) — the operating contract. Both are
+  plain, framework-agnostic Markdown. Splitting durable identity from mutable instructions keeps
+  identity from drifting when operational details change. Shared facts about the owner/org live once in
+  `shared/owner-profile.md`.
 - **Adapters are thin and per-framework.** Each runtime reads a different entry file; each is a short
-  pointer to `system-prompt.md`:
+  pointer to `SOUL.md` + `OPERATING.md`:
   - `CLAUDE.md` → the adapter Claude Code reads first.
   - `AGENTS.md` → the adapter several other tools (Codex, Cursor, and others) read.
   - add another adapter file for another framework — it's ~15 lines.
 
 ```
-          system-prompt.md          ← canonical identity (the value)
+      SOUL.md + OPERATING.md          ← canonical identity + contract (the value)
           ▲        ▲        ▲
      CLAUDE.md  AGENTS.md  <other>.md   ← thin adapters, one per framework
    (Claude Code) (Codex/…)  (future)

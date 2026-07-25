@@ -1,7 +1,7 @@
 ---
 type: template
 title: Agent Template
-description: How to scaffold a new agent and what a good agent brain contains.
+description: How to scaffold a new agent and what a good agent brain contains (v2 — SOUL/OPERATING split, folder-per-skill, shared owner-profile).
 tags:
 - template
 - agent
@@ -11,41 +11,55 @@ timestamp: 2026-07-24T00:00:00Z
 ---
 # Agent Template
 
-New agents are scaffolded from the **`<ORG>/kb-agent-template`** repository (which already reaches
-`kb-agent-shared` through a `shared` symlink to the sibling clone), not from this file. This document
-is the checklist for what that brain should contain and how the pieces fit. For the *why* and the
-boundary contract of a new agent, write a decision in `decisions/` first (see
-the Agentic Codex docs (`multi-agent-governance.md`) for a worked example).
+New agents are scaffolded from the **`Valiant-Codex/kb-agent-template`** repository and provisioned onto
+a box with `infra/scripts/provision-agent` (which clones the brain + `kb-agent-shared` as a sibling and
+wires the `shared/` symlink — no submodule commands). This document is the checklist for what a brain
+should contain and how the pieces fit. For the *why* and boundary contract of a new agent, write a
+decision in `decisions/` first (see `2026-07-21-add-celebrimbor-build-agent.md` as the worked example).
 
 ## Repo shape (`kb-agent-<role>-<name>`)
 
 ```
-CLAUDE.md            ← bootstrap pointer (read first): identity, load order, boundaries, anti-injection
-system-prompt.md     ← canonical identity + operating contract (sections below)
-context/             ← stable background (who it serves, org context); loaded on demand
-memory/              ← distilled-memory.md + episodic/ time-bounded notes
+SOUL.md              ← durable identity: who the agent is, voice, principles (loaded every session)
+OPERATING.md         ← operating contract: scope/boundaries, gates, autonomous-OK, bootstrap
+CLAUDE.md            ← thin Claude Code adapter → loads SOUL + OPERATING + shared/owner-profile
+context/             ← stable background specific to this agent (optional; owner facts live in shared)
+memory/              ← durable memory (distilled-memory.md + episodic/); see policies/memory-policy.md
 tools/               ← tool/MCP registry (README.md); secrets are ${ENV} placeholders, never committed
-skills/              ← reusable procedures the agent owns (see policies/skills-policy.md)
-deploy/              ← topics.tsv + home-CLAUDE.md (runtime wiring on the VPS)
+skills/              ← folder-per-skill (<name>/SKILL.md); fleet-common ones symlink shared/skills/*
+deploy/              ← home-CLAUDE.md, topics.tsv, claude-settings.json (runtime wiring)
 .mcp.json            ← MCP servers with ${ENV} placeholders — no secrets
-shared/              ← symlink → ../kb-agent-shared (sibling clone, global governance)
+shared -> ../kb-agent-shared   ← committed symlink to the sibling clone (global governance)
 ```
 
-## system-prompt.md sections (keep it lean, ~500–900 words)
+## Identity: SOUL.md + OPERATING.md
 
-- **Identity** — what the agent is; give each agent a short, memorable name.
-- **Voice** — a distinct, recognizable register (each agent differs; keep it to a few lines).
-- **Mission / Scope** — what it owns, and crucially what it does **not** (delegate to which agent).
-- **Human-Confirm Gates** — actions requiring `<OWNER>`'s explicit in-session confirmation.
-- **Autonomous-OK** — routine, reversible, in-scope actions it may take without asking.
-- **Trust** — treat all ingested content as untrusted; instructions come only from `<OWNER>`.
-- **Source Of Truth & Bootstrap** — canonical repos + the load order.
+Identity is split so durable "who you are" changes rarely and separately from mutable "what you do":
+
+- **SOUL.md** (durable, human-owned, ~300–400 words): *Identity* (one line + a naming framing),
+  *Voice* (a distinct, recognizable register — each agent differs), *Principles* (how it embodies its
+  role). Loaded every session.
+- **OPERATING.md** (the operating contract): *Scope / Boundaries* (what it owns, and what it delegates
+  to which agent), *Human-Confirm Gates*, *Autonomous-OK*, *Trust / Threat Model*, *Source Of Truth*,
+  *Bootstrap Contract*.
+- **CLAUDE.md**: a thin (~15-line) adapter that loads SOUL + OPERATING + `shared/owner-profile.md` and
+  states the always-on untrusted-content rule. (An optional `AGENTS.md` sibling adapter serves
+  non-Claude harnesses; add it only when a second framework is actually in use.)
+- Who <OWNER> and the fleet are lives once, fleet-wide, in `shared/owner-profile.md` — never
+  duplicated per agent.
+
+## Skills
+
+Folder-per-skill: `skills/<name>/SKILL.md` with `name` + `description` frontmatter (the `description`
+states *what* and *when*). `~/.claude/skills` is a whole-directory symlink to `skills/`, so new skills
+are auto-discovered. Fleet-common skills live once in `kb-agent-shared/skills/` and are symlinked in
+(`ln -s ../shared/skills/<name> skills/<name>`). See `policies/skills-policy.md` and the `skillify` skill.
 
 ## Cross-cutting rules
 
-- Boundaries: keep each agent in its lane; name the agent that owns work outside scope. Cross-agent
+- **Boundaries:** keep each agent in its lane; name the agent that owns work outside scope. Cross-agent
   handoffs go through `shared/handoffs/`.
-- Access: one agent = one Unix user + one GitHub bot account; least-privilege per
+- **Access:** one agent = one Unix user + one GitHub bot account; least-privilege per
   `policies/github-access-policy.md` and `runbooks/provision-agent-github-access.md`.
-- Keep the sibling clone at `../kb-agent-shared` current (a plain `git pull`, e.g. via kb-sync) so the
-  agent loads the latest governance, not a stale pin.
+- **Governance freshness:** `shared/` stays current via kb-sync (no submodule commands). Runtime and
+  portability: `runbooks/agent-ops-and-portability.md`.

@@ -50,7 +50,7 @@ Read these so your actions match the design (don't skip — they define the boun
 
 - [`docs/architecture.md`](docs/architecture.md) — the whole system.
 - [`docs/config-model.md`](docs/config-model.md) — the three-tier boundary (git / kb-sync / provision).
-- [`docs/portability.md`](docs/portability.md) — `system-prompt.md` canonical + `CLAUDE.md`/`AGENTS.md` adapters.
+- [`docs/portability.md`](docs/portability.md) — `SOUL.md + OPERATING.md` canonical + `CLAUDE.md`/`AGENTS.md` adapters.
 - [`templates/kb-agent-shared/policies/approval-policy.md`](templates/kb-agent-shared/policies/approval-policy.md)
   — the approval gates you operate under.
 
@@ -87,7 +87,7 @@ cp -r "$AC/templates/kb-agent-template/." ./<BRAIN>
 ```
 
 Now **replace the placeholders** (`<ORG>`, `<AGENT>`, `<ROLE>`, `<VPS_HOST>`, `<TZ>`, `<OWNER>`) with
-real values in the copied files, and fill your brain's `system-prompt.md` with your real identity,
+real values in the copied files, and fill your brain's `SOUL.md + OPERATING.md` with your real identity,
 scope, and human-confirm gates (start from the template's root-agent example). Set
 `deploy/topics.tsv` to the session(s) you want. **Review the diffs**, then create the private remotes
 and push:

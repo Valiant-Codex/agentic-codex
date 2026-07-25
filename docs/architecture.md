@@ -34,8 +34,8 @@ layers, each with a clear owner and a clear trust level.
 Each agent has a repo `kb-agent-<role>-<name>` containing its identity and durable memory as plain
 Markdown ([OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspired):
 
-- `system-prompt.md` — the canonical identity and operating contract (framework-agnostic).
-- `CLAUDE.md`, `AGENTS.md` — thin per-framework adapters that point to `system-prompt.md`.
+- `SOUL.md + OPERATING.md` — the canonical identity and operating contract (framework-agnostic).
+- `CLAUDE.md`, `AGENTS.md` — thin per-framework adapters that point to them.
 - `memory/`, `skills/`, `tools/`, `context/` — durable memory, self-authored procedures, tool notes.
 - `deploy/` — the runtime wiring (`topics.tsv`, `home-CLAUDE.md`, `claude-settings.json`).
 - `shared/` — a symlink to the sibling clone of `kb-agent-shared`.
