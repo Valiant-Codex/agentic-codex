@@ -6,6 +6,20 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.4.0] — 2026-07-25 — Three more proven skills
+
+Additive release: the shared layer now ships five fleet-common skills instead of two. Each was written
+for, and repeatedly used by, the reference deployment before being generalized here — the rule this
+project follows is that a skill earns publication by proving useful, not by seeming like a good idea.
+
+### Added
+- **Three more fleet-common skills**, generalized from the reference deployment after they proved
+  useful there: **`advisor-review`** (how to get an independent adversarial second opinion out of a
+  sub-agent, with the constraints it must always be given and the verify-before-you-act rule),
+  **`decision-loop`** (sparring procedure for strategic calls: strawman, attack, converge, record), and
+  **`knowledge-governance-workflow`** (OKF frontmatter and hygiene for a brain). `kb-agent-shared/skills/`
+  now ships five.
+
 ## [0.3.0] — 2026-07-25 — Make the scaffold actually work
 
 A correctness and honesty release. An independent pre-release audit walked the documented bring-up path
@@ -89,5 +103,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.4.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.0
+[0.3.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.1.0

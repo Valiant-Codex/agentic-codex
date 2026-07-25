@@ -14,6 +14,13 @@ Portable brains, Claude Code runtime. Minimal attack surface. Reachable from web
 > fleet-common skill, a change to the brain shape) plus **every safety or correctness fix**. Day-to-day
 > fleet-specific divergence is expected and is not a defect.
 
+> **About the skills that ship in `kb-agent-shared/skills/`.** Five of them are included — `skillify`,
+> `agent-audit`, `advisor-review`, `decision-loop`, `knowledge-governance-workflow`. They are not a
+> starter pack of ideas: each one was written for, and repeatedly used by, the fleet in
+> [`docs/reference-architecture.md`](docs/reference-architecture.md) — the deployment this framework was
+> distilled from, which runs in production. They earned inclusion by proving useful there. Adopt the ones
+> that fit, delete the rest: they are examples, like everything else here.
+
 ## What this is
 
 Agentic Codex is a **blueprint + ready-to-use templates** for running one or more AI agents as

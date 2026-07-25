@@ -41,13 +41,22 @@ setup**. Retired skills move to `skills-archive/` (outside `skills/`) so the har
 
 Skills every agent needs live **once** in `kb-agent-shared/skills/<name>/` and are symlinked into each
 agent (`ln -s ../shared/skills/<name> skills/<name>`): one canonical copy, propagated by the sync timer,
-discovered through the whole-dir symlink. Two ship with the framework:
+discovered through the whole-dir symlink. Five ship with the framework — each one kept because it
+proved useful in the reference deployment, not because it seemed like a good idea:
 
 - **`skillify`** — the executable companion to `policies/skills-policy.md`: how to author, update, and
   retire a skill in this format, including the naming taxonomy and lifecycle.
 - **`agent-audit`** — an interactive, human-in-the-loop tune-up of one agent's brain (skills, `SOUL.md`,
-  `OPERATING.md`, memory). It is the periodic, human-in-the-loop sweep
-  where accumulated suggestions become real changes (see [`memory.md`](memory.md)).
+  `OPERATING.md`, memory): the periodic sweep where accumulated experience becomes durable change
+  (see [`memory.md`](memory.md)).
+- **`advisor-review`** — how to get a genuinely independent second opinion out of a sub-agent: make it
+  argue *against* you, constrain it (read-only, no credential hunting — a real incident, described in
+  the skill, is why), and re-verify its load-bearing claims before you act on them.
+- **`decision-loop`** — a sparring procedure for strategic calls: strawman rather than interrogate,
+  work blocks in dependency order, falsify the load-bearing assumption early, record the outcome where
+  it belongs instead of leaving it in a chat.
+- **`knowledge-governance-workflow`** — the frontmatter and hygiene rules that keep a brain
+  machine-readable and lean.
 
 ## The guardrail
 
