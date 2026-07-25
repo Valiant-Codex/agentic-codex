@@ -1,0 +1,7 @@
+# Fleet roster — one agent Unix user per line (comments and blank lines ignored).
+# Single source of truth for the host scripts (kb-sync, agentic-monitor, agentic-divergence-check),
+# so adding an agent cannot silently leave it uncovered by some of them.
+# Installed to /usr/local/share/agentic/fleet-agents by install-host-services.
+# Keep it current when you provision or decommission an agent; agentic-divergence-check reconciles
+# this list against the brains actually present on the box and reports either direction.
+root-agent

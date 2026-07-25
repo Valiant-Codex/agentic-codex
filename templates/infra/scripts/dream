@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# dream — nightly per-agent memory mirror (the deterministic half of "dreaming").
+#
+# Mirrors an agent's runtime auto-memory (the working tier: fast, auto-captured, and NOT portable —
+# it does not survive a re-provision or a framework switch) into its brain repo at memory/auto/, and
+# commits. Pure copy: no model, no judgment, no nondeterminism. That makes the working tier durable,
+# versioned and reviewable in Git, which is the point of the two-tier memory model (docs/memory.md).
+#
+# Guarantees:
+#   * SECRET SCAN before staging: session-derived content can contain credentials, and a secret in Git
+#     is not undoable. A hit aborts without committing and reports for rotation.
+#   * FAIL CLOSED: any error exits non-zero so the systemd unit lands in `failed` and agentic-monitor
+#     surfaces it. Silence must never be mistaken for success.
+#   * Commits are prefixed "[dream]" — greppable and mass-revertible.
+#
+# The MODEL-DRIVEN half (consolidating memory with an LLM) is deliberately NOT shipped: see the
+# negative result in docs/memory.md. Distillation belongs to the human-run `agent-audit` skill.
+#
+# Optional. Runs as root (per-user work via runuser). Timer DISABLED by default; enable per agent:
+#   sudo systemctl enable --now dream@<user>.timer
+set -uo pipefail
+
+usage(){ echo "usage: dream <agent-user>" >&2; exit 2; }
+U="${1:-}"; [ -n "$U" ] || usage
+TODAY="$(date +%F)"
+RC=0
+log(){ echo "$(date -Is) dream/$U: $*"; }
+fail(){ log "ERROR: $*"; RC=1; }
+run(){ runuser -u "$U" -- bash -lc "$1"; }
+
+# Conservative secret pattern set. False positives are cheap (a skipped night + a look);
+# a committed credential is not.
+SECRET_RE='BEGIN [A-Z ]*PRIVATE KEY|oauth_token|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer [A-Za-z0-9._~+/-]{25,}|(password|passwd|api[_-]?key|secret|token)[[:space:]]*[:=][[:space:]]*[^[:space:]"'"'"']{12,}'
+scan(){ grep -rilE "$SECRET_RE" "$1" 2>/dev/null; }   # prints offending files, if any
+
+HOME_DIR="$(getent passwd "$U" | cut -d: -f6)" || { log "no such user"; exit 1; }
+BASE="$HOME_DIR/${WS:-github/${ORG:-<ORG>}}"
+BRAIN="$(ls -d "$BASE"/kb-agent-*-"$U" 2>/dev/null | head -1)"
+[ -n "$BRAIN" ] && [ -d "$BRAIN/.git" ] || { log "ERROR: brain repo not found under $BASE"; exit 1; }
+AUTOMEM="$HOME_DIR/.claude/projects/-home-$U/memory"
+
+# ---------- Phase A: mirror (deterministic) ----------
+if [ -d "$AUTOMEM" ]; then
+  hits="$(scan "$AUTOMEM")"
+  if [ -n "$hits" ]; then
+    fail "secret-like content in runtime auto-memory — NOT mirroring. Review (and rotate if real):"
+    echo "$hits" | sed 's/^/    /'
+  else
+    DEST="$BRAIN/memory/auto"
+    run "mkdir -p '$DEST' && rsync -a --delete '$AUTOMEM/' '$DEST/'" || fail "mirror rsync failed"
+    run "cd '$BRAIN' && git add memory/auto"
+    if run "cd '$BRAIN' && git diff --cached --quiet"; then
+      log "mirror: no changes"
+    elif run "cd '$BRAIN' && git commit -q -m '[dream] mirror runtime auto-memory ($TODAY)'"; then
+      run "cd '$BRAIN' && git push -q" && log "mirror: committed + pushed" || fail "mirror: push failed (commit is local only)"
+    else
+      fail "mirror: commit failed"
+    fi
+  fi
+else
+  log "mirror: no auto-memory at $AUTOMEM (skip)"
+fi
+
+log "done (mirror)"
+exit $RC

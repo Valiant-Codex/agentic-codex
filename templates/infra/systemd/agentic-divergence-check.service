@@ -1,0 +1,16 @@
+# Fleet brain divergence check (drift detector, security review F12).
+# Read-only; exits non-zero when drift is found so the unit surfaces as failed.
+# 
+[Unit]
+Description=Fleet brain divergence check (drift detector)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/agentic-divergence-check
+# Drift (exit 1) must NOT mark the unit failed: agentic-monitor pages on failed units, and a
+# stale doc link must never wake anyone — nor leave a sticky failed state until reset-failed.
+# Drift surfaces in the weekly agentic-update-check report, which runs this check directly.
+# A real malfunction (any other non-zero exit) still fails loudly.
+SuccessExitStatus=1

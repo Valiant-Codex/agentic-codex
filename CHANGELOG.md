@@ -6,7 +6,29 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
-## [Unreleased]
+## [0.3.0] — 2026-07-25 — Make the scaffold actually work
+
+A correctness and honesty release. An independent pre-release audit walked the documented bring-up path
+end-to-end and found that an adopter finished it with an agent that booted to a deleted file, had no
+discoverable skills, an unfilled owner profile and an empty memory directory. Nothing new was worth
+shipping on top of that, so this release fixes the scaffold, narrows the claims to what the code
+actually does, and adds the one new thing that prevents the same rot returning: a structural linter.
+
+### Added
+- **`agentic-divergence-check`** — a read-only daily linter for brain drift: declared shape, adapter
+  wiring, folder-skill metadata, symlink resolution, runtime skills registration, live `~/CLAUDE.md`,
+  clone-vs-origin agreement, broken references in active docs, and roster-vs-reality. It checks
+  **invariants, never technology vocabulary**, so it does not rot — see
+  [`docs/divergence-check.md`](docs/divergence-check.md) for why that distinction matters. Drift does
+  not page you; it surfaces in the weekly report.
+- **`fleet-agents`** — one roster read by every host script, so adding an agent cannot leave it silently
+  uncovered by some of them.
+- **`skills-archive/`** — retired skills live outside `skills/`, so the runtime stops loading them while
+  their reasoning stays in git.
+- **`dream` (optional, mirror-only, timer disabled by default)** — a deterministic, secret-scanned,
+  fail-closed mirror of the runtime's working memory into `memory/auto/`. No model involved.
+- `memory/README.md`, a `distilled-memory.md` stub and `episodic/` now ship in the brain template.
+
 
 ### Fixed
 - **`templates/infra/scripts/provision-agent` now creates the `~/.claude/skills` whole-directory

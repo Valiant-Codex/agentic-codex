@@ -36,6 +36,22 @@ install -m0644 "$HERE/systemd/agentic-update-check.service"  /etc/systemd/system
 install -m0644 "$HERE/systemd/agentic-update-check.timer"    /etc/systemd/system/agentic-update-check.timer
 echo "  [ok] agentic-update-check"
 
+# fleet roster — single source of truth for kb-sync / agentic-monitor / agentic-divergence-check
+install -D -m0644 "$HERE/fleet-agents" /usr/local/share/agentic/fleet-agents
+echo "  [ok] fleet roster (/usr/local/share/agentic/fleet-agents)"
+
+# agentic-divergence-check (daily structural linter) — installed; enable once your fleet passes it
+install -m0755 "$HERE/scripts/agentic-divergence-check"          /usr/local/bin/agentic-divergence-check
+install -m0644 "$HERE/systemd/agentic-divergence-check.service"  /etc/systemd/system/agentic-divergence-check.service
+install -m0644 "$HERE/systemd/agentic-divergence-check.timer"    /etc/systemd/system/agentic-divergence-check.timer
+echo "  [ok] agentic-divergence-check (run it once by hand, then: systemctl enable --now agentic-divergence-check.timer)"
+
+# dream (optional nightly memory mirror) — installed, timer DISABLED by default
+install -m0755 "$HERE/scripts/dream"          /usr/local/bin/dream
+install -m0644 "$HERE/systemd/dream@.service" /etc/systemd/system/dream@.service
+install -m0644 "$HERE/systemd/dream@.timer"   /etc/systemd/system/dream@.timer
+echo "  [ok] dream (optional; enable per agent: systemctl enable --now dream@<user>.timer)"
+
 systemctl daemon-reload
 systemctl enable --now kb-sync.timer agentic-monitor.timer agentic-update-check.timer >/dev/null 2>&1 || true
 echo "  [ok] timers enabled"

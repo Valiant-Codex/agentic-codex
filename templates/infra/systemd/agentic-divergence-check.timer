@@ -1,0 +1,12 @@
+# Daily fleet divergence check (~06:00, after the nightly dreaming).
+# Enable once the fleet is clean: sudo systemctl enable --now agentic-divergence-check.timer
+# 
+[Unit]
+Description=Daily fleet divergence check
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

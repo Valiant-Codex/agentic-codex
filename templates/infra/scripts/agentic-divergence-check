@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# agentic-divergence-check — detect structural drift across the agent fleet (security review F12).
+#
+# READ-ONLY: it reports, it never fixes. Fixes go through `agent-audit` or a human.
+# Exits 0 when clean, 1 when drift is found, so the systemd unit lands in `failed` and
+# agentic-monitor surfaces it.
+#
+# DESIGN — self-maintaining invariants only, no vocabulary.
+# An earlier version grepped for stale *command patterns* (`git submodule`, `tmux …`,
+# `system-prompt`). That was a maintenance trap: it encoded the 2026 stack, nobody would prune it
+# as technologies change, it would eventually pass because it no longer matched anything (false
+# confidence), and it could even flag an agent's own true memory of a past migration. Judging
+# "this doc describes the old way" is semantic work and belongs to `agent-audit` (human, periodic).
+# What remains here are checks that stay true regardless of which technologies the fleet uses:
+#   - the brain has the shape the framework declares (identity files, adapters, folder-skills);
+#   - every symlink resolves, every referenced path exists (renames self-report);
+#   - skill metadata matches its folder (harness discoverability);
+#   - each clone agrees with its origin (nothing unpushed/behind — catches silent push/sync failure);
+#   - the live ~/CLAUDE.md entry point resolves and names files that exist;
+#   - the roster and the brains on disk agree (no agent silently uncovered).
+#
+# Managed by agentic-divergence-check.timer (daily). Read-only; see docs/divergence-check.md.
+set -uo pipefail
+
+ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
+# Workspace layout: brains live at ~<user>/$WS/kb-agent-<role>-<user>. Override ORG/WS if you differ.
+ORG="${ORG:-<ORG>}"
+WS="${WS:-github/$ORG}"
+FAILS=0
+drift(){ echo "  [DRIFT] $*"; FAILS=$((FAILS+1)); }
+
+echo "$(date -Is) agentic-divergence-check"
+
+if [ -f "$ROSTER_FILE" ]; then
+  AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t')"
+else
+  echo "  [WARN] roster $ROSTER_FILE missing — falling back to on-disk discovery (fleet scripts may under-cover)"
+  AGENTS=""
+fi
+
+# --- roster vs reality: a brain on disk that nobody sweeps is worse than a missing one ---
+DISCOVERED="$(for h in /home/*; do u="$(basename "$h")"; [ -d "$h/$WS" ] || continue;
+  ls -d "$h/$WS"/kb-agent-*-"$u" >/dev/null 2>&1 && echo "$u"; done | sort -u)"
+[ -z "$AGENTS" ] && AGENTS="$DISCOVERED"
+for u in $DISCOVERED; do
+  grep -qx "$u" <<< "$AGENTS" || drift "roster: '$u' has a brain repo on disk but is not in $ROSTER_FILE (uncovered by fleet scripts)"
+done
+for u in $AGENTS; do
+  grep -qx "$u" <<< "$DISCOVERED" || drift "roster: '$u' is listed but has no brain repo on disk"
+done
+
+check_brain(){ # <user> <repo>
+  local u="$1" r="$2" n; n="$(basename "$r")"
+  echo "== $n =="
+  local asu; asu(){ runuser -u "$u" -- bash -lc "$1"; }
+
+  # 1) Declared brain shape (v2 identity split) + adapter wiring.
+  for f in SOUL.md OPERATING.md CLAUDE.md; do [ -f "$r/$f" ] || drift "$n: missing $f"; done
+  if [ -f "$r/CLAUDE.md" ]; then
+    for tok in SOUL.md OPERATING.md owner-profile; do
+      grep -q "$tok" "$r/CLAUDE.md" || drift "$n: CLAUDE.md does not load $tok"
+    done
+  fi
+
+  # 2) Skills: folders with SKILL.md, frontmatter name == dirname, non-empty description.
+  local flat; flat="$(find "$r/skills" -maxdepth 1 -type f -name '*.md' ! -name 'README.md' 2>/dev/null)"
+  [ -n "$flat" ] && drift "$n: flat skill file(s) — should be <name>/SKILL.md: $(echo "$flat" | tr '\n' ' ')"
+  local d nm sk
+  for d in "$r"/skills/*/; do
+    [ -d "$d" ] || continue
+    nm="$(basename "$d")"; sk="$d/SKILL.md"
+    [ -f "$sk" ] || { drift "$n: skills/$nm has no SKILL.md (invisible to the harness)"; continue; }
+    local fn fd
+    fn="$(awk -F': *' '/^name:/{print $2; exit}' "$sk" | tr -d ' \r')"
+    fd="$(awk -F': *' '/^description:/{print $2; exit}' "$sk")"
+    [ "$fn" = "$nm" ] || drift "$n: skills/$nm frontmatter name='$fn' != folder name"
+    [ -n "$fd" ] || drift "$n: skills/$nm has no description (the harness matches on it)"
+  done
+
+  # 3) Every symlink in the brain resolves (catches renamed/removed fleet-common skills, shared/).
+  local bad; bad="$(find "$r" -path "$r/.git" -prune -o -type l ! -exec test -e {} \; -print 2>/dev/null)"
+  [ -n "$bad" ] && drift "$n: dangling symlink(s): $(echo "$bad" | tr '\n' ' ')"
+
+  # 4) Runtime registration: ~/.claude/skills must BE a symlink, resolve, and point at this repo.
+  local home cs tgt; home="$(getent passwd "$u" | cut -d: -f6)"; cs="$home/.claude/skills"
+  if [ ! -L "$cs" ]; then
+    drift "$n: ~/.claude/skills is not a symlink (skills invisible or hand-managed)"
+  elif [ ! -e "$cs" ]; then
+    drift "$n: ~/.claude/skills is a DANGLING symlink (all skills invisible to the harness)"
+  else
+    tgt="$(readlink -f "$cs")"
+    [ "$tgt" = "$(readlink -f "$r/skills")" ] || drift "$n: ~/.claude/skills points at $tgt, not $r/skills"
+  fi
+
+  # 5) Clone agrees with origin — catches silent push failures and chronic kb-sync skips.
+  asu "cd '$r' && git remote update -p >/dev/null 2>&1"
+  local ahead behind
+  ahead="$(asu "cd '$r' && git rev-list --count @{u}..HEAD 2>/dev/null" || echo 0)"
+  behind="$(asu "cd '$r' && git rev-list --count HEAD..@{u} 2>/dev/null" || echo 0)"
+  [ "${ahead:-0}" -gt 0 ] && drift "$n: $ahead commit(s) unpushed (push failing? clone diverging)"
+  [ "${behind:-0}" -gt 0 ] && drift "$n: $behind commit(s) behind origin (kb-sync skipping this repo?)"
+
+  # 6) The live entry point resolves. Cheap and load-bearing: the runtime reads ~/CLAUDE.md, and
+  #    it silently lagged the repo during the v2 migration until provision-agent re-ran.
+  local hc="$home/CLAUDE.md"
+  if [ ! -e "$hc" ]; then drift "$n: ~/CLAUDE.md missing or dangling (agent boots with no bootstrap)"
+  else
+    local want; want="$(readlink -f "$r/deploy/home-CLAUDE.md" 2>/dev/null)"
+    [ -n "$want" ] && [ "$(readlink -f "$hc")" = "$want" ] || drift "$n: ~/CLAUDE.md does not resolve to $r/deploy/home-CLAUDE.md"
+    while IFS= read -r f; do
+      [ -e "$r/$f" ] || drift "$n: ~/CLAUDE.md bootstrap names a missing file: $f"
+    done < <(grep -oE '[A-Za-z0-9_/.-]+\.md' "$hc" 2>/dev/null | grep -v '^CLAUDE.md$' | sed "s#.*kb-agent-[a-z-]*/##" | sort -u)
+  fi
+
+  # 7) Referenced paths exist. Vocabulary-free and self-maintaining: renames/removals self-report.
+  #    Active docs only — decisions/, handoffs/ and memory/ are history and may cite removed files.
+  # NB: capture to a variable — piping into the loop would run `drift` in a subshell and lose
+  # the failure count (a fail-open the first version of this check actually had).
+  local refbad; refbad="$(MD_BASE="$(dirname "$r")" REPO="$r" python3 - "$u" <<'PY'
+import os,re,subprocess,sys
+repo=os.environ["REPO"]; base=os.environ["MD_BASE"]; n=os.path.basename(repo)
+try:
+    files=subprocess.run(["runuser","-u",sys.argv[1],"--","git","-C",repo,"ls-files","*.md"],
+                         capture_output=True,text=True,timeout=60).stdout.split()
+except Exception: files=[]
+skip=("decisions/","handoffs/","memory/")
+# Backticked candidates must contain a '/': a bare `SKILL.md` or `ui.json` in prose names a
+# kind of file, not a link to one. Markdown links are checked as written.
+pat=re.compile(r'\]\(([^)\s#][^)\s]*)\)|`([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+\.(?:md|json|tsv|sh|py|service|timer))`')
+bad=set()
+for f in files:
+    if f.startswith(skip): continue
+    p=os.path.join(repo,f)
+    try: txt=open(p,encoding="utf-8",errors="ignore").read()
+    except Exception: continue
+    for m in pat.finditer(txt):
+        ref=(m.group(1) or m.group(2) or "").strip()
+        if not ref or ref.startswith(("http","mailto:","#","/",".claude",".mcp")) or any(c in ref for c in "<>*$ "): continue
+        ref=ref.split("#")[0]
+        if not ref or "/" not in ref: continue
+        cands=[os.path.join(os.path.dirname(p),ref), os.path.join(repo,ref), os.path.join(base,ref)]
+        if not any(os.path.exists(c) for c in cands): bad.add(f"{f} -> {ref}")
+for b in sorted(bad): print(f"{n}: broken reference: {b}")
+PY
+)"
+  if [ -n "$refbad" ]; then
+    while IFS= read -r l; do [ -n "$l" ] && drift "$l"; done <<< "$refbad"
+  fi
+}
+
+for u in $AGENTS; do
+  base="$(getent passwd "$u" | cut -d: -f6)/$WS"
+  brain="$(ls -d "$base"/kb-agent-*-"$u" 2>/dev/null | head -1)"
+  if [ -n "$brain" ] && [ -d "$brain/.git" ]; then check_brain "$u" "$brain"; else drift "$u: no brain repo found under $base"; fi
+done
+
+echo
+if [ "$FAILS" -eq 0 ]; then echo "$(date -Is) divergence-check: CLEAN"; exit 0
+else echo "$(date -Is) divergence-check: $FAILS drift finding(s)"; exit 1; fi
