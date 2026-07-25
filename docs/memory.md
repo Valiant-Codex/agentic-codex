@@ -42,10 +42,25 @@ separate, asynchronous role that cannot touch the interactive identity.
 
 ## The autonomy line
 
-**Memory = automatic; capability/identity = never unattended.** The nightly job is path-scoped to
+**Memory = automatic; capability/identity = never unattended.** Anything scheduled is path-scoped to
 `memory/` by its wrapper, so the strongest thing it can do about a skill or an identity file is leave a
-suggestion. Those changes happen only in a session with the owner present — ad hoc, or as the periodic
-[`agent-audit`](skills.md) sweep — always as reviewable commits. This gives
-improvement-over-time with minimal interaction while structurally preventing self-rewriting drift, which
-the memory-poisoning and agent-misevolution literature is unanimous must be gated and enforced *outside*
-the agent.
+suggestion. Those change only in a session with the owner present — ad hoc, or as the periodic
+[`agent-audit`](skills.md) sweep — always as reviewable commits.
+
+### A negative result worth publishing
+
+Fully-unattended consolidation **was built, run, evaluated, and not adopted.** The accounting, because
+it is more useful to you than the code would have been:
+
+- Its measurable value rested on a *single* good run — it did produce one genuinely useful observation.
+- Its cost was concrete: three defects found within hours of writing it (a destructive worktree clean
+  that deleted untracked work, a `git` capability the model did not need, and every error path exiting
+  zero so failure looked like success), and then **three further mechanisms invented only to supervise
+  it** — an erosion tripwire, a liveness check and a weekly digest.
+- It depended on vendor-specific CLI flags whose semantics could widen without erroring.
+- The requirement it served — improvement with few interactions — turned out to be served about as well
+  by a deterministic mirror plus a periodic human pass, at a fraction of the moving parts.
+
+When a mechanism needs three watchers to be safe, the cheap fix is usually not to run it unattended. The
+deterministic half — mirroring the runtime's working memory into Git — is kept and shipped as optional.
+The model-driven half is documented here and deliberately left out of the templates.

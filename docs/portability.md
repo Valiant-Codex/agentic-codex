@@ -1,9 +1,10 @@
 <!-- title: Portability — one canonical identity, many framework adapters -->
 # Portability
 
-A core reason this system exists: **you should be able to change the agent runtime without rewriting
-your agents.** Portability here has two independent axes — the *brain* is portable across frameworks,
-and the *deployment* is portable across machines.
+A core reason this system exists: **your agents' accumulated knowledge should never be trapped in one
+vendor's store.** Portability here has two independent axes — the *brain content* is portable across
+frameworks, and the *deployment* is portable across machines. The runtime wiring is not portable, and
+this page is explicit about where that line falls.
 
 ## Axis 1 — brain portability (across agent frameworks)
 
@@ -96,7 +97,8 @@ Everything else is a `git clone` away.
 
 ## The takeaway
 
-Portability isn't a feature bolted on; it *is* the architecture. Canonical identity in
-framework-agnostic Markdown + thin adapters gives you runtime freedom; Git-as-source-of-truth +
-explicit provisioning gives you machine freedom. The happy path is Claude Code because of Remote
-Control ([`runtime.md`](runtime.md)) — but the brains would follow you elsewhere.
+Portability isn't a feature bolted on; it *is* the architecture — but it is specific about what it
+covers. Canonical identity in framework-agnostic Markdown + thin adapters means the *brains* would
+follow you to another runtime (you would rewrite the wiring, not the agents); Git-as-source-of-truth +
+explicit provisioning gives you real machine freedom, exercised. The happy path is Claude Code because
+of Remote Control ([`runtime.md`](runtime.md)).
