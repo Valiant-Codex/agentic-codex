@@ -96,7 +96,7 @@ real copy, enables linger, and starts each topic in `deploy/topics.tsv`. It fail
 is missing (that is why (a)/(b) come first). **Do not re-do the clone/symlink/unit/topic steps
 manually** — reference `provision-agent`.
 
-The agent is then auto-kept-current by `kb-sync`. Brain **content** (CLAUDE.md identity, system-prompt,
+The agent is then auto-kept-current by `kb-sync`. Brain **content** (SOUL.md/OPERATING.md identity,
 tools, skills) is authored by the agent (or its designated maintainer), not by the root-agent.
 
 ## MANAGE sessions

@@ -16,7 +16,7 @@ timestamp: 2026-07-24T00:00:00Z
 ## Purpose
 
 When a change must land in **another agent's brain repo** (or in several at once) — a coordinated
-CLAUDE.md / system-prompt edit, a structural migration, a policy-pointer update — the privileged
+CLAUDE.md / SOUL.md / OPERATING.md edit, a structural migration, a policy-pointer update — the privileged
 **root-agent** applies it **on-box as that agent's Unix user, committing with that agent's own `gh` bot
 token**. No agent is ever granted standing write on another agent's repo.
 
