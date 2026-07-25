@@ -1,0 +1,19 @@
+# Nightly memory mirror for one agent — %i is the agent Unix user.
+#
+# Runs the root-owned /usr/local/bin/memory-mirror: copies the agent's Claude Code auto-memory (the
+# working tier) into its brain repo at memory/auto/ and commits. Deterministic — rsync + git, no model.
+#
+# Curation (promoting facts into distilled-memory.md) is deliberately NOT here: it belongs to the
+# human-run `agent-audit` skill, where a person sees the diff. See the script header for why the
+# model-driven nightly consolidation was evaluated and not adopted.
+#
+# Triggered by memory-mirror@%i.timer. 
+[Unit]
+Description=Nightly memory mirror for %i (runtime auto-memory -> git)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/memory-mirror %i
+TimeoutStartSec=900

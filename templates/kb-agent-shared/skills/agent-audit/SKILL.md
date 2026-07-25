@@ -29,11 +29,11 @@ Where the agent and <OWNER>, **together**, review and refine that agent's brain:
 
 ## Procedure
 
-1. **Load inputs:** the agent's `SOUL.md`, `OPERATING.md`, `skills/`, `memory/distilled-memory.md` and `memory/episodic/`. (If you run the optional nightly consolidation described in `docs/memory.md`, also read the `memory/dream-log.md` suggestions it leaves.)
+1. **Load inputs:** the agent's `SOUL.md`, `OPERATING.md`, `skills/`, `memory/distilled-memory.md` and `memory/episodic/`. (The shipped nightly job only mirrors memory; it leaves no suggestions to read.)
 2. **Go pass by pass, one blocking question at a time.** For each pass, surface findings as concrete options + a recommendation; let <OWNER> choose. Separate facts / assumptions / recommendations.
 3. **Draft each change as a diff** and get <OWNER>'s explicit approval before applying — especially for SOUL/OPERATING (identity is the highest-drift surface).
 4. **Apply approved changes:** use the `skillify` skill for skill create/update/retire; edit SOUL/OPERATING/memory directly. One reviewed git commit per coherent change (prefix `[audit]`).
-5. **Close the loop:** note what was actioned versus deferred (and clear any consumed `dream-log.md` entries, if you use that optional mechanism).
+5. **Close the loop:** note what was actioned versus deferred .
 6. **Report** what changed and what was skipped.
 
 ## Guardrails

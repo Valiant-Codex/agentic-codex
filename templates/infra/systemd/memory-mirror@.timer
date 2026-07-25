@@ -6,7 +6,7 @@
 #   sudo systemctl enable --now dream@durin.timer
 # 
 [Unit]
-Description=Nightly dreaming for %i (~05:00, staggered)
+Description=Nightly memory mirror for %i (~05:00, staggered)
 
 [Timer]
 OnCalendar=*-*-* 05:00:00

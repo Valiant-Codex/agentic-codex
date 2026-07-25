@@ -1,8 +1,9 @@
-<!-- title: Memory — two tiers, nightly "dreaming", human-gated audit -->
+<!-- title: Memory — two tiers, a deterministic mirror, and a human-gated audit -->
 # Memory & Dreaming
 
-Durable memory is a **two-tier** model, and improvement over time comes from a nightly consolidation
-("dreaming") that is deliberately allowed to touch **only memory** — never identity or capabilities.
+Durable memory is a **two-tier** model: the runtime's own memory is a fast working cache, and Git is
+canonical. A nightly job makes the working tier durable; a periodic human pass curates it. Nothing
+scheduled ever touches identity or capabilities.
 
 ## Two tiers
 
@@ -16,29 +17,29 @@ Durable memory is a **two-tier** model, and improvement over time comes from a n
 High-signal facts are **distilled from the working tier into the canonical tier**, so the durable brain
 — not a runtime cache — is the source of truth.
 
-## Nightly "dreaming" (automatic, low-risk only)
+## The nightly mirror (optional, deterministic)
 
-> **⚠️ Experimental — not shipped in the templates.** The nightly job below exists in the reference
-> implementation and is **deliberately not published here yet**: it is Claude-Code-specific (it depends
-> on `claude -p` and three of its flags), it runs unattended as root, and it has only days of production
-> evidence. **You do not need it to get the value of this framework** — the two-tier model above works
-> with a periodic human-run pass (see the `agent-audit` runbook). It is described for reference so you
-> can judge the design, not as a step to install.
+> **Optional.** Ships with the timer **disabled**; enable per agent when you want it. It is Claude-Code
+> specific only in the path it reads (that runtime's memory store).
 
-A per-agent timer (`dream@<user>.timer`, ~05:00, opt-in, disabled by default) runs a `dream` script:
+A per-agent timer (`memory-mirror@<user>.timer`, ~05:00, staggered) runs `memory-mirror`, which copies
+the runtime's auto-memory into the brain repo at `memory/auto/`, then commits and pushes. That is all:
+`rsync` + `git`. No model, no judgement, no nondeterminism — which is exactly why it is safe to leave
+running unattended.
 
-1. **Mirror (deterministic).** Copy the runtime auto-memory into `memory/auto/` and commit. No model, no
-   judgment, no risk.
-2. **Distil (scoped model run).** A tightly-scoped headless run promotes durable, recurring facts into
-   `memory/distilled-memory.md` (with provenance), archives stale ones, and appends *suggestions*
-   (candidate skills, identity nits) to `memory/dream-log.md` for later human review.
+Two guarantees make it trustworthy:
 
-**Enforcement lives in the wrapper, not the prompt:** the script commits only `memory/` and reverts any
-change the run makes outside it (preserving pre-run runtime churn). So dreaming can refine memory but can
-**never** alter `SOUL.md`, `OPERATING.md`, skills, or config. Commits are prefixed `[dream]` — greppable
-and mass-revertible. This mirrors the safe core of OpenClaw's "dreaming" (stage → gate → promote;
-narrative kept out of the promotion path; previewable and reversible) and Letta-style consolidation as a
-separate, asynchronous role that cannot touch the interactive identity.
+- **Secret scan before staging.** Session-derived content can contain credentials, and a secret in Git
+  is not undoable. A hit aborts before any commit and reports it for rotation.
+- **Fail closed.** Every error path exits non-zero, so the unit lands in `failed` and your monitor
+  surfaces it. Silence must never be mistaken for success.
+
+Commits are prefixed `[mirror]`, so the machine's writes are greppable and mass-revertible.
+
+**Why it is named for what it does.** This job was originally called `dream`, and it *did* once include
+a model-driven "reflect and consolidate" pass. When that pass was removed (below), the name kept
+promising a magic that was no longer there — so it was renamed. If reflection ever comes back, it comes
+back as its own script with its own honest name.
 
 ## The autonomy line
 

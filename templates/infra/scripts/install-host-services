@@ -46,11 +46,11 @@ install -m0644 "$HERE/systemd/agentic-divergence-check.service"  /etc/systemd/sy
 install -m0644 "$HERE/systemd/agentic-divergence-check.timer"    /etc/systemd/system/agentic-divergence-check.timer
 echo "  [ok] agentic-divergence-check (run it once by hand, then: systemctl enable --now agentic-divergence-check.timer)"
 
-# dream (optional nightly memory mirror) — installed, timer DISABLED by default
-install -m0755 "$HERE/scripts/dream"          /usr/local/bin/dream
-install -m0644 "$HERE/systemd/dream@.service" /etc/systemd/system/dream@.service
-install -m0644 "$HERE/systemd/dream@.timer"   /etc/systemd/system/dream@.timer
-echo "  [ok] dream (optional; enable per agent: systemctl enable --now dream@<user>.timer)"
+# memory-mirror (optional nightly: runtime auto-memory -> git) — installed, timer DISABLED by default
+install -m0755 "$HERE/scripts/memory-mirror"          /usr/local/bin/memory-mirror
+install -m0644 "$HERE/systemd/memory-mirror@.service" /etc/systemd/system/memory-mirror@.service
+install -m0644 "$HERE/systemd/memory-mirror@.timer"   /etc/systemd/system/memory-mirror@.timer
+echo "  [ok] memory-mirror (optional; enable per agent: systemctl enable --now memory-mirror@<user>.timer)"
 
 systemctl daemon-reload
 systemctl enable --now kb-sync.timer agentic-monitor.timer agentic-update-check.timer >/dev/null 2>&1 || true

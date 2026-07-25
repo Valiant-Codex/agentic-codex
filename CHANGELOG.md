@@ -25,8 +25,11 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   uncovered by some of them.
 - **`skills-archive/`** — retired skills live outside `skills/`, so the runtime stops loading them while
   their reasoning stays in git.
-- **`dream` (optional, mirror-only, timer disabled by default)** — a deterministic, secret-scanned,
-  fail-closed mirror of the runtime's working memory into `memory/auto/`. No model involved.
+- **`memory-mirror` (optional, timer disabled by default)** — a deterministic, secret-scanned,
+  fail-closed mirror of the runtime's working memory into `memory/auto/`. No model involved. Named for
+  what it does: the earlier name (`dream`) promised a reflect-and-consolidate pass that was evaluated
+  and not adopted, so keeping it would have been the same kind of over-promise this release removes
+  from the docs. Commits are prefixed `[mirror]`.
 - `memory/README.md`, a `distilled-memory.md` stub and `episodic/` now ship in the brain template.
 
 
