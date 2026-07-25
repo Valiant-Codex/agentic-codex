@@ -19,7 +19,8 @@ The trick is a strict split between the canonical identity and the runtime adapt
   pointer to `SOUL.md` + `OPERATING.md`:
   - `CLAUDE.md` → the adapter Claude Code reads first.
   - `AGENTS.md` → the adapter several other tools (Codex, Cursor, and others) read.
-  - add another adapter file for another framework — it's ~15 lines.
+  - add another adapter file for another framework — the adapter itself is ~15 lines. The *runtime
+    wiring* underneath it is not: see the honest accounting below.
 
 ```
       SOUL.md + OPERATING.md          ← canonical identity + contract (the value)
@@ -28,7 +29,8 @@ The trick is a strict split between the canonical identity and the runtime adapt
    (Claude Code) (Codex/…)  (future)
 ```
 
-Switching or adding a framework means writing one small adapter, not migrating your memory. Your
+Switching or adding a framework means writing one small adapter **and rewriting the runtime wiring** —
+but not migrating your memory, skills or identity. Your
 `memory/`, `skills/`, `tools/`, and `context/` are already just Markdown — nothing framework-specific
 to port.
 
@@ -40,6 +42,31 @@ bootstrap.
 - **No lock-in.** Your agents' accumulated knowledge isn't trapped in one vendor's memory store.
 - **Reviewable + versioned.** Identity changes are Git diffs, not opaque settings.
 - **Editable from anywhere.** It's Markdown in GitHub — edit from a laptop or a phone.
+
+## What is Claude-Code-specific (an honest list)
+
+Framework-agnosticism here is a property of the **brain content**, not of the whole system. Being
+straight about the split is what makes the claim usable:
+
+**Moves unchanged to another framework** — `SOUL.md`, `OPERATING.md`, `memory/`, `skills/` bodies,
+`tools/`, `context/`, and everything in the shared governance layer. This is plain Markdown, and it is
+where the accumulated value lives.
+
+**Would have to be rewritten** — the runtime wiring:
+
+| Piece | Why it's runtime-specific |
+|---|---|
+| `claude-topic` (the session wrapper) | Captures and resumes Claude Code session IDs, drives `--remote-control`, allocates a pty |
+| `claude-topic@.service` | Supervises that wrapper |
+| `deploy/claude-settings.json` | Claude Code's settings/permissions schema |
+| `~/.claude/skills` symlink | How Claude Code discovers skills |
+| `SKILL.md` frontmatter | Anthropic's Agent Skills format |
+| `~/.claude.json` trust/onboarding flags | Claude Code first-run state |
+| Remote Control itself | The multi-device access path, and the reason this happy path is Claude Code |
+
+**Status of `AGENTS.md`:** shipped as a thin adapter for frameworks that read it (Codex, Cursor and
+similar), and kept deliberately short so it cannot become a second source of truth. It has **not been
+exercised in production** — only Claude Code has. Treat it as a head start, not a guarantee.
 
 ## Axis 2 — deployment portability (across machines)
 

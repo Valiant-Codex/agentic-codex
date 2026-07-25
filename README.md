@@ -2,7 +2,7 @@
 # Agentic Codex
 
 **Run your own fleet of AI agents on a VPS — with brains you can read, own, and move.**
-Framework-agnostic. Portable. Minimal attack surface. Reachable from web, mobile, and desktop.
+Portable brains, Claude Code runtime. Minimal attack surface. Reachable from web, mobile, and desktop.
 
 *By [Valiant Codex](https://github.com/Valiant-Codex) · created by Dario Valiant Casilli. MIT licensed.*
 
@@ -15,12 +15,13 @@ long-lived [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions o
 where:
 
 - **Each agent's "brain" is a Git repo** — its identity, memory, skills, and tools are plain Markdown
-  you can read, diff, edit from your phone, and move to another machine or another agent framework seamlessly.
+  you can read, diff, edit from your phone, and move to another machine with one command — or carry to
+  another agent framework by rewriting the runtime wiring, with the brain content moving unchanged.
 - **The runtime is supervised and self-healing** — sessions survive crashes and reboots (systemd, no
   tmux) and are reachable from any device via Claude Code **Remote Control** (web, iOS/Android, desktop).
 - **Portability and security are one clean boundary** — Git is the portable source of truth; a single
   explicit provisioning step applies it to a live box; a 15-minute auto-sync only ever refreshes inert
-  data. Moving to a new VPS is *clone + one command*.
+  data. Moving to a new VPS is: create the users, restore one secret per agent, then one command each.
 - **The surface is small and yours** — no extra gateway to keep patched, no black-box memory layer,
   secrets never live in Git.
 
@@ -35,7 +36,7 @@ These were the design drivers — if you share them, this repo is for you:
 | Goal | How it's met |
 |---|---|
 | **Own your agents' memory** | Brains are Git repos of Markdown (an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspired structure), not a vendor's memory store. |
-| **Framework portability** | Canonical identity lives in `SOUL.md + OPERATING.md`; thin adapters (`CLAUDE.md`, `AGENTS.md`) point to it, so the same brain works across agent runtimes. See [`docs/portability.md`](docs/portability.md). |
+| **Portable brains** | Canonical identity lives in `SOUL.md + OPERATING.md`; thin adapters (`CLAUDE.md`, `AGENTS.md`) point to them, so the brain content is not tied to one runtime. `AGENTS.md` is provided for frameworks that read it, but **only Claude Code has been exercised in production** — see the honest accounting in [`docs/portability.md`](docs/portability.md). |
 | **Talk to agents from anywhere** | Claude Code Remote Control surfaces each session on web/mobile/desktop — the reason this happy path is Claude Code. |
 | **Minimal attack surface** | One privileged agent, unprivileged others; no extra always-on gateway; a root-owned wrapper no agent can rewrite. |
 | **Recover / migrate in minutes** | `clone + provision-agent`. Nothing important lives only on the box. See [`docs/config-model.md`](docs/config-model.md). |

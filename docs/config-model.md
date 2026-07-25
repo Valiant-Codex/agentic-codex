@@ -76,8 +76,9 @@ It is simultaneously:
 - **The wrapper is root-owned and only written by Tier-3.** The one thing every agent *executes* is
   installed by root and never touched by the auto-sync.
 - **Moving VPS** = restore the agent's secret (its `gh` token), then `provision-agent <user> <brain>`.
-  **Changing framework** touches only the thin Tier-3 wiring (rewritten for the new runtime); the
-  valuable, portable part — brains and governance — is framework-agnostic Markdown and moves unchanged.
+  **Changing framework** requires rewriting the Tier-3 runtime wiring — the session wrapper, the
+  systemd unit, the settings file and skills discovery are all runtime-specific. What moves unchanged is
+  the valuable part: brains and governance, as framework-agnostic Markdown.
 
 ## What lives where (quick reference)
 
