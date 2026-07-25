@@ -36,7 +36,21 @@ else
   dok="Dokploy: not installed"
 fi
 
-report="$(date -Is) | $os | $dok | container images: see Renovate PRs on <ORG>/infra"
+# Fleet hygiene, folded into the one weekly report a human already reads (rather than a separate
+# timer). Drift is deliberately NOT on the fast alarm path, but it must not be silently discarded:
+# this report is the only consumer of the daily structural check.
+drift_n="n/a"
+if [ -x /usr/local/bin/agentic-divergence-check ]; then
+  drift_out="$(/usr/local/bin/agentic-divergence-check 2>/dev/null)"; drift_rc=$?
+  if [ "$drift_rc" -gt 1 ]; then
+    drift_n="ERR(rc=$drift_rc)"; updates=1     # a broken checker must not read as "0 findings"
+  else
+    drift_n="$(printf '%s' "$drift_out" | grep -c '\[DRIFT\]')"
+    [ "${drift_n:-0}" -gt 0 ] && updates=1
+  fi
+fi
+
+report="$(date -Is) | $os | $dok | container images: see Renovate PRs on <ORG>/infra | fleet: ${drift_n} drift finding(s)"
 echo "$report"
 
 if [ -n "${UPDATE_HC_URL:-}" ]; then

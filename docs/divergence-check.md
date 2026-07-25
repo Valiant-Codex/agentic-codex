@@ -52,7 +52,8 @@ systemctl enable --now agentic-divergence-check.timer   # daily, once your fleet
 
 Two deliberate choices in the unit: `SuccessExitStatus=1`, so **drift does not page you** (a stale doc
 link must never wake anyone, and a failed oneshot would stay failed), and the weekly
-`agentic-update-check` report carries the finding count so drift still surfaces on a human cadence.
+`agentic-update-check` report carries the finding count **and alarms if it is non-zero** (or if the
+check itself crashed), so drift surfaces on a human cadence instead of being discarded.
 A real malfunction — any other non-zero exit — still fails loudly.
 
 **Get it clean, then keep it clean.** A check that always reports something trains you to ignore it.

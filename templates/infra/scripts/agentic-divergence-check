@@ -93,7 +93,11 @@ check_brain(){ # <user> <repo>
   fi
 
   # 5) Clone agrees with origin — catches silent push failures and chronic kb-sync skips.
-  asu "cd '$r' && git remote update -p >/dev/null 2>&1"
+  if ! asu "cd '$r' && git remote update -p >/dev/null 2>&1"; then
+    # Without this, an expired token or a network failure leaves ahead/behind computed against stale
+    # refs — both 0 — so the check built to catch silent push failure fails silently itself.
+    drift "$n: could not fetch from origin (expired token? network?) — sync state is UNKNOWN, not clean"
+  fi
   local ahead behind
   ahead="$(asu "cd '$r' && git rev-list --count @{u}..HEAD 2>/dev/null" || echo 0)"
   behind="$(asu "cd '$r' && git rev-list --count HEAD..@{u} 2>/dev/null" || echo 0)"
@@ -152,6 +156,42 @@ for u in $AGENTS; do
   base="$(getent passwd "$u" | cut -d: -f6)/$WS"
   brain="$(ls -d "$base"/kb-agent-*-"$u" 2>/dev/null | head -1)"
   if [ -n "$brain" ] && [ -d "$brain/.git" ]; then check_brain "$u" "$brain"; else drift "$u: no brain repo found under $base"; fi
+done
+
+# --- installed artifacts still match their repo source (catches "edited the repo, forgot to
+# --- re-run the installer" — a whole class that no other check can see) ---
+echo "== installed artifacts =="
+MAN="/usr/local/share/agentic/installed.manifest"
+if [ -f "$MAN" ]; then
+  while IFS='|' read -r dst src; do
+    [ -n "$dst" ] || continue
+    if [ ! -e "$dst" ]; then drift "installed: $dst is MISSING (source $src)"
+    elif ! cmp -s "$dst" "$src"; then drift "installed: $dst differs from $src — re-run install-host-services"
+    fi
+  done < "$MAN"
+else
+  echo "  [warn] no $MAN — run install-host-services to generate it"
+fi
+
+# --- timers that must be enabled (a job silently switched off is not a failed unit) ---
+for t in kb-sync.timer agentic-monitor.timer agentic-update-check.timer agentic-divergence-check.timer; do
+  systemctl is-enabled --quiet "$t" 2>/dev/null || drift "timer $t is not enabled"
+done
+
+# --- non-brain repos: sync state only. The linter's other checks are brain-shaped, but a frozen
+# --- shared/infra clone silently stops governance updates or leaves root-installed code unpushed. ---
+echo "== supporting repos =="
+for u in $AGENTS; do
+  h="$(getent passwd "$u" | cut -d: -f6)"
+  for r in "$h/$WS"/*/; do
+    case "$(basename "$r")" in kb-agent-*-"$u") continue;; esac
+    [ -d "$r/.git" ] || continue
+    runuser -u "$u" -- git -C "$r" remote update -p >/dev/null 2>&1 || { drift "$(basename "$r") [$u]: fetch failed — sync state UNKNOWN"; continue; }
+    a="$(runuser -u "$u" -- git -C "$r" rev-list --count @{u}..HEAD 2>/dev/null || echo 0)"
+    b="$(runuser -u "$u" -- git -C "$r" rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
+    [ "${a:-0}" -gt 0 ] && drift "$(basename "$r") [$u]: $a commit(s) unpushed"
+    [ "${b:-0}" -gt 0 ] && drift "$(basename "$r") [$u]: $b commit(s) behind origin (kb-sync skipping it?)"
+  done
 done
 
 echo

@@ -16,7 +16,7 @@ global policies, ecosystem state, conventions, cross-agent decisions, and templa
 its own repository (`kb-agent-<role>-<name>`) that reaches this repo through a `shared` symlink to a
 **sibling clone** at `../kb-agent-shared` (not a git submodule — see the Agentic Codex docs (`config-model.md`)).
 
-Read your **own** agent repo first (its `CLAUDE.md` and `system-prompt.md`), then read from `shared/`
+Read your **own** agent repo first (its `SOUL.md`, `OPERATING.md` and `CLAUDE.md`), then read from `shared/`
 only what the task needs. Keep the initial context small.
 
 ## Human
@@ -64,7 +64,8 @@ Give each agent a short, memorable name and one of the shared archetypes:
 
 ## Bootstrap Order
 
-1. Read your agent repo's `CLAUDE.md` and `system-prompt.md`.
+1. Read your agent repo's `SOUL.md` (identity) and `OPERATING.md` (scope, gates), plus `CLAUDE.md`;
+   then `shared/owner-profile.md`.
 2. Read this file (`shared/bootstrap.md`) for ecosystem state and the governance contract.
 3. Read `shared/policies/approval-policy.md` before risky actions.
 4. Read a specific `shared/decisions/*`, `shared/templates/*`, or one of your own skill/tool/memory files only when the task needs it.

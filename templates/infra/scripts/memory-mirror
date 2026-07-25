@@ -64,8 +64,14 @@ if [ -d "$AUTOMEM" ]; then
       fail "mirror: commit failed"
     fi
   fi
+elif [ -d "$BRAIN/memory/auto" ] && [ -n "$(ls -A "$BRAIN/memory/auto" 2>/dev/null)" ]; then
+  # The source is gone but we have mirrored it before: this is a REGRESSION, not a fresh agent.
+  # Most likely the runtime moved its memory path (an upgrade), which would otherwise silently
+  # switch off the whole durability chain while memory/auto/ kept looking healthy in git.
+  fail "auto-memory path $AUTOMEM has DISAPPEARED but memory/auto/ holds a previous mirror — the runtime probably moved it. Durability is OFF until the path is fixed."
 else
-  log "mirror: no auto-memory at $AUTOMEM (skip)"
+  # No source and nothing mirrored before: a genuinely new agent with no memory yet. Quiet skip.
+  log "mirror: no auto-memory at $AUTOMEM and none mirrored before (new agent — skip)"
 fi
 
 log "done"

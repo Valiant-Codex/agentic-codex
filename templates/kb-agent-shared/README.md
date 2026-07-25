@@ -66,7 +66,7 @@ three:
 ```text
 kb-agent-<role>-<name>/
 ├── CLAUDE.md            # bootstrap pointer for the runtime
-├── system-prompt.md
+├── SOUL.md + OPERATING.md
 ├── context/            # (optional)
 ├── memory/
 ├── tools/

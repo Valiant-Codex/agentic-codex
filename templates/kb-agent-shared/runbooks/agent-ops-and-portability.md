@@ -26,7 +26,7 @@ live config; cloning the repo restores it.
 
 | Concern | Repo path (versioned) | Home location (symlink → repo) |
 |---|---|---|
-| Identity / behavior | `system-prompt.md`, `CLAUDE.md` | — (read from the repo) |
+| Identity / behavior | `SOUL.md/OPERATING.md`, `CLAUDE.md` | — (read from the repo) |
 | Runtime bootstrap | `deploy/home-CLAUDE.md` | `~/CLAUDE.md` |
 | Claude Code settings | `deploy/claude-settings.json` (curated prefs + allowlist; portable) | `~/.claude/settings.json` — **real copy** installed by `provision-agent`, not a symlink |
 | MCP servers | `.mcp.json` (server defs with `${ENV}` placeholders — no secrets) | project-scope for the agent's cwd |

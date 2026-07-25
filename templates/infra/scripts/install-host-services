@@ -52,6 +52,32 @@ install -m0644 "$HERE/systemd/memory-mirror@.service" /etc/systemd/system/memory
 install -m0644 "$HERE/systemd/memory-mirror@.timer"   /etc/systemd/system/memory-mirror@.timer
 echo "  [ok] memory-mirror (optional; enable per agent: systemctl enable --now memory-mirror@<user>.timer)"
 
+# Manifest of what this installer put where, so a checker can prove the installed artifacts still
+# match the repo. Generated — never hand-maintained — so it cannot itself drift.
+{ for pair in \
+    "scripts/kb-sync:/usr/local/bin/kb-sync" \
+    "scripts/agentic-monitor:/usr/local/bin/agentic-monitor" \
+    "scripts/agentic-update-check:/usr/local/bin/agentic-update-check" \
+    "scripts/agentic-divergence-check:/usr/local/bin/agentic-divergence-check" \
+    "scripts/memory-mirror:/usr/local/bin/memory-mirror" \
+    "bin/claude-topic:/usr/local/bin/claude-topic" \
+    "fleet-agents:/usr/local/share/agentic/fleet-agents" \
+    "systemd/kb-sync.service:/etc/systemd/system/kb-sync.service" \
+    "systemd/kb-sync.timer:/etc/systemd/system/kb-sync.timer" \
+    "systemd/agentic-monitor.service:/etc/systemd/system/agentic-monitor.service" \
+    "systemd/agentic-monitor.timer:/etc/systemd/system/agentic-monitor.timer" \
+    "systemd/agentic-update-check.service:/etc/systemd/system/agentic-update-check.service" \
+    "systemd/agentic-update-check.timer:/etc/systemd/system/agentic-update-check.timer" \
+    "systemd/agentic-divergence-check.service:/etc/systemd/system/agentic-divergence-check.service" \
+    "systemd/agentic-divergence-check.timer:/etc/systemd/system/agentic-divergence-check.timer" \
+    "systemd/memory-mirror@.service:/etc/systemd/system/memory-mirror@.service" \
+    "systemd/memory-mirror@.timer:/etc/systemd/system/memory-mirror@.timer" ; do
+    src="${pair%%:*}"; dst="${pair#*:}"
+    [ -f "$HERE/$src" ] && echo "$dst|$HERE/$src"
+  done; } > /usr/local/share/agentic/installed.manifest
+chmod 0644 /usr/local/share/agentic/installed.manifest
+echo "  [ok] installed manifest"
+
 systemctl daemon-reload
 systemctl enable --now kb-sync.timer agentic-monitor.timer agentic-update-check.timer >/dev/null 2>&1 || true
 echo "  [ok] timers enabled"
