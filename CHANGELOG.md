@@ -6,6 +6,61 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.4.1] — 2026-07-26 — Harden `claude-topic` against a writable-by-the-agent-it-manages threat model
+
+A security/robustness release, ported verbatim (modulo the `<org>`/`github/*` placeholders) from the
+reference deployment after two rounds of adversarial review — an independent agent prompted to refute
+each fix, not confirm it — caught real problems in the reviewed code before they shipped. Every finding
+below was reproduced by hand before being accepted; see `docs/` for the fuller incident writeups if this
+project starts one.
+
+The thing that makes `claude-topic`/`agentic-monitor` a different class of script from most of this
+repo: `topics.tsv` and `topics.state` are **writable by the very agent whose sessions they control**, and
+that agent is an LLM that reads untrusted web/repo/log content. A prompt injection with write access to
+the agent's own home directory is a realistic threat here, not a hypothetical one.
+
+### Fixed
+- **`save_sid` could silently collapse `topics.state` to one row.** An unreadable/corrupted state file
+  masked its own read failure with `|| true`, so the next write replaced the *entire* file with just the
+  one row being saved — every other topic's sessionId gone, each one's next restart starting a BLANK
+  conversation (the exact failure this project's incident-2026-07-17 guard exists to prevent, just
+  reached a different way). `topics.tsv`'s append had the same shape of bug: appending onto a file
+  missing its trailing newline corrupted the previous row instead of adding a new one. All writes are now
+  lock-serialized (`flock` + a private `mktemp`, not a shared fixed tmp name — two concurrent invocations
+  could otherwise steal each other's tmp file mid-write) and abort on a read failure instead of masking
+  one.
+- **A display name or sessionId starting with `-` was parsed by `claude` as a flag, not as its value.**
+  `--remote-control`/`--resume` take an optional/positional argument; since both files are agent-writable,
+  this turned a one-shot prompt injection into a persistent, unattended reconfiguration applied on every
+  restart/reboot (`claude-topic run` execs unattended, under systemd, with no human watching). Both
+  values are now validated before they reach a `claude` command line.
+- **`AGENT_REPO` resolution picked the alphabetically-first matching directory, silently.** A planted
+  directory could shadow the real agent brain repo and take over its registry/display-name. Fixed by
+  pinning the glob to the Unix username (`kb-agent-*-"$(id -un)"`) and refusing outright if more than one
+  candidate still exists, rather than guessing.
+- **`agentic-monitor` carried an independent, unsynced copy of that same resolution — and made a hijack
+  worse, not better.** A fix scoped to `claude-topic` alone meant the wrapper would refuse to run (loud)
+  while the monitor kept resolving the decoy or nothing at all and reported healthy either way. The
+  monitor's per-agent check now uses the identical pinned-glob logic and alarms on all four abnormal
+  states (repo missing, ambiguous, resolved-but-no-registry, user-bus unreachable) instead of just one.
+- **`agentic-monitor`'s per-agent check ran a login shell (`bash -lc`), which sources the agent's own
+  (agent-owned) `~/.profile`/`~/.bash_profile`.** A single planted shell function
+  (`systemctl() { return 0; }`) there silently neutralized every health check in that block, regardless
+  of how correctly the repo resolved — reproduced on a real dotfile, confirmed byte-identical afterward.
+  Switched to `bash --noprofile --norc -c` with an explicit `PATH`.
+- Registry keys were never charset-validated before an unquoted `for k in $(...)`; a key of literal `*`
+  would glob-expand against the process's working directory. Now filtered through the same charset as key
+  validation elsewhere, with a warning for anything dropped.
+
+### Investigated and deliberately NOT done
+- **Root-owning the per-agent systemd unit file** (`~/.config/systemd/user/claude-topic@.service`),
+  mirroring the root-owned wrapper binary. Proposed, then shown — and independently reproduced — to be
+  bypassable via `rm`+recreate, `mv`, or even `sed -i` (which rewrites via rename, not in-place): only the
+  *containing directory's* permission gates those, and the agent owns its whole home tree. Shipping it
+  would have looked like a closed persistence gap without closing one. The real fix is root-owned
+  **system** units (`/etc/systemd/system`) with `User=<agent>` plus a scoped polkit/sudo rule — a bigger
+  architectural change, left for a deliberate future decision rather than folded in here.
+
 ## [0.4.0] — 2026-07-25 — Three more proven skills
 
 Additive release: the shared layer now ships five fleet-common skills instead of two. Each was written

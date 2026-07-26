@@ -18,6 +18,16 @@
 #     live one first, and refuse rather than guess when there is nothing to resume.
 #   - `stop` records the live sessionId before killing the process, so the topic can
 #     be resumed later instead of coming back blank.
+#   - topics.tsv and topics.state are agent-writable — a prompt injection could plant
+#     bytes in either. A stored sessionId must look like a UUID and a display name
+#     must not start with '-' before either reaches a `claude` command line, because
+#     `--remote-control`/`--resume` take an optional/positional value and a leading
+#     '-' gets parsed by claude as a DIFFERENT FLAG, not as that value — this is how a
+#     one-shot injection would otherwise turn into a persistent, unattended reconfig
+#     of the agent on every restart/reboot.
+#   - topics.state / topics.tsv writes are lock-serialized with a private mktemp, and
+#     a failed read of the existing file aborts instead of silently writing a file
+#     that only contains the new row (data loss on the file that matters most).
 #   - every command reports what actually happened, and exits nonzero when it didn't.
 set -euo pipefail
 
@@ -34,8 +44,32 @@ die() { err "$*"; exit 1; }
 
 [ -n "$HOME_DIR" ] || die "HOME is not set"
 
-# This agent's own repo (its kb-agent-<role>-<name>, not shared/template).
-AGENT_REPO="$(ls -d "$HOME_DIR"/github/*/kb-agent-*-*/ 2>/dev/null | grep -vE 'kb-agent-shared|kb-agent-template' | head -1 || true)"
+# This agent's own repo: kb-agent-<role>-<this Unix username>, pinned to $(id -un)
+# rather than a bare kb-agent-*-* glob — kb-agent-shared/kb-agent-template can
+# never match this (neither ends in the username), so no separate exclusion is
+# needed. (An earlier `grep -vE 'kb-agent-shared|kb-agent-template'` exclusion was
+# actually dead code: those two names are single-token after the prefix and never
+# matched `kb-agent-*-*` to begin with. Its unanchored substring form was also a
+# bypass in its own right: renaming the real repo to include "kb-agent-shared" as a
+# substring hid it from the exclusion entirely.) Even pinned to this user, more than
+# one candidate can still exist (e.g. a planted `kb-agent-evil-<user>` alongside the
+# real one, from a prompt injection with write access to this agent's own home) —
+# refuse rather than guess which is real, since the loser's registry/display-name
+# would otherwise silently feed into `claude`.
+# NOTE: scripts/agentic-monitor keeps an independent copy of this same resolution —
+# keep both in sync. It additionally alarms on 0 candidates and "repo resolved but
+# no topics.tsv", which this script does not need to duplicate: those already
+# surface here via the existing `require_registry`/`require_known_key` messages on
+# the commands that need a registry (see there for why the monitor's silence on
+# those same cases was itself a bug).
+_agent_repo_candidates="$(ls -d "$HOME_DIR"/github/*/kb-agent-*-"$(id -un)"/ 2>/dev/null || true)"
+_agent_repo_count="$(printf '%s' "$_agent_repo_candidates" | grep -c . || true)"
+if [ "${_agent_repo_count:-0}" -gt 1 ]; then
+  die "multiple candidate agent repos under $HOME_DIR/github/ matching kb-agent-*-$(id -un) — refusing to guess which is real:
+$(printf '%s' "$_agent_repo_candidates" | sed 's/^/  /')
+  Remove or rename whichever is not the real brain repo, then retry."
+fi
+AGENT_REPO="$_agent_repo_candidates"
 AGENT_REPO="${AGENT_REPO%/}"
 REG="${AGENT_REPO}/deploy/topics.tsv"          # versioned: key<TAB>Display Name
 STATE_DIR="${HOME_DIR}/.config/agent"
@@ -46,13 +80,90 @@ svc()       { echo "claude-topic@${1}.service"; }
 reg_name()  { [ -f "$REG" ]   && awk -F'\t' -v k="$1" '$1==k{print $2; exit}' "$REG"   || true; }
 state_sid() { [ -f "$STATE" ] && awk -F'\t' -v k="$1" '$1==k{print $2; exit}' "$STATE" || true; }
 reg_has()   { [ -f "$REG" ]   && awk -F'\t' -v k="$1" '$1==k{f=1} END{exit !f}' "$REG"; }
-save_sid()  {
-  mkdir -p "$STATE_DIR"
-  { [ -f "$STATE" ] && awk -F'\t' -v k="$1" '$1!=k' "$STATE" || true; printf '%s\t%s\n' "$1" "$2"; } > "$STATE.tmp"
-  mv "$STATE.tmp" "$STATE"
+
+# Where to place the lock guarding <file>: under $XDG_RUNTIME_DIR — never beside
+# <file> itself, because for topics.tsv that directory is git-versioned, and a lock
+# file left there is untracked cruft that `git add -A` / kb-sync would happily pick up.
+lock_path_for() {  # lock_path_for <file>
+  local abs
+  abs="$(cd "$(dirname -- "$1")" 2>/dev/null && pwd -P)/$(basename -- "$1")" || abs="$1"
+  printf '%s/claude-topic-lock-%s\n' "${XDG_RUNTIME_DIR}" "$(printf '%s' "$abs" | tr '/' '_')"
 }
-del_sid()   { [ -f "$STATE" ] || return 0; awk -F'\t' -v k="$1" '$1!=k' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"; }
-reg_del()   { [ -f "$REG" ]   || return 0; awk -F'\t' -v k="$1" '$1!=k' "$REG"   > "$REG.tmp"   && mv "$REG.tmp"   "$REG";   }
+# Atomically upsert/delete a key in a TAB-separated <file> (topics.tsv / topics.state).
+# flock-serialized (lock path above) with a private mktemp NEXT TO <file> (same
+# filesystem, so the final `mv` is atomic), so two concurrent invocations (e.g. a
+# restart of one topic racing a `new`/`remember` of another, same Unix user) never
+# share a tmp filename — a fixed name let one invocation's mv steal the tmp file out
+# from under another mid-write. Both the `exec` that opens the lock fd and the
+# `flock` itself are followed by an explicit `|| exit 1`: this whole block runs
+# inside a `()` subshell that is the left side of `||`, which disables `errexit` for
+# its entire body — confirmed empirically that a failed `exec` here does NOT abort
+# on its own, it just leaves fd 200 unusable and execution carries on unlocked. A
+# failed read of an existing <file> also aborts (via the same exit 1 -> die) instead
+# of silently writing a file containing only the one row being upserted — the
+# original bug in `save_sid`. `chmod --reference` preserves the file's existing
+# permissions across the mktemp+mv, since mktemp defaults to 0600 and both
+# topics.tsv and topics.state are normally 0664.
+tsv_upsert() {  # tsv_upsert <file> <key> <value>
+  local file="$1" key="$2" val="$3"
+  mkdir -p "$(dirname "$file")"
+  (
+    exec 200>"$(lock_path_for "$file")" || exit 1
+    flock 200 || exit 1
+    local tmp rest=""
+    if [ -f "$file" ]; then
+      rest="$(awk -F'\t' -v k="$key" '$1!=k' "$file")" || { echo "cannot read $file" >&2; exit 1; }
+    fi
+    tmp="$(mktemp "${file}.XXXXXX")" || exit 1
+    [ -f "$file" ] && chmod --reference="$file" "$tmp" 2>/dev/null
+    { [ -n "$rest" ] && printf '%s\n' "$rest"; printf '%s\t%s\n' "$key" "$val"; } > "$tmp" && mv "$tmp" "$file"
+  ) || die "failed to update $file"
+}
+tsv_delete() {  # tsv_delete <file> <key> — no-op if <file> doesn't exist
+  local file="$1" key="$2"
+  [ -f "$file" ] || return 0
+  (
+    exec 200>"$(lock_path_for "$file")" || exit 1
+    flock 200 || exit 1
+    local tmp rest
+    rest="$(awk -F'\t' -v k="$key" '$1!=k' "$file")" || { echo "cannot read $file" >&2; exit 1; }
+    tmp="$(mktemp "${file}.XXXXXX")" || exit 1
+    chmod --reference="$file" "$tmp" 2>/dev/null
+    # NOTE: this must be `[ -z "$rest" ] || printf ...`, NOT `[ -n "$rest" ] && printf ...`.
+    # The `&&` form makes the whole { } group's exit status 1 when $rest is empty (deleting
+    # the last/only row), so `mv` never ran, `tsv_delete` reported failure on a no-op-shaped
+    # case, and `cmd_remove`/`cmd_restart --new` broke on exactly that ordinary state.
+    { [ -z "$rest" ] || printf '%s\n' "$rest"; } > "$tmp" && mv "$tmp" "$file"
+  ) || die "failed to update $file"
+}
+# Append-if-absent (registration semantics: a no-op if the key is already there).
+# Uses the same lock+mktemp skeleton as tsv_upsert/tsv_delete (not a raw `>>`), so a
+# lock/mktemp failure aborts here too instead of silently appending unlocked — a
+# plain `>>` needs no directory-write-independent permission and would otherwise go
+# through even with the lock unacquired. The existing content is rewritten with a
+# normalized trailing newline before the new row is added, instead of a raw append
+# concatenating onto a row that was missing one.
+tsv_append_if_absent() {  # tsv_append_if_absent <file> <key> <value>
+  local file="$1" key="$2" val="$3"
+  mkdir -p "$(dirname "$file")"
+  (
+    exec 200>"$(lock_path_for "$file")" || exit 1
+    flock 200 || exit 1
+    local tmp rest=""
+    if [ -f "$file" ]; then
+      awk -F'\t' -v k="$key" '$1==k{f=1} END{exit !f}' "$file" && exit 0
+      rest="$(cat "$file")" || { echo "cannot read $file" >&2; exit 1; }
+    fi
+    tmp="$(mktemp "${file}.XXXXXX")" || exit 1
+    [ -f "$file" ] && chmod --reference="$file" "$tmp" 2>/dev/null
+    { [ -z "$rest" ] || printf '%s\n' "$rest"; printf '%s\t%s\n' "$key" "$val"; } > "$tmp" && mv "$tmp" "$file"
+  ) || die "failed to update $file"
+}
+save_sid()  { tsv_upsert "$STATE" "$1" "$2"; }
+del_sid()   { tsv_delete "$STATE" "$1"; }
+reg_del()   { tsv_delete "$REG" "$1"; }
+reg_add()   { tsv_append_if_absent "$REG" "$1" "$2"; }
+
 # `claude --resume <id>` hard-fails ("No conversation found with session ID") when the
 # transcript was never written — e.g. a session killed seconds after creation. Under
 # Restart=always that fail-loops the unit into 'failed' via StartLimitBurst, so check first.
@@ -62,7 +173,6 @@ transcript_exists() {
   for f in "$PROJ_DIR"/*/"$sid".jsonl; do [ -e "$f" ] && return 0; done
   return 1
 }
-reg_add()   { mkdir -p "$(dirname "$REG")"; reg_has "$1" || printf '%s\t%s\n' "$1" "$2" >> "$REG"; }
 
 usage() {
   # $PROG, not a hardcoded name: this is reachable as `claude-topic` or as the
@@ -102,6 +212,20 @@ require_valid_key() {
     *[!A-Za-z0-9._-]* ) die "invalid topic key '$1' — allowed: letters, digits, '.', '_', '-'" ;;
   esac
 }
+# `--remote-control [name]` / `--resume [id]` take an OPTIONAL value: claude's own
+# parser reads a token starting with '-' as a flag, not as that value. topics.tsv
+# (display name) and topics.state (sessionId) are agent-writable, so a value with a
+# leading '-' — planted directly or via a compromised `new`/`remember` — would be
+# silently re-parsed as an arbitrary claude flag on the next unattended `run`.
+require_safe_value() {  # require_safe_value <label> <value>
+  case "$2" in
+    -*) die "$1 '$2' begins with '-' — refusing (would be parsed by claude as a flag, not as its value)" ;;
+  esac
+}
+require_uuid() {  # require_uuid <label> <value>
+  [[ "$2" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+    || die "$1 '$2' is not a UUID — refusing to pass it to claude --resume"
+}
 
 # --- introspection -----------------------------------------------------------
 # The claude process pid for a running topic = the child of the service MainPID (script).
@@ -128,7 +252,17 @@ list_keys() {
   systemctl --user list-units 'claude-topic@*' --all --no-legend --plain 2>/dev/null \
     | awk '{print $1}' | sed -n 's/^claude-topic@\(.*\)\.service$/\1/p' | sort -u
 }
-reg_keys() { [ -f "$REG" ] && awk -F'\t' 'NF && $1 !~ /^#/ {print $1}' "$REG" || true; }
+# Same charset as require_valid_key: a registry row with a bogus key (e.g. from a
+# corrupted/tampered topics.tsv) must not reach `for k in $(...)` unquoted, where a
+# key like '*' glob-expands against the unit's WorkingDirectory (the agent's home)
+# and a key with a space word-splits. Invalid rows are skipped, not silently used.
+reg_keys() {
+  [ -f "$REG" ] && awk -F'\t' -v prog="$PROG" '
+    NF && $1 !~ /^#/ {
+      if ($1 ~ /^[A-Za-z0-9._-]+$/) print $1
+      else print prog ": warning: ignoring invalid key \"" $1 "\" in topics.tsv (line " NR ")" > "/dev/stderr"
+    }' "$REG" || true
+}
 all_keys() { { reg_keys; list_keys; } | sort -u; }
 # No `| grep -q`: SIGPIPE + pipefail would make a match look like a failure.
 unit_known() { local k; for k in $(list_keys); do [ "$k" = "$1" ] && return 0; done; return 1; }
@@ -170,6 +304,7 @@ cmd_new() {
   require_valid_key "$key"; require_systemd
   [ -n "$name" ] || die "empty display name"
   case "$name" in *$'\t'*) die "display name may not contain a tab (the registry is TSV)" ;; esac
+  require_safe_value "display name" "$name"
   [ -n "$AGENT_REPO" ] || die "no agent repo found under $HOME_DIR/github/<org> (expected kb-agent-<role>-<name>/)"
   existing="$(reg_name "$key")"
   [ -z "$existing" ] || [ "$existing" = "$name" ] || \
@@ -203,7 +338,7 @@ cmd_restart() {
   [ -n "$key" ] || { usage; exit 2; }
   require_valid_key "$key"; require_systemd; require_registry; require_known_key "$key"
 
-  # Without a display name, `topic run` exits 1 and Restart=always fail-loops the unit.
+  # Without a display name, `run` exits 1 and Restart=always fail-loops the unit.
   [ -n "$(reg_name "$key")" ] || \
     die "'$key' has no display name in $REG — refusing to restart (the service would fail-loop)"
 
@@ -221,6 +356,7 @@ cmd_restart() {
       save_sid "$key" "$live"; stored="$live"
       err "note: no sessionId was stored for '$key' — captured the live one ($live) before restarting"
     fi
+    require_uuid "stored sessionId" "$stored"
     transcript_exists "$stored" || die \
       "stored sessionId $stored for '$key' has no conversation on disk ($PROJ_DIR/*/$stored.jsonl).
   'claude --resume' would fail and systemd would fail-loop the topic into 'failed'. If it was just
@@ -304,9 +440,11 @@ cmd_run() {
   local key="$1" name sid
   require_valid_key "$key"; require_registry
   name="$(reg_name "$key")"; [ -n "$name" ] || die "no display name for '$key' in $REG"
+  require_safe_value "display name" "$name"
   command -v claude >/dev/null 2>&1 || die "claude not found in PATH ($PATH)"
   sid="$(state_sid "$key")"
   if [ -n "$sid" ]; then
+    require_uuid "stored sessionId" "$sid"
     # claude's own failure here is ANSI-mangled in the journal; log the cause in plain text.
     transcript_exists "$sid" || err \
       "warning: no transcript for sessionId $sid — 'claude --resume' will likely fail and this unit will fail-loop; fix with '$PROG restart --new $key'"

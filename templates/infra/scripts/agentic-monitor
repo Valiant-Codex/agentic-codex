@@ -100,15 +100,37 @@ if [ -n "$last" ]; then
 fi
 
 # 5) Agent topic sessions: every ENABLED key in each agent's topics.tsv must be active.
+# Repo resolution must match bin/claude-topic's exactly (same username-pinned glob,
+# same refuse-not-guess rule on ambiguity) — kept in sync by hand, there is no
+# shared library between this host-level script and the per-agent wrapper.
+# Diverging here would make a hijacked/broken repo LOOK healthy: if the wrapper
+# refuses to run but this check keeps resolving something else (or nothing, or a
+# registry-less decoy), the monitor pings green while the agent is silently down —
+# found and fixed 2026-07-26: an earlier version alarmed only on >1 candidates, but
+# 0 candidates (repo simply moved/renamed away — the cheapest version of this
+# attack) and "repo resolved but topics.tsv missing" both fell through to a silent
+# `exit 0`. Sentinels are prefixed with `!`, a character `require_valid_key` never
+# allows in a real topic key, so a topic coincidentally named e.g. `NO-REPO` can't
+# be confused with one of these.
+# `bash -lc` (login shell) sources the agent's own (agent-owned) ~/.profile/
+# ~/.bash_profile — found and fixed 2026-07-26: a planted shell function
+# (`systemctl() { return 0; }`) there silently neutralizes every is-enabled/
+# is-active check below, regardless of repo resolution. `--noprofile --norc` plus
+# an explicit PATH removes that entirely.
 for u in $AGENTS; do
-  dead=$(runuser -u "$u" -- bash -lc '
+  dead=$(runuser -u "$u" -- env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    bash --noprofile --norc -c '
     export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
-    b=$(ls -d ~/github/*/kb-agent-*-*/ 2>/dev/null | grep -vE "kb-agent-shared|kb-agent-template" | head -1)
+    cands="$(ls -d ~/github/*/kb-agent-*-"$(id -un)"/ 2>/dev/null)"
+    cnt="$(printf "%s" "$cands" | grep -c . || true)"
+    if [ "${cnt:-0}" -eq 0 ]; then echo "!NO-REPO"; exit 0; fi
+    if [ "${cnt:-0}" -gt 1 ]; then echo "!AMBIGUOUS-REPO"; exit 0; fi
+    b="$cands"
     reg="${b}deploy/topics.tsv"; d=""
-    [ -f "$reg" ] || exit 0
+    [ -f "$reg" ] || { echo "!NO-REGISTRY"; exit 0; }
     # If the user manager is unreachable (linger off, session gone), every is-enabled below fails and
     # the loop reports nothing — i.e. "all sessions dead" would look identical to "all healthy".
-    systemctl --user show-environment >/dev/null 2>&1 || { echo "USERBUS-UNREACHABLE"; exit 0; }
+    systemctl --user show-environment >/dev/null 2>&1 || { echo "!USERBUS-UNREACHABLE"; exit 0; }
     while read -r k _; do
       case "$k" in ""|\#*) continue;; esac
       # only expect ENABLED topics: a stopped/removed one is disabled -> intentionally down, skip it
@@ -116,11 +138,14 @@ for u in $AGENTS; do
       systemctl --user is-active --quiet "claude-topic@$k.service" || d="$d $k"
     done < "$reg"
     echo "$d"' 2>/dev/null | tr -s ' ' | sed 's/^ *//;s/ *$//')
-  if [ "$dead" = "USERBUS-UNREACHABLE" ]; then
-    problems+=("agent-session-unreachable[$u]")
-  elif [ -n "$dead" ]; then
-    problems+=("topics-down[$u]:$(echo "$dead" | tr ' ' ',')")
-  fi
+  case "$dead" in
+    '!USERBUS-UNREACHABLE') problems+=("agent-session-unreachable[$u]") ;;
+    '!NO-REPO')              problems+=("agent-repo-missing[$u]") ;;
+    '!AMBIGUOUS-REPO')       problems+=("agent-repo-ambiguous[$u]") ;;
+    '!NO-REGISTRY')          problems+=("agent-registry-missing[$u]") ;;
+    '') ;;
+    *) problems+=("topics-down[$u]:$(echo "$dead" | tr ' ' ',')") ;;
+  esac
 done
 
 # --- Decide + ping (with 2-cycle hysteresis via STATE) ---
