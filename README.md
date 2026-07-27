@@ -55,6 +55,40 @@ These were the design drivers — if you share them, this repo is for you:
 | **Recover / migrate in minutes** | `clone + provision-agent`. Nothing important lives only on the box. See [`docs/config-model.md`](docs/config-model.md). |
 | **Fail loud, cheaply** | A host-level dead-man's-switch heartbeats an external service; silence is the alarm. See [`docs/monitoring.md`](docs/monitoring.md). |
 
+## How this compares to OpenClaw and Hermes Agent
+
+If you are shopping for a self-hosted agent you will also find
+[OpenClaw](https://github.com/openclaw/openclaw) and
+[Hermes Agent](https://github.com/NousResearch/hermes-agent). Both are good, and both are a
+**different kind of thing** — it is worth knowing which question you are answering.
+*(Described as of July 2026; check their repos for current state.)*
+
+**They are runtimes; this is a blueprint.** OpenClaw and Hermes ship a program you install: a
+gateway daemon, a skill/plugin system, their own memory subsystem, routing across many model
+providers. Agentic Codex ships no daemon of its own — it is a documented shape plus templates for
+running an existing runtime (Claude Code) as long-lived supervised sessions, with each agent's brain
+in Git.
+
+| Design driver | OpenClaw / Hermes Agent | Agentic Codex |
+|---|---|---|
+| **Where memory lives** | On your box, inside the runtime's own workspace and stores (Hermes also keeps Markdown context files) | A Git repo of Markdown per agent; the box holds no canonical state |
+| **Model & runtime choice** | Model-agnostic by design — many providers, local models | Claude Code on the happy path only — the price paid for the reachability below |
+| **How you reach it** | A built-in gateway bridging messaging channels (WhatsApp, Telegram, Slack, Discord, …) | No gateway: Claude Code Remote Control (web / mobile / desktop) |
+| **Attack surface** | An always-on service taking inbound DMs; both address it (sender pairing, sandboxing) | No extra always-on service to patch; privilege split across Unix users, root-owned wrapper |
+| **Shape** | One personal assistant, many channels | A small fleet: one privileged agent, unprivileged lanes, a shared governance repo |
+| **What you install** | A one-command installer | A Markdown procedure you read, and templates you own |
+
+**So pick accordingly.** Want a capable personal assistant reachable from WhatsApp or Telegram, on
+any model, with the least setup? Use OpenClaw or Hermes. Want a small fleet whose identity, memory
+and rules you read, diff and review in Git, with a deliberately minimal surface, and you are happy on
+Claude Code? That is this.
+
+**And they compose.** The brain shape here is deliberately runtime-neutral — `SOUL.md +
+OPERATING.md`, with thin `CLAUDE.md` / `AGENTS.md` adapters. Nothing stops you from keeping
+brains-in-Git and pointing a different runtime at them; that is exactly what
+[`docs/portability.md`](docs/portability.md) is about — including its honest accounting of what has
+and has not been exercised.
+
 ## The mental model
 
 ```
