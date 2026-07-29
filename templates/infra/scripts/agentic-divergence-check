@@ -109,8 +109,17 @@ check_brain(){ # <user> <repo>
   local hc="$home/CLAUDE.md"
   if [ ! -e "$hc" ]; then drift "$n: ~/CLAUDE.md missing or dangling (agent boots with no bootstrap)"
   else
-    local want; want="$(readlink -f "$r/deploy/home-CLAUDE.md" 2>/dev/null)"
-    [ -n "$want" ] && [ "$(readlink -f "$hc")" = "$want" ] || drift "$n: ~/CLAUDE.md does not resolve to $r/deploy/home-CLAUDE.md"
+    # Accept EITHER supported layout (see provision-agent step 3 and docs/portability.md):
+    # deploy/home-CLAUDE.md (three-layer, what the template ships) or the brain's root CLAUDE.md
+    # (single-file). What must hold either way is that ~/CLAUDE.md points INTO this brain repo, not
+    # at a stale or foreign path.
+    local got ok=0 cand
+    got="$(readlink -f "$hc")"
+    for cand in "$r/deploy/home-CLAUDE.md" "$r/CLAUDE.md"; do
+      cand="$(readlink -f "$cand" 2>/dev/null)" || continue
+      [ -n "$cand" ] && [ "$got" = "$cand" ] && { ok=1; break; }
+    done
+    [ "$ok" = 1 ] || drift "$n: ~/CLAUDE.md resolves to '$got', which is neither $r/deploy/home-CLAUDE.md nor $r/CLAUDE.md"
     while IFS= read -r f; do
       [ -e "$r/$f" ] || drift "$n: ~/CLAUDE.md bootstrap names a missing file: $f"
     done < <(grep -oE '[A-Za-z0-9_/.-]+\.md' "$hc" 2>/dev/null | grep -v '^CLAUDE.md$' | sed "s#.*kb-agent-[a-z-]*/##" | sort -u)

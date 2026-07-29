@@ -8,7 +8,23 @@ milestone.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **`provision-agent` would happily create a dangling `~/CLAUDE.md`.** It symlinked
+  `deploy/home-CLAUDE.md` unconditionally, so a brain repo without that file produced a broken symlink —
+  the agent boots with **no bootstrap at all** and nothing anywhere reports it. It now refuses, pointing
+  at the seed-the-brain step.
+
+### Added
+- **Both bootstrap layouts are now supported**, so this is a per-brain choice rather than a fork:
+  *three-layer* (`deploy/home-CLAUDE.md` as the runtime bootstrap plus repo-root `CLAUDE.md`/`AGENTS.md`
+  adapters — what `kb-agent-template` ships, worth it if you genuinely run a second runtime) and
+  *single-file* (the brain's root `CLAUDE.md` **is** the bootstrap, with absolute paths that resolve from
+  any cwd). `deploy/home-CLAUDE.md` still wins when present, so the shipped template is unaffected.
+  `agentic-divergence-check` accepted only the first and reported the second as drift; it now accepts
+  either while still requiring that `~/CLAUDE.md` point into the agent's own brain repo.
+  The reference deployment moved to single-file on 2026-07-29: it runs one runtime, never added
+  `AGENTS.md`, and the two files had drifted — paying the duplication cost with none of the portability
+  benefit. Either choice is fine; making it by accident is not.
 
 > Working convention: the moment a change is judged **framework-level** (or is a safety/correctness fix,
 > which always propagates), its line goes here — before the code is generalized. A release is then: read

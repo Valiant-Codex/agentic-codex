@@ -59,7 +59,26 @@ done
 
 # 3) Symlinks — shared, CLAUDE.md, topic (all idempotent).
 asU "ln -sfn ../kb-agent-shared '$BASE/$BRAIN/shared'"
-asU "ln -sfn '$BASE/$BRAIN/deploy/home-CLAUDE.md' '$H/CLAUDE.md'"
+# ~/CLAUDE.md is what the running agent actually loads: the topic unit sets WorkingDirectory=%h, so cwd
+# is the home dir and this is the only bootstrap read in normal operation. Both brain layouts work
+# (see docs/portability.md, "The three bootstrap files, and which one actually runs"):
+#   three-layer  — deploy/home-CLAUDE.md is the runtime bootstrap, and the repo-root CLAUDE.md/AGENTS.md
+#                  are per-runtime adapters. What kb-agent-template ships; worth it if you genuinely run
+#                  a second, non-Claude runtime.
+#   single-file  — the brain's root CLAUDE.md IS the bootstrap, with absolute paths that resolve from any
+#                  cwd. One file, nothing to drift. Pick this if you only ever use one runtime.
+# deploy/home-CLAUDE.md wins when present, so the shipped template keeps working untouched.
+# Either way, NEVER symlink to a path that does not exist: a dangling ~/CLAUDE.md means the agent boots
+# with no bootstrap at all and nothing anywhere reports it.
+if asU "[ -f '$BASE/$BRAIN/deploy/home-CLAUDE.md' ]"; then
+  asU "ln -sfn '$BASE/$BRAIN/deploy/home-CLAUDE.md' '$H/CLAUDE.md'"; BOOTSTRAP="deploy/home-CLAUDE.md"
+elif asU "[ -f '$BASE/$BRAIN/CLAUDE.md' ]"; then
+  asU "ln -sfn '$BASE/$BRAIN/CLAUDE.md' '$H/CLAUDE.md'"; BOOTSTRAP="CLAUDE.md"
+else
+  echo "  [FAIL] $BRAIN has neither deploy/home-CLAUDE.md nor CLAUDE.md — refusing to create a"
+  echo "         dangling ~/CLAUDE.md. Seed the brain repo first (see runbooks/manage-agents.md step a2)."
+  exit 1
+fi
 asU "mkdir -p '$H/.local/bin' && ln -sfn /usr/local/bin/claude-topic '$H/.local/bin/claude-topic'"
 # Skills: ~/.claude/skills is a WHOLE-DIRECTORY symlink to the brain's skills/, so every
 # skills/<name>/SKILL.md (including fleet-common ones symlinked from shared/) is discovered
@@ -70,7 +89,7 @@ asU "ln -sfn '$BASE/$BRAIN/skills' '$H/.claude/skills'"
 # discovered through the whole-dir symlink above. Auto-discovers whatever the shared layer ships,
 # so adding a fleet-common skill needs no per-agent step. Idempotent; never clobbers a real dir.
 asU 'shopt -s nullglob; cd "'"$BASE/$BRAIN"'" && mkdir -p skills && for s in shared/skills/*/; do n=$(basename "$s"); [ -e "skills/$n" ] || ln -s "../shared/skills/$n" "skills/$n"; done'
-echo "  [ok] symlinks: shared, ~/CLAUDE.md, ~/.local/bin/claude-topic"
+echo "  [ok] symlinks: shared, ~/CLAUDE.md -> $BOOTSTRAP, ~/.local/bin/claude-topic"
 
 # 4) Settings — install the curated, portable source as a REAL copy (not a symlink).
 #    Auto-accumulated ~/.claude/settings.local.json is left untouched (per-machine, git-ignored).
