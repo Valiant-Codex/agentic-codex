@@ -32,6 +32,35 @@ mostly docs, templates, and portability fixes rather than a running app.
 Small, focused PRs with a clear description are easiest to review. If you're changing the security or
 config model, say so explicitly and describe the trade-off.
 
+## Releases
+
+This repo is a **starting example**, not a mirror of the deployment it came from — divergence is the
+expected steady state. Two things flow upstream: **framework-level** change (the memory model, a new
+mechanism, a new fleet-common skill, the brain shape, the config model) and **every safety or
+correctness fix**, without exception. Shipping strangers root bash with a bug we already fixed for
+ourselves is a liability, not a personalisation.
+
+**The trigger is the CHANGELOG, not memory.** The moment a change is judged framework-level, its line
+goes under `## [Unreleased]` — *when the judgement is made*, before the code is generalized. That way
+the decision is visible instead of remembered.
+
+Cutting a release:
+
+1. Read `[Unreleased]`; generalize whatever it lists into `templates/`, keeping placeholders generic
+   (ground rule 2 — sanitize real names before they land).
+2. Rename the section to `## [X.Y.Z] — YYYY-MM-DD — <headline>` and leave a fresh empty `[Unreleased]`
+   above it. Pre-1.0, a batch of correctness/honesty fixes is a **minor**; a single scoped
+   security/robustness fix is a **patch**.
+3. Add the link definition at the bottom: `[X.Y.Z]: .../releases/tag/vX.Y.Z`.
+4. Commit as `vX.Y.Z: <headline>`, then an **annotated** tag `vX.Y.Z` with subject
+   `agentic-codex vX.Y.Z — <headline>`.
+5. Push commits **and** tags (`git push && git push --tags`), then publish the GitHub Release from the
+   tag so the CHANGELOG's links resolve.
+
+Before tagging, sanity-check the mechanical things that have actually been missed before: every version
+has a link definition, no commit sits on `main` without a CHANGELOG entry, and every shipped script
+still passes `bash -n`.
+
 ## Origin
 
 This project was distilled and sanitized from the production system that runs

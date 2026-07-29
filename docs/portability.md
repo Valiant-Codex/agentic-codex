@@ -39,6 +39,31 @@ On the box, the running location is a **symlink or installed copy**, never a for
 `~/CLAUDE.md` points at `deploy/home-CLAUDE.md` in the brain repo, so editing the repo edits the live
 bootstrap.
 
+### The three bootstrap files, and which one actually runs
+
+A brain carries up to three entry points, and it is worth being precise about who reads each — they are
+easy to mistake for duplication:
+
+| File | Read when | Read by |
+|---|---|---|
+| `deploy/home-CLAUDE.md` | the supervised topic session runs (`WorkingDirectory=%h`, so cwd is `~`) | **always, in normal operation** |
+| `CLAUDE.md` (brain repo root) | someone runs Claude Code with cwd *inside* the brain repo | a human working on the brain |
+| `AGENTS.md` (brain repo root) | the same, under a non-Claude runtime (Codex, Cursor, …) | that runtime |
+
+Because the topic unit sets `WorkingDirectory=%h`, **only `deploy/home-CLAUDE.md` is loaded by the
+running agent.** The two repo-root files are *adapters*: they exist so the brain stays usable from
+inside the repo and portable across runtimes.
+
+> ⚠️ **If you only ever use one runtime and never open Claude Code inside the brain repo, the repo-root
+> adapters are dead weight — and they will drift.** They restate what `home-CLAUDE.md` says, nothing
+> loads them, so nothing catches them going stale. A specific trap: the root adapter naturally uses
+> repo-relative paths (`SOUL.md`, `shared/bootstrap.md`), which do **not** resolve from `~` — so if you
+> later "consolidate" by pointing `~/CLAUDE.md` at the root `CLAUDE.md`, the references break silently.
+>
+> Choose deliberately: either keep the adapters and accept they need syncing (worth it for genuine
+> multi-runtime portability, which is the point of `AGENTS.md`), or drop them and keep
+> `deploy/home-CLAUDE.md` as the single bootstrap. Do not keep them by accident.
+
 ### Why this matters beyond convenience
 - **No lock-in.** Your agents' accumulated knowledge isn't trapped in one vendor's memory store.
 - **Reviewable + versioned.** Identity changes are Git diffs, not opaque settings.

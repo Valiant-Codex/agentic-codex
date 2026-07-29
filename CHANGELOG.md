@@ -6,6 +6,97 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [Unreleased]
+
+_Nothing yet._
+
+> Working convention: the moment a change is judged **framework-level** (or is a safety/correctness fix,
+> which always propagates), its line goes here — before the code is generalized. A release is then: read
+> `[Unreleased]`, generalize what it lists, tag. This section existing is the mechanism; an empty one is
+> the correct steady state, not an omission.
+
+## [0.5.0] — 2026-07-29 — Provisioning correctness, and stop steering people into a token that grants too much
+
+Everything here was found the hard way: provisioning a **fourth** agent into the reference deployment
+surfaced one real bug in `provision-agent`, one place where this repo documented behaviour its own code
+does not have, and one recipe that actively told adopters to build the misconfiguration the access model
+exists to prevent. Three agents had been provisioned without noticing any of it — the bug only bites on a
+user's *first* run, and the token recipe only bites once you check what the token can actually reach.
+
+### Fixed
+
+- **`provision-agent` raced `loginctl enable-linger`, then reported success anyway.** `enable-linger`
+  returns once the flag is set; it does not wait for the per-user systemd manager and its D-Bus socket.
+  On the first provisioning of a brand-new user, `/run/user/<uid>/bus` therefore did not exist when the
+  topic step ran: every `systemctl --user` call died with `Failed to connect to bus`, **no topic was
+  enabled**, and the step still printed `[ok]`. It surfaces only on a user's first run — precisely when
+  you are provisioning — and any later re-run looks perfect, which is how it stayed hidden across three
+  agents. Now: `user@<uid>.service` is started explicitly, the bus socket is polled (30 s cap), and a
+  timeout fails hard with the two diagnostic commands.
+- **`provision-agent` reported a dead topic as `[ok]`.** The topic loop swallowed errors with `|| true`
+  and printed `[ok] topic <key> ($(is-active))`, which rendered as `[ok] topic <key> ()` — an empty
+  state presented as success. It now prints the real state, marks anything not `active`/`activating` as
+  `[FAIL]`, and exits non-zero with the recovery hint. Verified by reproducing the race on a throwaway
+  user (old: `Failed to connect to bus` + `[ok] topic tkey ()`; new: `[ok] linger enabled (user bus
+  ready)` + `[FAIL] topic tkey (enable-failed)`, exit 1), then re-checking the success path and
+  idempotency against a live agent.
+- **`provision-agent-github-access.md` step 5 told you to put `kb-agent-shared` in the root-agent's and
+  dev-agent's tokens with Contents: Read and write** — while the access matrix in the very same layer
+  gives both of them **R** on that repo. Since a fine-grained PAT applies **one permission set to every
+  repository it selects**, following the recipe granted write on the shared governance layer — the one
+  grant the model exists to withhold from injection-exposed agents, and the layer every agent auto-loads
+  through `kb-sync`. The per-bot repo list now matches the matrix (`kb-agent-shared` appears for the
+  sole direct writer only), and it no longer omits the dev-agent's own brain repo, which the matrix
+  grants RW.
+- **`templates/infra/fleet-agents` described behaviour this repo does not ship.** Its header claimed to
+  be the single source of truth for `kb-sync`, `agentic-monitor` and `agentic-divergence-check`; only
+  the divergence check reads it — the other two deliberately auto-discover from disk, which is the
+  better clone-and-run default. The comment now says which script reads it, why the other two don't, and
+  what to change if you want the roster to be authoritative instead.
+- CHANGELOG: restored the missing `[0.4.1]` link definition.
+
+### Added
+
+- **An `[Unreleased]` section**, which this project's own governance says is the trigger for propagating
+  framework-level change upstream — and which did not exist, so the mechanism had nowhere to write.
+- **`manage-agents.md`: a "seed the brain repo" step (a2).** A brand-new brain repo is empty, and
+  provisioning an empty repo produces a broken agent *quietly*: `~/CLAUDE.md` becomes a **dangling**
+  symlink (the agent boots with no bootstrap at all) and **zero topics** are enabled. The runbook now
+  states the four files that must exist before `provision-agent` runs, and why each matters.
+- **`manage-agents.md`: an explicit ordering rule for the first interactive login.** Authorize the
+  runtime *before* the first topic starts. A topic that first starts unauthenticated registers a
+  sessionId that never receives a transcript, after which `claude-topic restart` correctly refuses to
+  resume a conversation that does not exist; recovery is `claude-topic restart --new <key>`.
+- **`manage-agents.md`: the fleet-roster step (d)**, previously missing from the CREATE flow even though
+  `fleet-agents` asks to be kept current — so every new agent left a standing finding in the daily
+  divergence report, which is how you train yourself to ignore that report.
+- **`manage-agents.md`: sharper validation** — a topic listed `active` with an **empty sessionId** is not
+  healthy, plus re-run-idempotency and a divergence-check pass.
+- **`github-access-policy.md` §Token type: "a fine-grained PAT inherits nothing".** Neither the org base
+  `read` permission nor the bot account's collaborator grants reach a fine-grained token; only its own
+  repository selection does. The failure mode is misleading rather than loud: an empty-selection token
+  still authenticates (`gh api user` returns the bot) and still lists **public** repos, so it reads as
+  working. Documents the only tests that mean anything, and states plainly that for the normal case — RW
+  on own brain, R on shared — **a classic PAT is the correct choice, not a compromise**, because it rides
+  the account's per-repo grants and therefore matches the matrix for free.
+- **`docs/portability.md`: which of the three bootstrap files actually runs.** `deploy/home-CLAUDE.md`
+  (loaded always, since the topic unit sets `WorkingDirectory=%h`), the repo-root `CLAUDE.md`, and
+  `AGENTS.md` are easy to mistake for duplication. Now spells out who reads each, warns that the
+  repo-root adapters are dead weight *that will drift* if you never use a second runtime, and flags the
+  specific trap: the root adapter's repo-relative paths do not resolve from `~`, so "consolidating" onto
+  it silently breaks every reference.
+
+### Changed
+
+- `provision-agent-github-access.md` is no longer titled and framed around fine-grained tokens; it now
+  presents the choice as a deliberate one with a security consequence, and documents the fine-grained
+  recipe as the single-repo case.
+- **Rotation guidance:** rotate immediately and out-of-band if a token ever appeared in a chat, ticket,
+  or transcript — including a conversation with one of these agents. Once a secret is in a transcript it
+  is on disk and usually off the box; replace it instead of reasoning about who saw it.
+- README: added the comparison against OpenClaw and Hermes Agent (previously committed but unreleased and
+  absent from this changelog — "they are runtimes; this is a blueprint").
+
 ## [0.4.1] — 2026-07-26 — Harden `claude-topic` against a writable-by-the-agent-it-manages threat model
 
 A security/robustness release, ported verbatim (modulo the `<org>`/`github/*` placeholders) from the
@@ -158,6 +249,8 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.5.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.5.0
+[0.4.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.2.0

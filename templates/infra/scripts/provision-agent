@@ -87,23 +87,62 @@ asU "mkdir -p '$H/.config/systemd/user'"
 install -m0644 -o "$U" -g "$U" "$INFRA/systemd/claude-topic@.service" "$H/.config/systemd/user/claude-topic@.service"
 echo "  [ok] ~/.config/systemd/user/claude-topic@.service"
 
-# 6) Linger (survive reboot without login).
+# 6) Linger (survive reboot without login) + WAIT for the user bus.
+#    `loginctl enable-linger` returns as soon as the linger flag is set — it does NOT wait for systemd
+#    to bring up the per-user manager and its D-Bus socket. On the FIRST provisioning of a brand-new
+#    user, /run/user/<uid>/bus therefore does not exist yet, and step 7 raced it: every
+#    `systemctl --user` call died with "Failed to connect to bus", no topic was enabled, and the old
+#    step 7 still printed "[ok]". It only bites on a user's first run — i.e. exactly when you are
+#    provisioning — and the second run always looks fine, which is how it stays hidden.
+#    So: start the manager explicitly, then poll for the socket instead of assuming it.
+UID_N="$(id -u "$U")"
 loginctl enable-linger "$U" >/dev/null 2>&1 || true
-echo "  [ok] linger enabled"
+systemctl start "user@${UID_N}.service" >/dev/null 2>&1 || true
+BUS="/run/user/${UID_N}/bus"
+for _ in $(seq 1 60); do [ -S "$BUS" ] && break; sleep 0.5; done
+if [ -S "$BUS" ]; then
+  echo "  [ok] linger enabled (user bus ready at $BUS)"
+else
+  echo "  [FAIL] user bus $BUS never appeared after 30s — cannot enable topics."
+  echo "         Inspect: loginctl show-user $U ; systemctl status user@${UID_N}.service"
+  exit 1
+fi
 
 # 7) Topic sessions — enable (+start) each key from the versioned registry.
+#    Reports the REAL state and fails loudly: a topic that did not come up is a broken provisioning,
+#    not a warning to scroll past.
+TOPIC_FAIL=0
 asU '
+  set -u
   export XDG_RUNTIME_DIR=/run/user/$(id -u); export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
-  systemctl --user daemon-reload
+  systemctl --user daemon-reload || { echo "  [FAIL] systemctl --user daemon-reload"; exit 1; }
   REG="'"$BASE/$BRAIN"'/deploy/topics.tsv"
-  if [ -f "$REG" ]; then
-    while read -r key name; do
-      case "$key" in ""|\#*) continue;; esac
-      systemctl --user enable --now "claude-topic@${key}.service" >/dev/null 2>&1 || true
-      echo "  [ok] topic ${key} ($(systemctl --user is-active claude-topic@${key}.service))"
-    done < "$REG"
-  else echo "  [warn] no deploy/topics.tsv — no topics enabled"; fi
-'
+  if [ ! -f "$REG" ]; then echo "  [warn] no deploy/topics.tsv — no topics enabled"; exit 0; fi
+  rc=0
+  while read -r key name; do
+    case "$key" in ""|\#*) continue;; esac
+    if systemctl --user enable --now "claude-topic@${key}.service" >/dev/null 2>&1; then
+      st="$(systemctl --user is-active "claude-topic@${key}.service" 2>/dev/null || true)"
+    else
+      st="enable-failed"
+    fi
+    case "$st" in
+      active|activating) echo "  [ok] topic ${key} ($st)";;
+      *)                 echo "  [FAIL] topic ${key} (${st:-unknown})"; rc=1;;
+    esac
+  done < "$REG"
+  exit $rc
+' || TOPIC_FAIL=1
 
 echo "== done. Reminder — restore out-of-band (not in git): MCP secrets in ~$U/.claude.json,"
 echo "   any ~$U/.config/$U/secrets.env, and Node in ~$U/.local/node if the agent uses npx-based MCP. =="
+
+if [ "$TOPIC_FAIL" != 0 ]; then
+  echo
+  echo "!! At least one topic did NOT come up. The agent is provisioned but not reachable."
+  echo "   Inspect as the agent:  systemctl --user status 'claude-topic@*'  and  journalctl _UID=$UID_N -n 50"
+  echo "   If the agent's first interactive login happened AFTER the topic first started, its stored"
+  echo "   sessionId has no transcript on disk and 'claude-topic restart' will refuse: use"
+  echo "   'claude-topic restart --new <key>' to start a fresh conversation."
+  exit 1
+fi

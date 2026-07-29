@@ -44,8 +44,32 @@ Naming: role `<ROLE>`, short name `<AGENT>` (the Unix user), brain repo
 
 The bot account, its email (Google Group `<AGENT>-agent@<your-domain>`), least-privilege repo access,
 and the token all come from that runbook. Do it first: **do not duplicate those steps here.** Its
-output is a working bot with a token to be restored on-box (step (c) fails fast without it). Also do the
-first-ever interactive Claude login for the user (owner's account, once) so the runtime is authorized.
+output is a working bot with a token to be restored on-box (step (c) fails fast without it).
+
+⚠️ **Do the first-ever interactive Claude login now, before step (c) — not after.** As the new user:
+`ssh <AGENT>@<VPS_HOST>` → `claude` → log in with the owner's account → quit. The order matters: if a
+topic session first starts *unauthenticated*, it registers a sessionId that never gets a transcript on
+disk, and every later `claude-topic restart` then correctly refuses to resume a conversation that does
+not exist. Recovering costs a `claude-topic restart --new <key>` and loses nothing, but it is avoidable
+noise — log in first.
+
+### (a2) Seed the brain repo — `provision-agent` cannot invent it
+
+**A brand-new brain repo is usually empty, and provisioning an empty repo produces a broken agent, quietly.**
+`provision-agent` symlinks `~/CLAUDE.md → <BRAIN>/deploy/home-CLAUDE.md` and reads
+`<BRAIN>/deploy/topics.tsv`; if the repo has neither, you get a **dangling** `~/CLAUDE.md` (the agent
+boots with no bootstrap at all) and **zero topics enabled** (`[warn] no deploy/topics.tsv`).
+
+So before step (c), scaffold the brain from `templates/kb-agent-template` and push it, with at minimum:
+
+| Required | Why |
+|---|---|
+| `deploy/home-CLAUDE.md` | the target of `~/CLAUDE.md`; without it the agent has no bootstrap |
+| `deploy/topics.tsv` | the topic registry; without it no session is ever started |
+| `deploy/claude-settings.json` | else `~/.claude/settings.json` is skipped (`[warn]`), leaving no allowlist |
+| `SOUL.md` + `OPERATING.md` | what the bootstrap points at — a bootstrap naming missing files fails the divergence check |
+
+Commit and push as the new bot (this is also the first real test that its token has write).
 
 ### (b) On-box: create the user and install the runtime
 
@@ -99,6 +123,18 @@ manually** — reference `provision-agent`.
 The agent is then auto-kept-current by `kb-sync`. Brain **content** (the SOUL.md and OPERATING.md identity,
 tools, skills) is authored by the agent (or its designated maintainer), not by the root-agent.
 
+### (d) Add the agent to the fleet roster
+
+```bash
+echo '<AGENT>' >> templates/infra/fleet-agents   # in your infra clone, then commit + push
+sudo ./templates/infra/scripts/install-host-services   # reinstalls the roster to /usr/local/share/agentic/
+```
+
+Skipping this does not break the agent, but `agentic-divergence-check` will report it daily as "has a
+brain repo on disk but is not in the roster (uncovered by fleet scripts)" — and that report is how you
+would otherwise notice a *missing* agent, so leaving a known-good finding in it trains you to ignore it.
+See the comments in `fleet-agents` for which scripts actually read it and how to make it authoritative.
+
 ## MANAGE sessions
 
 Topic sessions are systemd user services fronted by the `claude-topic` wrapper. Run as the agent (the
@@ -136,8 +172,28 @@ sudo userdel -r <AGENT>
   it can't read (e.g. another agent's home).
 - **The root-agent can't invite collaborators** (its bot token lacks org admin) — that step is the
   owner's; the root-agent only *accepts* invites via the new bot's token.
+- **A fine-grained PAT inherits nothing.** Granting the bot *account* access does not move its
+  fine-grained *token*, and neither does an org base permission of `read`. Worse, an empty-selection
+  fine-grained token still authenticates and still lists *public* repos, so it looks like it works.
+  And one fine-grained token applies a single permission set to every repo it selects, so "brain +
+  shared in one token" means **write on the shared governance repo**. Full detail and the definitive
+  test are in `policies/github-access-policy.md` §Token type.
+- **An empty brain repo provisions "successfully" into a broken agent** — dangling `~/CLAUDE.md`, no
+  topics. Seed the brain first; see step (a2).
+- **`loginctl enable-linger` is asynchronous.** It returns before the per-user systemd manager and its
+  D-Bus socket exist, so a first provisioning can race it: `Failed to connect to bus` and no topics
+  enabled. Current `provision-agent` starts `user@<uid>.service` and polls for
+  `/run/user/<uid>/bus` before touching topics — if you are running an older copy that prints
+  `[ok] topic <key> ()` with an **empty** state, that is this bug, and the topic is not running.
 
 ## Validation
 
-`claude-topic list` shows every topic `active` with a sessionId; `git -C <a-repo> push --dry-run` works
-as the bot; the agent opens in the Claude web / mobile app.
+- `claude-topic list` (as the agent) shows every topic `active` **with a non-empty sessionId** — an
+  empty sessionId column means the session never registered, usually the unauthenticated-first-start
+  case above.
+- `git -C <a-repo> push --dry-run` works as the bot.
+- The agent opens in the Claude web / mobile app.
+- Re-running `ORG=<ORG> provision-agent <AGENT> <BRAIN>` reports only `[skip]`/`[ok]`, exits 0, and does
+  not disturb the running session.
+- `sudo agentic-divergence-check` is clean — it verifies `~/CLAUDE.md` resolves and that every file the
+  bootstrap names exists, which catches a half-seeded brain.

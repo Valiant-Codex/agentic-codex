@@ -1,7 +1,18 @@
 # Fleet roster — one agent Unix user per line (comments and blank lines ignored).
-# Single source of truth for the host scripts (kb-sync, agentic-monitor, agentic-divergence-check),
-# so adding an agent cannot silently leave it uncovered by some of them.
 # Installed to /usr/local/share/agentic/fleet-agents by install-host-services.
-# Keep it current when you provision or decommission an agent; agentic-divergence-check reconciles
-# this list against the brains actually present on the box and reports either direction.
+#
+# WHO ACTUALLY READS THIS, as shipped: only `agentic-divergence-check`. It reconciles this list
+# against the brain repos actually present on the box and reports drift in EITHER direction — an
+# agent on disk but not listed here, or listed here but absent. `kb-sync` and `agentic-monitor`
+# deliberately auto-discover agents from disk instead (each accepts an `AGENTS=` override), because
+# auto-discovery is the better default for clone-and-run: a fresh adopter gets coverage without
+# having to remember to edit a file.
+#
+# The trade-off, so you can choose deliberately: auto-discovery cannot tell "this agent is gone" from
+# "this agent's brain failed to clone", and it silently covers whatever appears. If an uncovered or
+# unexpected agent is a security event for you, make the roster authoritative — point kb-sync and
+# agentic-monitor at ROSTER_FILE too, and treat a mismatch as a failure rather than a report. That is
+# a legitimate hardening choice, not a fix to this file.
+#
+# Keep it current when you provision or decommission an agent, or the divergence check will report it.
 root-agent

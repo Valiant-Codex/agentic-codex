@@ -41,9 +41,45 @@ GitHub explicitly permits machine/bot accounts in addition to one personal accou
 Bots are **organization members** (`<org>-<root-agent>-bot`, `<org>-<cos-agent>-bot`, `<org>-<dev-agent>-bot`), each with per-repo access grants matching the matrix. Two workable token types:
 
 - **Classic PATs** with scope **`repo, workflow`**, 90-day expiry — simplest to wire.
-- **Fine-grained PATs** (available once the org is the resource owner) — tighter: Resource owner `<ORG>`, Only-select-repositories, permissions **Contents RW + Pull requests RW + Metadata R** (+ Workflows RW only if editing CI). Editing a fine-grained token's repo list later keeps the token value unchanged (no re-wiring). Prefer this when convenient.
+- **Fine-grained PATs** (available once the org is the resource owner) — tighter *per repo*: Resource owner `<ORG>`, Only-select-repositories, permissions **Contents RW + Pull requests RW + Metadata R** (+ Workflows RW only if editing CI). Editing a fine-grained token's repo list later keeps the token value unchanged (no re-wiring).
 
 Either way, a token cannot exceed the bot account's own repo access.
+
+> ### ⚠️ A fine-grained PAT inherits nothing — read before choosing one
+>
+> Learned by burning a provisioning attempt on it. There are **two independent layers**, and moving the
+> account does not move the token:
+>
+> - an org **base permission of `read` does not reach a fine-grained token**;
+> - a **collaborator grant on the bot account does not reach its fine-grained token** either.
+>
+> Only the token's own *Only-select-repositories* list grants it anything. And the failure mode is
+> actively misleading: a fine-grained token with an **empty** selection still authenticates
+> (`gh api user` cheerfully returns the bot) and still lists any **public** repo, which reads as
+> "the token works". It does not.
+>
+> **The only test that means anything is a git operation against the target repo:**
+>
+> ```bash
+> GH_TOKEN=<token> gh api repos/<ORG>/<BRAIN> -q .permissions   # 404 = no access at all
+> git ls-remote https://<bot>:<token>@github.com/<ORG>/<BRAIN>.git
+> #   → "remote: Write access to repository not granted." means exactly what it says
+> ```
+>
+> **The trap that matters for security:** one fine-grained token applies **a single permission set to
+> every repository it selects**. You cannot give it Contents RW on the agent's brain and Contents
+> **R** on `kb-agent-shared` — so putting both in one token grants the agent **write on the shared
+> governance layer**, which every agent auto-loads through `kb-sync`. That is the one grant this whole
+> model exists to withhold from injection-exposed agents (see the access matrix note below).
+>
+> **Therefore: for an agent that needs RW on its own brain and R on `kb-agent-shared` — i.e. the normal
+> case — a classic PAT is the correct choice, not a compromise.** A classic token rides the bot
+> account's own grants, so it inherits write on its brain and read-only on shared for free, exactly
+> matching the matrix. Reach for fine-grained only when a token genuinely needs one repo, or when
+> per-repo permission sets exist.
+>
+> Scope note: `workflow` is only needed to edit `.github/workflows/`. An agent with no CI should get
+> **`repo` alone**.
 
 > **Org base permission is `read` — by deliberate choice** (Org → Settings → Member privileges → Base permissions). Every org member — the agent bots and any future member — can **read all repos**. This is accepted for operational simplicity; the risk is low because all repos are internal, **write stays matrix-scoped** (push always needs an explicit per-repo grant), and **secrets never live in git** anyway (see `approval-policy.md`).
 >
