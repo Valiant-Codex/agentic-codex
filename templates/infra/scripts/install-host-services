@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # install-host-services — install/refresh the HOST-level systemd services from this infra repo:
-# kb-sync (git sync), agentic-monitor (health check + dead-man's-switch heartbeat), and
-# agentic-update-check (weekly update report).
+# kb-sync (git sync) and agentic-monitor (health check + dead-man's-switch heartbeat).
 #
 # This is the portable host bootstrap: on a fresh VPS, clone <ORG>/infra and run this, then
 # `provision-agent <user> <brain>` per agent. Idempotent; run as the root-agent user (self-elevates).
@@ -12,16 +11,31 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"   # infra repo root
 
 echo "== install-host-services (from $HERE) =="
 
+# Every install goes through this helper, which also writes the manifest row — so the manifest is a
+# BYPRODUCT of installing, not a second hand-maintained list. The previous version duplicated every
+# install as a `src:dst` pair further down; add an install line, forget the pair, and that artifact
+# was silently unverified forever. Now that class cannot exist: if it was installed, it is listed.
+mkdir -p /usr/local/share/agentic
+MANIFEST=/usr/local/share/agentic/installed.manifest
+MANIFEST_TMP="$(mktemp "${MANIFEST}.XXXXXX")"
+inst() {  # inst <mode> <repo-relative-src> <dst>
+  install -D -m"$1" -o root -g root "$HERE/$2" "$3"
+  echo "$3|$HERE/$2" >> "$MANIFEST_TMP"
+}
+
 # kb-sync
-install -m0755 "$HERE/scripts/kb-sync"                 /usr/local/bin/kb-sync
-install -m0644 "$HERE/systemd/kb-sync.service"         /etc/systemd/system/kb-sync.service
-install -m0644 "$HERE/systemd/kb-sync.timer"           /etc/systemd/system/kb-sync.timer
+inst 0755 scripts/kb-sync         /usr/local/bin/kb-sync
+inst 0644 systemd/kb-sync.service /etc/systemd/system/kb-sync.service
+inst 0644 systemd/kb-sync.timer   /etc/systemd/system/kb-sync.timer
 echo "  [ok] kb-sync"
 
 # agentic-monitor
-install -m0755 "$HERE/scripts/agentic-monitor"         /usr/local/bin/agentic-monitor
-install -m0644 "$HERE/systemd/agentic-monitor.service" /etc/systemd/system/agentic-monitor.service
-install -m0644 "$HERE/systemd/agentic-monitor.timer"   /etc/systemd/system/agentic-monitor.timer
+inst 0755 scripts/agentic-monitor         /usr/local/bin/agentic-monitor
+inst 0644 systemd/agentic-monitor.service /etc/systemd/system/agentic-monitor.service
+inst 0644 systemd/agentic-monitor.timer   /etc/systemd/system/agentic-monitor.timer
+# env file: NOT via inst() — it is seeded once from the example and then mutated by hand (HC_URL,
+# excludes), so comparing it against the repo source would report drift on every correctly-configured
+# host. Deliberately outside the manifest.
 if [ ! -f /etc/agentic-monitor.env ]; then
   install -m0600 "$HERE/systemd/agentic-monitor.env.example" /etc/agentic-monitor.env
   echo "  [WARN] created /etc/agentic-monitor.env from example — set HC_URL (secret) before it is useful."
@@ -30,56 +44,94 @@ else
 fi
 echo "  [ok] agentic-monitor"
 
-# agentic-update-check (weekly update-availability report)
-install -m0755 "$HERE/scripts/agentic-update-check"          /usr/local/bin/agentic-update-check
-install -m0644 "$HERE/systemd/agentic-update-check.service"  /etc/systemd/system/agentic-update-check.service
-install -m0644 "$HERE/systemd/agentic-update-check.timer"    /etc/systemd/system/agentic-update-check.timer
-echo "  [ok] agentic-update-check"
+# claude-topic wrapper — root-owned, fleet-global.
+# It has always been listed in installed.manifest but only provision-agent actually installed it, so
+# on a fresh host (this script's whole purpose) agentic-divergence-check reported
+# "installed: /usr/local/bin/claude-topic is MISSING — re-run install-host-services" and re-running
+# the installer did not fix it. Either the manifest row or the install was wrong; the install was.
+inst 0755 bin/claude-topic /usr/local/bin/claude-topic
+echo "  [ok] /usr/local/bin/claude-topic (root-owned)"
 
-# fleet roster — single source of truth for kb-sync / agentic-monitor / agentic-divergence-check
-install -D -m0644 "$HERE/fleet-agents" /usr/local/share/agentic/fleet-agents
+# fleet roster — single source of truth for kb-sync / agentic-monitor / divergence-check
+inst 0644 fleet-agents /usr/local/share/agentic/fleet-agents
 echo "  [ok] fleet roster (/usr/local/share/agentic/fleet-agents)"
 
-# agentic-divergence-check (daily structural linter) — installed; enable once your fleet passes it
-install -m0755 "$HERE/scripts/agentic-divergence-check"          /usr/local/bin/agentic-divergence-check
-install -m0644 "$HERE/systemd/agentic-divergence-check.service"  /etc/systemd/system/agentic-divergence-check.service
-install -m0644 "$HERE/systemd/agentic-divergence-check.timer"    /etc/systemd/system/agentic-divergence-check.timer
-echo "  [ok] agentic-divergence-check (run it once by hand, then: systemctl enable --now agentic-divergence-check.timer)"
+# agentic-divergence-check (daily drift detector + update-availability report).
+inst 0755 scripts/agentic-divergence-check         /usr/local/bin/agentic-divergence-check
+inst 0644 systemd/agentic-divergence-check.service /etc/systemd/system/agentic-divergence-check.service
+inst 0644 systemd/agentic-divergence-check.timer   /etc/systemd/system/agentic-divergence-check.timer
+echo "  [ok] agentic-divergence-check"
 
-# memory-mirror (optional nightly: runtime auto-memory -> git) — installed, timer DISABLED by default
-install -m0755 "$HERE/scripts/memory-mirror"          /usr/local/bin/memory-mirror
-install -m0644 "$HERE/systemd/memory-mirror@.service" /etc/systemd/system/memory-mirror@.service
-install -m0644 "$HERE/systemd/memory-mirror@.timer"   /etc/systemd/system/memory-mirror@.timer
-echo "  [ok] memory-mirror (optional; enable per agent: systemctl enable --now memory-mirror@<user>.timer)"
+# memory-mirror (nightly: runtime auto-memory -> git).
+inst 0755 scripts/memory-mirror          /usr/local/bin/memory-mirror
+inst 0644 systemd/memory-mirror@.service /etc/systemd/system/memory-mirror@.service
+inst 0644 systemd/memory-mirror@.timer   /etc/systemd/system/memory-mirror@.timer
+echo "  [ok] memory-mirror"
 
-# Manifest of what this installer put where, so a checker can prove the installed artifacts still
-# match the repo. Generated — never hand-maintained — so it cannot itself drift.
-{ for pair in \
-    "scripts/kb-sync:/usr/local/bin/kb-sync" \
-    "scripts/agentic-monitor:/usr/local/bin/agentic-monitor" \
-    "scripts/agentic-update-check:/usr/local/bin/agentic-update-check" \
-    "scripts/agentic-divergence-check:/usr/local/bin/agentic-divergence-check" \
-    "scripts/memory-mirror:/usr/local/bin/memory-mirror" \
-    "bin/claude-topic:/usr/local/bin/claude-topic" \
-    "fleet-agents:/usr/local/share/agentic/fleet-agents" \
-    "systemd/kb-sync.service:/etc/systemd/system/kb-sync.service" \
-    "systemd/kb-sync.timer:/etc/systemd/system/kb-sync.timer" \
-    "systemd/agentic-monitor.service:/etc/systemd/system/agentic-monitor.service" \
-    "systemd/agentic-monitor.timer:/etc/systemd/system/agentic-monitor.timer" \
-    "systemd/agentic-update-check.service:/etc/systemd/system/agentic-update-check.service" \
-    "systemd/agentic-update-check.timer:/etc/systemd/system/agentic-update-check.timer" \
-    "systemd/agentic-divergence-check.service:/etc/systemd/system/agentic-divergence-check.service" \
-    "systemd/agentic-divergence-check.timer:/etc/systemd/system/agentic-divergence-check.timer" \
-    "systemd/memory-mirror@.service:/etc/systemd/system/memory-mirror@.service" \
-    "systemd/memory-mirror@.timer:/etc/systemd/system/memory-mirror@.timer" ; do
-    src="${pair%%:*}"; dst="${pair#*:}"
-    [ -f "$HERE/$src" ] && echo "$dst|$HERE/$src"
-  done; } > /usr/local/share/agentic/installed.manifest
-chmod 0644 /usr/local/share/agentic/installed.manifest
-echo "  [ok] installed manifest"
+chmod 0644 "$MANIFEST_TMP" && mv "$MANIFEST_TMP" "$MANIFEST"
+echo "  [ok] installed manifest (derived from the installs above)"
 
 systemctl daemon-reload
-systemctl enable --now kb-sync.timer agentic-monitor.timer agentic-update-check.timer >/dev/null 2>&1 || true
-echo "  [ok] timers enabled"
-systemctl list-timers kb-sync.timer agentic-monitor.timer agentic-update-check.timer --no-pager 2>/dev/null | grep -E "kb-sync|agentic-monitor|agentic-update" || true
+
+# --- Enable everything this installer ships. Nothing is left opt-in.
+# The previous version installed agentic-divergence-check and memory-mirror DISABLED and printed a
+# reminder for a human to enable them. That produced two real defects:
+#   * agentic-divergence-check itself asserts that its own timer is enabled, so the installer and
+#     the checker disagreed by construction — the installer's own message was the drift;
+#   * memory-mirror@<user>.timer was never enabled for a newly-provisioned agent, so that agent's
+#     runtime memory was not durable, and because a never-enabled instance never runs it also never
+#     becomes a failed unit — invisible to every check. the reference deployment's fourth agent ran that way for a day.
+# A job whose whole purpose is to notice or preserve things is worthless while switched off, and
+# "enable it later" is a step that does not happen. Both are safe to run unattended (the checker is
+# read-only; the mirror is a deterministic rsync+git with a secret scan and no model in the loop).
+GLOBAL_TIMERS="kb-sync.timer agentic-monitor.timer agentic-divergence-check.timer"
+for t in $GLOBAL_TIMERS; do
+  systemctl enable --now "$t" >/dev/null 2>&1 \
+    && echo "  [ok] $t enabled" \
+    || echo "  [FAIL] could not enable $t"
+done
+
+# --- Per-agent memory-mirror timers. GATED, deliberately.
+# These are unattended WRITERS: each one commits and pushes to that agent's brain repo every night.
+# The fleet's own rule (OPERATING.md, human-confirm gates) requires a human to confirm before
+# enabling any job that will commit, push or mutate state on its own — "show what it will write,
+# where, and how to turn it off, then wait". Enabling them here for every name in a text file would
+# cross that gate silently, and on someone else's machine the person running this bootstrap may have
+# no idea it happened. So the installer does not turn writers on by itself.
+#
+# That gap is closed by `provision-agent` instead: that is the explicit,
+# per-agent, human-invoked step, and it prints the disclosure the gate asks for. This flag exists for
+# the other case — an existing fleet being re-installed, or a rebuilt box — where re-running
+# provisioning per agent would be busywork.
+if [ "${1:-}" = "--enable-writers" ]; then
+  echo "  -- per-agent memory-mirror timers (from $HERE/fleet-agents) --"
+  echo "     each writes runtime auto-memory into that agent's brain, commits '[mirror] …' and pushes;"
+  echo "     turn one off with: sudo systemctl disable --now memory-mirror@<user>.timer"
+  if [ -f "$HERE/fleet-agents" ]; then
+    while IFS= read -r u; do
+      [ -n "$u" ] || continue
+      if ! getent passwd "$u" >/dev/null; then
+        echo "     [WARN] roster lists '$u' but there is no such Unix user — skipping"
+        continue
+      fi
+      if err_out="$(systemctl enable --now "memory-mirror@${u}.timer" 2>&1)"; then
+        echo "     [ok] memory-mirror@${u}.timer"
+      else
+        # Never discard systemd's reason: on a fresh host — the documented use case — a bare
+        # "[FAIL] could not enable X" is the least debuggable output possible.
+        echo "     [FAIL] memory-mirror@${u}.timer — '$u' has no durable memory"
+        echo "$err_out" | sed 's/^/            /'
+      fi
+    done < <(grep -vE '^\s*(#|$)' "$HERE/fleet-agents" | tr -d ' \t')
+  else
+    echo "     [FAIL] no $HERE/fleet-agents — cannot enable per-agent timers"
+  fi
+else
+  echo "  -- per-agent memory-mirror timers: NOT enabled (they commit and push unattended) --"
+  echo "     provision-agent enables one per agent as it onboards them, with disclosure."
+  echo "     To enable them for an existing fleet in one go, re-run with: --enable-writers"
+fi
+
+systemctl list-timers $GLOBAL_TIMERS 'memory-mirror@*' --no-pager 2>/dev/null \
+  | grep -E "kb-sync|agentic-|memory-mirror" || true
 echo "== done =="

@@ -52,21 +52,29 @@ For each target agent `<AGENT>` with brain repo `<BRAIN>`:
 
 1. **Confirm the agent can push its own repo** (its bot token is wired):
    ```
-   sudo runuser -u <AGENT> -- bash -lc 'cd ~/github/<ORG>/<BRAIN> && gh auth status && git push --dry-run'
+   asA() { sudo runuser -u "$1" -- env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+           bash --noprofile --norc -c "$2"; }
+   asA <AGENT> 'cd ~/github/<ORG>/<BRAIN> && gh auth status && git push --dry-run'
    ```
+   **Never `bash -lc` when running as another agent**: a login shell sources *that agent's own*
+   `~/.profile`, so a planted shell function (`git(){ return 0; }`) can silently falsify the very
+   operation you are performing — the identical hole the host scripts close with
+   `--noprofile --norc` and an explicit PATH. Use the `asA` form above for every step here.
 2. **Apply the edit as that user.** Prefer editing via `runuser` so file ownership stays correct; for
    text transforms pipe a script to `python3 -` (avoids nested-quote breakage), e.g.:
    ```
-   cat <<'PY' | sudo runuser -u <AGENT> -- bash -lc 'cd ~/github/<ORG>/<BRAIN> && python3 -'
+   cat <<'PY' | asA <AGENT> 'cd ~/github/<ORG>/<BRAIN> && python3 -'
    ... edit ...
    PY
    ```
-3. **Stage narrowly.** Add only the files you changed — never `git add -A` blindly; other agents' brains
-   often carry unrelated dirty runtime files (e.g. `deploy/topics.tsv`, `.claude/settings.local.json`)
-   that must stay out of your commit.
+3. **Stage narrowly.** Add only the files you changed — never `git add -A` blindly; another agent's
+   brain can carry its own uncommitted work in progress that must stay out of your commit. And know
+   what dirt *means*: since `claude-topic` commits `deploy/topics.tsv` itself (`reg_commit`), a dirty
+   `topics.tsv` is **not** normal runtime noise — it is the signature of a failed registry commit,
+   and the daily divergence check reports it. Don't sweep it in; investigate it.
 4. **Commit + push as that user** (its own bot signs it):
    ```
-   sudo runuser -u <AGENT> -- bash -lc 'cd ~/github/<ORG>/<BRAIN> && git commit -m "..." && git push'
+   asA <AGENT> 'cd ~/github/<ORG>/<BRAIN> && git commit -m "..." && git push'
    ```
 5. **Verify** the change resolves and the working tree is clean of anything you did not intend.
 6. If the change is common to all, remember it likely belonged in `shared/` — reconsider before

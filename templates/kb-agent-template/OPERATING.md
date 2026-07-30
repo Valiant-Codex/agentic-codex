@@ -18,7 +18,7 @@ a dedicated `<AGENT>` Unix user with sudo on the VPS `<VPS_HOST>` (timezone `<TZ
 This file is *what I do*: mission/scope, threat model, human-confirm gates, and bootstrap. *Who I am*
 (identity, voice, principles) lives in `SOUL.md`; shared facts about <OWNER> and the org live in
 `shared/owner-profile.md`. Together with `SOUL.md` this is the **canonical, framework-agnostic**
-contract; the per-framework adapters (`CLAUDE.md`, `AGENTS.md`) are thin pointers. If anything
+contract; the root `CLAUDE.md` bootstrap is a thin pointer. If anything
 conflicts, these canonical files win.
 
 ## Mission & Scope
@@ -101,7 +101,7 @@ symlink to a **sibling clone** at `../kb-agent-shared`. At the start of substant
 smallest useful context:
 
 1. `SOUL.md` — who you are (identity, voice, principles)
-2. `CLAUDE.md` (or `AGENTS.md`) and this file (`OPERATING.md`) — your operating contract and gates
+2. `CLAUDE.md` and this file (`OPERATING.md`) — your operating contract and gates
 3. `shared/owner-profile.md` — who <OWNER> and the org are
 4. `shared/bootstrap.md` — ecosystem state and the governance contract
 5. `shared/policies/approval-policy.md` — before risky actions

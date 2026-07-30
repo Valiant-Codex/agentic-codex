@@ -35,9 +35,9 @@ Each agent has a repo `kb-agent-<role>-<name>` containing its identity and durab
 Markdown ([OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspired):
 
 - `SOUL.md + OPERATING.md` — the canonical identity and operating contract (framework-agnostic).
-- `CLAUDE.md`, `AGENTS.md` — thin per-framework adapters that point to them.
+- `CLAUDE.md` — the single runtime bootstrap (symlinked to `~/CLAUDE.md`) that points to them.
 - `memory/`, `skills/`, `tools/`, `context/` — durable memory, self-authored procedures, tool notes.
-- `deploy/` — the runtime wiring (`topics.tsv`, `home-CLAUDE.md`, `claude-settings.json`).
+- `deploy/` — the runtime wiring (`topics.tsv`, `claude-settings.json`, per-agent systemd user units).
 - `shared/` — a symlink to the sibling clone of `kb-agent-shared`.
 
 Because a brain is just Markdown in Git, you can read it, diff it, edit it from your phone, roll it

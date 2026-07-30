@@ -57,7 +57,7 @@ it is more useful to you than the code would have been:
 - Its cost was concrete: three defects found within hours of writing it (a destructive worktree clean
   that deleted untracked work, a `git` capability the model did not need, and every error path exiting
   zero so failure looked like success), and then **three further mechanisms invented only to supervise
-  it** — an erosion tripwire, a liveness check and a weekly digest.
+  it** — an erosion tripwire and a liveness check, surfaced by the daily divergence report.
 - It depended on vendor-specific CLI flags whose semantics could widen without erroring.
 - The requirement it served — improvement with few interactions — turned out to be served about as well
   by a deterministic mirror plus a periodic human pass, at a fraction of the moving parts.

@@ -50,7 +50,7 @@ Read these so your actions match the design (don't skip — they define the boun
 
 - [`docs/architecture.md`](docs/architecture.md) — the whole system.
 - [`docs/config-model.md`](docs/config-model.md) — the three-tier boundary (git / kb-sync / provision).
-- [`docs/portability.md`](docs/portability.md) — `SOUL.md + OPERATING.md` canonical + `CLAUDE.md`/`AGENTS.md` adapters.
+- [`docs/portability.md`](docs/portability.md) — `SOUL.md + OPERATING.md` canonical + the single `CLAUDE.md` bootstrap.
 - [`templates/kb-agent-shared/policies/approval-policy.md`](templates/kb-agent-shared/policies/approval-policy.md)
   — the approval gates you operate under.
 
@@ -110,10 +110,11 @@ for r in kb-agent-shared infra <BRAIN>; do
   ( cd "$r" && git init -q && git add -A && git commit -qm "seed from agentic-codex" )
   gh repo create "<ORG>/$r" --private --source="$r" --remote=origin --push
 done
-
-# c) wire the shared symlink each brain expects (sibling clone, not a submodule)
-ln -sfn ../kb-agent-shared "$BASE/<BRAIN>/shared"
 ```
+
+The brain template already carries the committed `shared -> ../kb-agent-shared` symlink (sibling
+clone, not a submodule), so cloning the brain next to `kb-agent-shared` makes it resolve — nothing to
+wire by hand. Verify: `ls -l "$BASE/<BRAIN>/shared"` resolves.
 
 > ⛔ **CONFIRM** before pushing anything that isn't obviously inert config, and before making any repo
 > public. Show the owner what you're about to push.
@@ -122,17 +123,24 @@ ln -sfn ../kb-agent-shared "$BASE/<BRAIN>/shared"
 
 ```bash
 cd ~/github/<ORG>/infra
-sudo ./scripts/install-host-services      # installs kb-sync + agentic-monitor + agentic-update-check timers
+sudo ./scripts/install-host-services      # installs + ENABLES kb-sync, agentic-monitor and the daily divergence check
 ```
 
-This creates `/etc/agentic-monitor.env` from the example. You'll set the real secret in step 6.
+Everything the installer ships is enabled — nothing is left opt-in ("enable it later" is a step that
+does not happen). The per-agent **memory-mirror** timers are the one gated exception: they commit and
+push unattended, so `provision-agent` enables each agent's own with an explicit disclosure (step 5),
+and `--enable-writers` exists for re-installing an existing fleet in one go.
+This also creates `/etc/agentic-monitor.env` from the example. You'll set the real secret in step 6.
 
 ## 5. Provision yourself onto the box
 
 `provision-agent` is the one bring-up/recovery command. It clones your brain + `kb-agent-shared`, wires
 the symlinks, installs the **root-owned** `claude-topic` wrapper + your systemd user unit + your
-`~/.claude/settings.json` (a real copy, not a live symlink), enables linger, and starts your topic
-sessions.
+`~/.claude/settings.json` (a real copy, not a live symlink), enables linger, **registers you in the
+fleet roster** (`infra/fleet-agents` — commit and push that change when it says so), starts your topic
+sessions, and **enables your nightly memory mirror**, printing exactly what that job writes and how to
+switch it off (it is an unattended writer: it commits `[mirror]` snapshots of the runtime's auto-memory
+into your brain and pushes them).
 
 ```bash
 cd ~/github/<ORG>/infra
@@ -159,8 +167,9 @@ Secrets never go in Git. Set them up out-of-band (see [`docs/secrets.md`](docs/s
   fresh-box restore is "log into Vaultwarden + re-wire", not "paste each secret by hand".
 - **Monitoring:** create a check on [healthchecks.io](https://healthchecks.io) (period ~5 min, grace
   ~20 min), connect it to **Telegram** (or your channel), and put its ping URL into
-  `/etc/agentic-monitor.env` as `HC_URL` (mode 600). Optionally add a second check for the weekly
-  `agentic-update-check` as `UPDATE_HC_URL`.
+  `/etc/agentic-monitor.env` as `HC_URL` (mode 600). Add a second check as `UPDATE_HC_URL` for the
+  daily divergence + update report — that channel carries drift findings and pending updates, so
+  wire it too.
 
 ```bash
 sudo agentic-monitor --dry-run          # see what it checks, no ping

@@ -6,30 +6,115 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
-## [Unreleased]
+## [0.6.0] — 2026-07-30 — The audit release: propagate everything the reference deployment learned, delete what drifted
+
+A full adversarial audit of both sides (the reference deployment and this repo) found that a dozen
+safety/correctness fixes had landed privately without their `[Unreleased]` line ever being written —
+so this release ports **all** of them, replaces that convention with a mechanical release-time diff
+(see CONTRIBUTING §Releases), and deletes the pieces whose absence was an improvement. Every
+assertion added here was proven against a deliberately-broken fixture before shipping; a CLEAN run
+was never accepted as evidence.
+
+### Security
+- **`bash -lc` eliminated from every script that runs commands as an agent** (`agentic-divergence-check`,
+  `memory-mirror`, `provision-agent` — `agentic-monitor` was fixed in 0.4.1). A login shell sources the
+  *audited agent's own* `~/.profile`, so one planted shell function made the drift detector report CLEAN
+  because the thing it audits told it to. Now `bash --noprofile --norc -c` with an explicit `PATH` that
+  deliberately excludes agent-writable dirs; the four identical `AGENT_PATH` definitions are themselves
+  asserted identical by the daily check. The `fleet-brain-change` runbook's copy-paste examples taught
+  the same hole for interactive cross-agent maintenance — hardened the same way.
+- **Registry keys are untrusted input to root's shell.** The divergence check reads `deploy/topics.tsv`
+  (agent-writable); keys are now charset-filtered and passed as positional arguments, never interpolated —
+  a crafted key could otherwise suppress its own drift finding.
 
 ### Fixed
-- **`provision-agent` would happily create a dangling `~/CLAUDE.md`.** It symlinked
-  `deploy/home-CLAUDE.md` unconditionally, so a brain repo without that file produced a broken symlink —
-  the agent boots with **no bootstrap at all** and nothing anywhere reports it. It now refuses, pointing
-  at the seed-the-brain step.
+- **`memory-mirror` committed and pushed work that was not its own.** Unscoped `git add`/`diff`/`commit`
+  swept an agent's staged half-finished edits into the nightly `[mirror]` commit, and an unconditional
+  `git push` published every pre-existing unpushed commit, unreviewed, on the timer's clock. All git
+  operations are now path-scoped to `memory/auto`, the pre-existing `ahead` count is read *before*
+  committing, and the job refuses to push anything but its own work.
+- **`provision-agent` could delete an agent's settings.** `rm -f settings.json && install` under
+  `set -e` meant a failed install exited with the permission allowlist *gone*. Now installs to a temp
+  name and `mv`s atomically. Also: the topic registry is parsed on literal TABs (a `read key name` split
+  on any whitespace and silently dropped a final line with no trailing newline); installing the fleet-wide
+  wrapper from a dirty or behind-origin infra clone is refused/warned instead of silent; a broken
+  provisioning now exits non-zero for the memory-mirror step too.
+- **`claude-topic` mutations of the versioned registry are now durable** (`reg_commit`): registering or
+  removing a topic commits and pushes `deploy/topics.tsv` path-scoped — with a checked `add` for the
+  brand-new-registry case and a refuse-to-push guard when the repo already has unpushed commits (pushing
+  would publish unrelated work and mask the divergence the daily check reports). A failed `new` now rolls
+  back all three of its half-built artifacts (registry row, enabled unit, stored sessionId) instead of
+  leaving orphans no check could see.
+- **`agentic-divergence-check` had fail-opens and blind spots**, all fixture-proven closed: a branch with
+  no upstream read as "in sync" (both rev-list counts silently 0); a failed fetch read as clean; a missing
+  roster was a stderr warning nothing reads. New assertions: `topics.tsv` tracked + matching HEAD +
+  agreeing both directions with the systemd units actually enabled; per-agent installed artifacts
+  (`claude-settings.json`, the topic unit, and **any** `deploy/*.service|*.timer`) match their sources —
+  and, in reverse, **no enabled user unit exists that the brain does not declare** (found live: an MCP
+  service existing only on the box, secret inline, that a rebuild would have silently lost); linger per
+  agent; a `memory-mirror@` timer enabled per roster agent — enumerated via `list-units`, because
+  `list-unit-files --state=enabled` returns nothing for template instances and the first version of that
+  reverse check was dead code that could never fire.
+- **`kb-sync` exited 0 on a 100% skip rate** — a dead token or GitHub outage was indistinguishable from a
+  clean run. All-repos-failed now exits 1 (the monitor's 2-cycle hysteresis absorbs transients); a single
+  skip stays non-fatal (an agent's WIP is normal).
+- **`install-host-services` left its own jobs disabled** and printed "[ok] timers enabled" even when
+  enabling failed. It now enables everything it ships (a checker that is off is worthless, and "enable it
+  later" is a step that does not happen), reports per-timer failures honestly, installs the `claude-topic`
+  wrapper (a fresh host previously got a manifest row pointing at a file the installer never wrote), and
+  derives `installed.manifest` from the installs themselves — the hand-maintained pair list (add an
+  install, forget the pair, artifact unverified forever) cannot drift anymore. Per-agent memory-mirror
+  timers stay gated behind `--enable-writers`/provisioning, with disclosure: they are unattended writers.
+- **`agentic-monitor` now sweeps failed per-agent *user* units** — an agent's own service (e.g. an MCP
+  server) could fail forever with no alarm — and reads the fleet roster as its source of truth, alarming
+  (while falling back to on-disk discovery) if the roster is missing rather than silently narrowing its
+  own scope.
+- **`claude-topic@.service` could park every topic in `failed` at boot.** `After=network-online.target`
+  is a no-op in the user manager (the target does not exist there), so topics start before the network;
+  with `StartLimitBurst=5`, five fast failures wedged the unit until a human ran `reset-failed` — on a
+  box whose point is unattended recovery. The start limit is gone (a permanently-broken topic flaps
+  loudly instead, which the monitor pages on), `RestartSec` is 10s, and the misleading dependency is
+  removed with a comment explaining why.
+- **The `shared` symlink the architecture describes was never actually committed** by the documented
+  bring-up (it was created *after* the seed commit and never pushed). The brain template now ships it.
+- The daily check's report line and the divergence-check/monitoring/patch-management docs described the
+  superseded weekly-report arrangement; all rewritten for the folded daily model.
 
-### Added
-- **Both bootstrap layouts are now supported**, so this is a per-brain choice rather than a fork:
-  *three-layer* (`deploy/home-CLAUDE.md` as the runtime bootstrap plus repo-root `CLAUDE.md`/`AGENTS.md`
-  adapters — what `kb-agent-template` ships, worth it if you genuinely run a second runtime) and
-  *single-file* (the brain's root `CLAUDE.md` **is** the bootstrap, with absolute paths that resolve from
-  any cwd). `deploy/home-CLAUDE.md` still wins when present, so the shipped template is unaffected.
-  `agentic-divergence-check` accepted only the first and reported the second as drift; it now accepts
-  either while still requiring that `~/CLAUDE.md` point into the agent's own brain repo.
-  The reference deployment moved to single-file on 2026-07-29: it runs one runtime, never added
-  `AGENTS.md`, and the two files had drifted — paying the duplication cost with none of the portability
-  benefit. Either choice is fine; making it by accident is not.
+### Changed
+- **One bootstrap layout, deliberately.** `deploy/home-CLAUDE.md` and `AGENTS.md` are **removed**; the
+  brain's root `CLAUDE.md` (absolute paths, symlinked to `~/CLAUDE.md`) is the single entry point, and
+  `provision-agent`/`agentic-divergence-check` accept only it. The wiring is honestly Claude-Code-only —
+  Remote Control is the reason this stack exists; the brain *content* remains portable Markdown
+  (`docs/portability.md` rewritten accordingly).
+- **The weekly `agentic-update-check` is folded into the daily divergence check** (deleted: its script and
+  units). One file checks and alarms only when there is something to act on, the drift findings ride in
+  the alert body itself, and the timer runs at 08:00 — after `apt-daily-upgrade`'s window, so a security
+  update about to be auto-installed is not reported as pending.
+- **The fleet roster is authoritative everywhere** (`kb-sync` refuses to run without it, the monitor
+  alarms on its absence, the divergence check reconciles it against disk both ways), and it is
+  **maintained by `provision-agent`**, not by hand — the template ships it empty.
+- `approval-policy.md`: commit **and push** are one atomic unit of work — an unpushed commit is not a
+  finished task (learned when push silently became optional busywork and clones drifted).
+- `agent-audit`: new step 0 — refresh `shared/` first, or a freshly-edited fleet-common skill executes
+  with its previous body; findings are now gathered into one batched decision instead of five
+  interruptions.
+- `fleet-brain-change`: a dirty `deploy/topics.tsv` is no longer "normal runtime dirt" to keep out of
+  your commit — after `reg_commit` it is the signature of a failed registry commit, and the runbook now
+  says to investigate it.
+- `CONTRIBUTING.md` §Releases: the release delta is **derived by diffing `templates/` against the
+  reference implementation**, hunk by hunk, instead of remembered via `[Unreleased]` entries written "at
+  judgement time" — this audit proved that convention does not fire.
+- `docs/reference-architecture.md`: the fleet is four agents (a finance/admin agent joined 2026-07-29),
+  and the secrets section now describes the *actual* state (per-user token files restored by hand;
+  Vaultwarden as the recommended store is the documented open item, not the achieved state).
+- `docs/monitoring.md`: documents the user-unit sweep and makes `MONITOR_EXPECT_CONTAINERS` maintenance
+  an owned step of your deploy/remove procedure, in both directions.
 
-> Working convention: the moment a change is judged **framework-level** (or is a safety/correctness fix,
-> which always propagates), its line goes here — before the code is generalized. A release is then: read
-> `[Unreleased]`, generalize what it lists, tag. This section existing is the mechanism; an empty one is
-> the correct steady state, not an omission.
+### Removed
+- `templates/infra/scripts/agentic-update-check` + its service/timer (folded, above).
+- `templates/kb-agent-template/deploy/home-CLAUDE.md` and `templates/kb-agent-template/AGENTS.md`
+  (single-file bootstrap, above).
+- The `[Unreleased]`-at-judgement-time working convention (replaced by the release-time diff).
 
 ## [0.5.0] — 2026-07-29 — Provisioning correctness, and stop steering people into a token that grants too much
 
@@ -265,6 +350,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.6.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.5.0
 [0.4.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.0

@@ -8,7 +8,7 @@
 #
 # It is one half of the two-tier memory model (see shared/policies/memory-policy.md):
 #   working tier  -> this script -> memory/auto/            (automatic, deterministic, durable)
-#   memory/auto/  -> the `agent-audit` skill -> distilled-memory.md   (curated, with <OWNER> present)
+#   memory/auto/  -> the `agent-audit` skill -> distilled-memory.md   (curated, with the owner present)
 #
 # NAMING (2026-07-25): this was called `dream`, which promised a nightly reflect-and-consolidate pass
 # it no longer performs. The model-driven consolidation was evaluated and NOT adopted — its value
@@ -24,7 +24,7 @@
 #     surfaces it. Silence must never be mistaken for success.
 #   * Commits are prefixed "[mirror]" — greppable and mass-revertible.
 #
-# Invoked per-agent by memory-mirror@<user>.timer (~05:00, staggered). Optional. Timer DISABLED by default; enable per agent: systemctl enable --now memory-mirror@<user>.timer
+# Invoked per-agent by memory-mirror@<user>.timer (~05:00, staggered). Canonical source: <ORG>/infra.
 set -uo pipefail
 
 usage(){ echo "usage: memory-mirror <agent-user>" >&2; exit 2; }
@@ -33,16 +33,24 @@ TODAY="$(date +%F)"
 RC=0
 log(){ echo "$(date -Is) memory-mirror/$U: $*"; }
 fail(){ log "ERROR: $*"; RC=1; }
-run(){ runuser -u "$U" -- bash -lc "$1"; }
+# NEVER `bash -lc`: a login shell sources the agent's OWN ~/.profile, so an agent-planted
+# `git() { return 0; }` there makes `git diff --cached --quiet` succeed and this script log
+# "mirror: no changes" every night while durability is silently OFF — the same hole
+# agentic-monitor closed on 2026-07-26. Explicit PATH, no profile, no rc.
+AGENT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+run(){ runuser -u "$U" -- env PATH="$AGENT_PATH" bash --noprofile --norc -c "$1"; }
 
 # Conservative secret pattern set. False positives are cheap (a skipped night + a look);
 # a committed credential is not.
 SECRET_RE='BEGIN [A-Z ]*PRIVATE KEY|oauth_token|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer [A-Za-z0-9._~+/-]{25,}|(password|passwd|api[_-]?key|secret|token)[[:space:]]*[:=][[:space:]]*[^[:space:]"'"'"']{12,}'
 scan(){ grep -rilE "$SECRET_RE" "$1" 2>/dev/null; }   # prints offending files, if any
 
-HOME_DIR="$(getent passwd "$U" | cut -d: -f6)" || { log "no such user"; exit 1; }
-BASE="$HOME_DIR/${WS:-github/${ORG:-<ORG>}}"
-BRAIN="$(ls -d "$BASE"/kb-agent-*-"$U" 2>/dev/null | head -1)"
+# `getent | cut` exits with cut's status, always 0, so this `||` branch was dead: a roster typo
+# reached the brain-repo check instead and reported the misleading "brain repo not found". Ask getent directly.
+getent passwd "$U" >/dev/null || { log "ERROR: no such user '$U'"; exit 1; }
+HOME_DIR="$(getent passwd "$U" | cut -d: -f6)"
+BASE="$HOME_DIR/github"
+BRAIN="$(ls -d "$BASE"/*/kb-agent-*-"$U" 2>/dev/null | head -1)"
 [ -n "$BRAIN" ] && [ -d "$BRAIN/.git" ] || { log "ERROR: brain repo not found under $BASE"; exit 1; }
 AUTOMEM="$HOME_DIR/.claude/projects/-home-$U/memory"
 
@@ -55,13 +63,30 @@ if [ -d "$AUTOMEM" ]; then
   else
     DEST="$BRAIN/memory/auto"
     run "mkdir -p '$DEST' && rsync -a --delete '$AUTOMEM/' '$DEST/'" || fail "mirror rsync failed"
-    run "cd '$BRAIN' && git add memory/auto"
-    if run "cd '$BRAIN' && git diff --cached --quiet"; then
+    run "cd '$BRAIN' && git add memory/auto" || fail "mirror: git add failed"
+    if run "cd '$BRAIN' && git diff --cached --quiet -- memory/auto"; then
       log "mirror: no changes"
-    elif run "cd '$BRAIN' && git commit -q -m '[mirror] runtime auto-memory ($TODAY)'"; then
-      run "cd '$BRAIN' && git push -q" && log "mirror: committed + pushed" || fail "mirror: push failed (commit is local only)"
     else
-      fail "mirror: commit failed"
+      # Read the unpushed count BEFORE adding a commit of our own, and PATH-SCOPE the commit.
+      # Two distinct hazards, both of them this job quietly publishing work that is not its own:
+      #   * `git commit` with no pathspec commits everything already staged, so an agent that had
+      #     staged an unrelated half-finished edit would find it swept into a "[mirror]" commit;
+      #   * `git push` publishes the whole branch, so any pre-existing unpushed commits would go
+      #     out too — unreviewed, on this timer's clock rather than the agent's. That is exactly
+      #     what 2026-07-27-commit-push-atomic-and-daily-drift-report rejected when it declined to
+      #     teach kb-sync to push. When the repo is already ahead we commit and stop, leaving the
+      #     divergence for agentic-divergence-check to report.
+      ahead="$(run "cd '$BRAIN' && git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 && git rev-list --count '@{u}..HEAD' 2>/dev/null || echo unknown")"
+      if run "cd '$BRAIN' && git commit -q -m '[mirror] runtime auto-memory ($TODAY)' -- memory/auto"; then
+        case "$ahead" in
+          0) run "cd '$BRAIN' && git push -q" && log "mirror: committed + pushed" \
+               || fail "mirror: push failed (commit is local only)" ;;
+          unknown) fail "mirror: committed but branch has no upstream — not pushing (commit is local only)" ;;
+          *) fail "mirror: committed but NOT pushed — repo already had $ahead unpushed commit(s) and pushing would publish them unreviewed" ;;
+        esac
+      else
+        fail "mirror: commit failed"
+      fi
     fi
   fi
 elif [ -d "$BRAIN/memory/auto" ] && [ -n "$(ls -A "$BRAIN/memory/auto" 2>/dev/null)" ]; then

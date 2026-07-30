@@ -8,7 +8,7 @@
 # Canonical source: <ORG>/infra (bin/claude-topic + systemd/claude-topic@.service).
 # The wrapper is installed to /usr/local/bin/claude-topic (root-owned, 0755) so no agent
 # can rewrite what another agent executes — it is NOT carried in kb-agent-shared and
-# NOT touched by kb-sync. See the Agentic Codex docs (config-model.md) (the provisioning security boundary).
+# NOT touched by kb-sync. See the Agentic Codex docs (config-model.md, the provisioning security boundary).
 #
 # Under systemd, sessions survive crashes (Restart=always) and reboot (user service
 # + `loginctl enable-linger <agent>`) with no tmux — Remote Control is the access path.
@@ -24,10 +24,18 @@
 
 [Unit]
 Description=Claude Code Remote Control topic %i
-After=network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=60
-StartLimitBurst=5
+# NO After=network-online.target here: this is a USER unit, and the user manager has no
+# network-online.target (verified: `systemctl --user list-units network-online.target` -> not-found),
+# so that dependency was a silent no-op. At boot this unit may start before the network is up; the
+# restart policy below is what actually absorbs that.
+# NO start limit: with the old StartLimitIntervalSec=60/Burst=5, five fast failures (e.g. claude
+# exiting quickly while the network is still down at boot) parked the unit in 'failed' until a human
+# ran reset-failed — on a box whose whole point is unattended recovery. A permanently-broken topic
+# (bad sessionId) now flaps forever instead, which is fine: `claude-topic run` dies fast and loudly
+# before exec in that case, and agentic-monitor's topics-down check pages on any enabled-but-not-
+# active topic within two cycles. An infinite retry every 10s is noise in the journal, not damage;
+# a unit stuck in 'failed' after a reboot is an outage.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -40,7 +48,7 @@ Environment=PATH=%h/.local/bin:%h/.local/node/bin:/usr/local/bin:/usr/bin:/bin
 # directly (Restart=always works). The wrapper is the root-owned /usr/local/bin/claude-topic.
 ExecStart=/usr/bin/script -qfec "/usr/local/bin/claude-topic run %i" /dev/null
 Restart=always
-RestartSec=5
+RestartSec=10
 TimeoutStopSec=20
 
 [Install]

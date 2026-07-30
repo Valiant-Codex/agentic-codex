@@ -7,7 +7,7 @@
 # human-run `agent-audit` skill, where a person sees the diff. See the script header for why the
 # model-driven nightly consolidation was evaluated and not adopted.
 #
-# Triggered by memory-mirror@%i.timer. 
+# Triggered by memory-mirror@%i.timer. Canonical source: <ORG>/infra.
 [Unit]
 Description=Nightly memory mirror for %i (runtime auto-memory -> git)
 After=network-online.target

@@ -1,7 +1,7 @@
 ---
 type: runbook
 title: Patch Management (OS / Dokploy / container images)
-description: Operating procedure for keeping the VPS patched — automatic OS security (unattended-upgrades, optional ESM + Livepatch), deliberate Dokploy + container-image updates (backup + review + deploy), surfaced weekly.
+description: Operating procedure for keeping the VPS patched — automatic OS security (unattended-upgrades, optional ESM + Livepatch), deliberate Dokploy + container-image updates (backup + review + deploy), surfaced daily by agentic-divergence-check.
 tags:
 - runbook
 - updates
@@ -19,7 +19,7 @@ This is the operating procedure.
 
 ## Cadence & visibility
 
-- **Weekly** `agentic-update-check` reports OS + Dokploy status to the `agentic-updates`
+- **Daily** — the updates section of `agentic-divergence-check` (08:00, after the apt-daily-upgrade window) reports OS + Dokploy status to the `agentic-updates`
   healthchecks.io check → Telegram, only when something is *actionable* (pending security, or a Dokploy
   release). A deferred reboot alone is reported, not alarmed.
 - **Renovate** opens image-digest-bump PRs on `<ORG>/infra`.

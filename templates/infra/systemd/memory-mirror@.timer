@@ -2,9 +2,12 @@
 # ~05:00 with up to 30 min random spread so per-agent runs don't all fire at once.
 # Persistent=true runs a missed job (box was off) on next boot.
 #
-# DISABLED by default (opt-in). Enable per agent once validated:
-#   sudo systemctl enable --now memory-mirror@<user>.timer
-# 
+# This is an UNATTENDED WRITER: the service it triggers commits and pushes to that agent's brain
+# repo. `provision-agent` enables one instance per agent as it onboards them, and prints what it
+# writes and how to switch it off; `install-host-services` does NOT enable any (pass
+# --enable-writers to do a whole existing fleet at once). Turn one off with:
+#   sudo systemctl disable --now memory-mirror@<user>.timer
+# Canonical source: <ORG>/infra.
 [Unit]
 Description=Nightly memory mirror for %i (~05:00, staggered)
 

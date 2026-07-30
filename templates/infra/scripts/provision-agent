@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # provision-agent — bring an agent up on THIS box from git + secrets.
 #
-# Tier-3 of the config model (see the Agentic Codex docs (config-model.md)): the explicit, reviewable step that
-# APPLIES what git carries — clones the brain + shared sibling, wires the symlinks, installs
-# the root-owned topic wrapper + per-user systemd unit, materializes settings as a real copy
-# (not a live symlink into the auto-synced repo), and enables linger + topic sessions. Secrets
-# are NOT in git: the agent's gh token (and any MCP secrets) must be restored out-of-band first —
-# the script fails fast if the gh token is missing.
+# Tier-3 of the config model (see the Agentic Codex docs, config-model.md): the explicit,
+# reviewable step that APPLIES what git carries — clones the brain + shared sibling,
+# wires the symlinks, installs the root-owned topic wrapper + per-user systemd unit,
+# materializes settings as a real copy (not a live symlink into the auto-synced repo),
+# registers the agent in the fleet roster, and enables linger + topic sessions + the
+# nightly memory mirror. Secrets are NOT in git: the agent's gh token (and any MCP
+# secrets) must be restored out-of-band first — the script fails fast if it is missing.
 #
 # Idempotent: safe to re-run on an already-provisioned agent (converges, no churn).
 # Run as the privileged root-agent user (self-elevates):
@@ -15,7 +16,8 @@
 set -euo pipefail
 
 # --- self-elevate (runuser + /usr/local/bin + linger need root) ---
-# Forward ORG/INFRA explicitly (don't rely on `sudo -E`, which a `!setenv` sudoers strips).
+# Forward the vars explicitly: a `!setenv` sudoers policy strips `sudo -E`, which would silently
+# fall back to defaults instead of failing.
 [ "$(id -u)" = 0 ] || exec sudo ORG="${ORG:-}" INFRA="${INFRA:-}" "$0" "$@"
 
 U="${1:?usage: [ORG=<github-org>] provision-agent <unix-user> <brain-repo>}"
@@ -29,12 +31,29 @@ if [ -z "${INFRA:-}" ]; then
 fi
 [ -n "${INFRA:-}" ] && [ -d "$INFRA/.git" ] || { echo "FATAL: cannot find an 'infra' git clone; set INFRA=/path/to/infra"; exit 1; }
 
-H="$(getent passwd "$U" | cut -d: -f6)" || true
-[ -n "${H:-}" ] || { echo "FATAL: no such user '$U'"; exit 1; }
+# `getent | cut` always exits 0 (the pipeline status is cut's), so `|| true` was dead and a
+# nonexistent user fell through to the emptiness check below. Ask getent directly instead.
+getent passwd "$U" >/dev/null || { echo "FATAL: no such user '$U'"; exit 1; }
+H="$(getent passwd "$U" | cut -d: -f6)"
+[ -n "${H:-}" ] || { echo "FATAL: user '$U' has no home directory"; exit 1; }
 BASE="$H/github/$ORG"
-asU() { runuser -u "$U" -- bash -lc "$*"; }
 
-echo "== provision-agent: $U ($BRAIN) on $(hostname -s), org=$ORG =="
+# NEVER `bash -lc` here. A login shell sources the target user's OWN ~/.profile, so an
+# agent-planted `git() { ...; }` or `gh() { ...; }` there would intercept every command this
+# provisioner runs as them — the identical hole agentic-monitor closed on 2026-07-26. Every binary
+# this script needs (git, gh, rsync, python3, systemctl) lives in the standard PATH, so hand it one
+# explicitly and skip profile/rc entirely.
+# The agent's own ~/.local/bin and ~/.local/node are deliberately NOT on this PATH, even though a
+# login shell had them: they are agent-writable, so putting them here would trade a shell-function
+# hijack for a planted-binary hijack. System dirs first would protect the binaries we call today, but
+# not a future call to `claude` or `node` — which would resolve to the agent-writable copy, i.e.
+# precisely the thing such an addition would be for. The constraint this imposes: nothing in these
+# scripts may invoke a tool that lives only under the agent's home. If that is ever needed, call it
+# by absolute path and check its ownership first.
+AGENT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+asU() { runuser -u "$U" -- env PATH="$AGENT_PATH" bash --noprofile --norc -c "$*"; }
+
+echo "== provision-agent: $U ($BRAIN) on $(hostname -s) =="
 
 # 0) Precondition — secret must already be restored (not carried in git).
 if ! asU 'gh auth status >/dev/null 2>&1'; then
@@ -47,8 +66,29 @@ if ! asU 'gh auth status >/dev/null 2>&1'; then
 fi
 
 # 1) Root-owned claude-topic wrapper (once, global; source in infra).
-install -m0755 -o root -g root "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic
-echo "  [ok] /usr/local/bin/claude-topic (root-owned)"
+#    This is a per-agent command with a FLEET-WIDE side effect: it rewrites the wrapper every agent
+#    executes, from whatever state the provisioner's infra clone happens to be in. Provisioning one
+#    new agent from a stale or locally-edited clone would silently change what all the others run.
+#    So say what is being installed, and refuse to do it silently from a clone that disagrees with
+#    origin.
+# `diff --quiet -- <path>` compares worktree against the INDEX, so a `git add`ed but uncommitted
+# wrapper passed this guard and got installed fleet-wide. Compare against HEAD. Reproduced.
+if ! git -C "$INFRA" diff --quiet HEAD -- bin/claude-topic 2>/dev/null; then
+  echo "  [FAIL] $INFRA/bin/claude-topic has uncommitted changes — installing it would push an"
+  echo "         unreviewed wrapper to ALL agents. Commit or revert it first."
+  exit 1
+fi
+INFRA_BEHIND="$(git -C "$INFRA" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo unknown)"
+if [ "$INFRA_BEHIND" != 0 ]; then
+  echo "  [WARN] $INFRA is ${INFRA_BEHIND} commit(s) behind origin — the wrapper about to be"
+  echo "         installed fleet-wide may be stale. 'git -C $INFRA pull --ff-only' first if unsure."
+fi
+if cmp -s "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic; then
+  echo "  [skip] /usr/local/bin/claude-topic already matches $INFRA/bin/claude-topic"
+else
+  install -m0755 -o root -g root "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic
+  echo "  [ok] /usr/local/bin/claude-topic (root-owned) — CHANGED, affects every agent"
+fi
 
 # 2) Repos — brain + kb-agent-shared sibling (clone if missing; else kb-sync keeps them fresh).
 asU "mkdir -p '$BASE'"
@@ -59,43 +99,41 @@ done
 
 # 3) Symlinks — shared, CLAUDE.md, topic (all idempotent).
 asU "ln -sfn ../kb-agent-shared '$BASE/$BRAIN/shared'"
-# ~/CLAUDE.md is what the running agent actually loads: the topic unit sets WorkingDirectory=%h, so cwd
-# is the home dir and this is the only bootstrap read in normal operation. Both brain layouts work
-# (see docs/portability.md, "The three bootstrap files, and which one actually runs"):
-#   three-layer  — deploy/home-CLAUDE.md is the runtime bootstrap, and the repo-root CLAUDE.md/AGENTS.md
-#                  are per-runtime adapters. What kb-agent-template ships; worth it if you genuinely run
-#                  a second, non-Claude runtime.
-#   single-file  — the brain's root CLAUDE.md IS the bootstrap, with absolute paths that resolve from any
-#                  cwd. One file, nothing to drift. Pick this if you only ever use one runtime.
-# deploy/home-CLAUDE.md wins when present, so the shipped template keeps working untouched.
-# Either way, NEVER symlink to a path that does not exist: a dangling ~/CLAUDE.md means the agent boots
-# with no bootstrap at all and nothing anywhere reports it.
-if asU "[ -f '$BASE/$BRAIN/deploy/home-CLAUDE.md' ]"; then
-  asU "ln -sfn '$BASE/$BRAIN/deploy/home-CLAUDE.md' '$H/CLAUDE.md'"; BOOTSTRAP="deploy/home-CLAUDE.md"
-elif asU "[ -f '$BASE/$BRAIN/CLAUDE.md' ]"; then
+# ~/CLAUDE.md is what the running agent actually loads: the topic unit sets WorkingDirectory=%h, so
+# cwd is the home dir and only THIS file is read in normal operation. ONE layout (2026-07-30):
+# the brain's root CLAUDE.md is the single bootstrap, written with absolute ~/github/... paths so it
+# resolves from any cwd. The old three-layer variant (deploy/home-CLAUDE.md + repo-root
+# CLAUDE.md/AGENTS.md adapters) was dropped fleet-wide: it duplicated the bootstrap for a second
+# runtime nobody runs, and the copies drifted. Never symlink to a path that does not exist: a
+# dangling ~/CLAUDE.md means the agent boots with NO bootstrap and nothing says so.
+if asU "[ -f '$BASE/$BRAIN/CLAUDE.md' ]"; then
   asU "ln -sfn '$BASE/$BRAIN/CLAUDE.md' '$H/CLAUDE.md'"; BOOTSTRAP="CLAUDE.md"
 else
-  echo "  [FAIL] $BRAIN has neither deploy/home-CLAUDE.md nor CLAUDE.md — refusing to create a"
-  echo "         dangling ~/CLAUDE.md. Seed the brain repo first (see runbooks/manage-agents.md step a2)."
+  echo "  [FAIL] $BRAIN has no root CLAUDE.md — refusing to create a dangling ~/CLAUDE.md."
+  echo "         Seed the brain repo first (see runbooks/manage-agents.md)."
   exit 1
 fi
 asU "mkdir -p '$H/.local/bin' && ln -sfn /usr/local/bin/claude-topic '$H/.local/bin/claude-topic'"
 # Skills: ~/.claude/skills is a WHOLE-DIRECTORY symlink to the brain's skills/, so every
 # skills/<name>/SKILL.md (including fleet-common ones symlinked from shared/) is discovered
-# with no per-skill registration. Without this an agent's skills are invisible to the runtime.
+# with no per-skill registration. Without this the agent's skills are invisible to the harness.
 asU "mkdir -p '$H/.claude' && [ ! -e '$H/.claude/skills' ] || [ -L '$H/.claude/skills' ] || mv '$H/.claude/skills' '$H/.claude/skills.bak.$(date +%s)'"
 asU "ln -sfn '$BASE/$BRAIN/skills' '$H/.claude/skills'"
 # Fleet-common skills: symlink every shared/skills/<name> into the brain's skills/, so they are
 # discovered through the whole-dir symlink above. Auto-discovers whatever the shared layer ships,
 # so adding a fleet-common skill needs no per-agent step. Idempotent; never clobbers a real dir.
 asU 'shopt -s nullglob; cd "'"$BASE/$BRAIN"'" && mkdir -p skills && for s in shared/skills/*/; do n=$(basename "$s"); [ -e "skills/$n" ] || ln -s "../shared/skills/$n" "skills/$n"; done'
-echo "  [ok] symlinks: shared, ~/CLAUDE.md -> $BOOTSTRAP, ~/.local/bin/claude-topic"
+echo "  [ok] symlinks: shared, ~/CLAUDE.md -> $BOOTSTRAP, ~/.local/bin/claude-topic, ~/.claude/skills"
 
 # 4) Settings — install the curated, portable source as a REAL copy (not a symlink).
 #    Auto-accumulated ~/.claude/settings.local.json is left untouched (per-machine, git-ignored).
 SRC_SETTINGS="$BASE/$BRAIN/deploy/claude-settings.json"
 if asU "[ -f '$SRC_SETTINGS' ]"; then
-  asU "mkdir -p '$H/.claude' && rm -f '$H/.claude/settings.json' && install -m0600 '$SRC_SETTINGS' '$H/.claude/settings.json'"
+  # Install to a temp path and mv, never `rm -f && install`: under `set -e` an install failure in
+  # the second form exits with the agent's settings.json DELETED — i.e. a failed provisioning
+  # leaves the agent worse off than not running this at all. `mv` within the same directory is
+  # atomic, so the file is either the old one or the new one, never absent.
+  asU "mkdir -p '$H/.claude' && install -m0600 '$SRC_SETTINGS' '$H/.claude/.settings.json.new' && mv '$H/.claude/.settings.json.new' '$H/.claude/settings.json'"
   echo "  [ok] ~/.claude/settings.json (real copy from deploy/claude-settings.json)"
 else
   echo "  [warn] $BRAIN has no deploy/claude-settings.json — skipping settings install"
@@ -107,13 +145,13 @@ install -m0644 -o "$U" -g "$U" "$INFRA/systemd/claude-topic@.service" "$H/.confi
 echo "  [ok] ~/.config/systemd/user/claude-topic@.service"
 
 # 6) Linger (survive reboot without login) + WAIT for the user bus.
-#    `loginctl enable-linger` returns as soon as the linger flag is set — it does NOT wait for systemd
-#    to bring up the per-user manager and its D-Bus socket. On the FIRST provisioning of a brand-new
-#    user, /run/user/<uid>/bus therefore does not exist yet, and step 7 raced it: every
-#    `systemctl --user` call died with "Failed to connect to bus", no topic was enabled, and the old
-#    step 7 still printed "[ok]". It only bites on a user's first run — i.e. exactly when you are
-#    provisioning — and the second run always looks fine, which is how it stays hidden.
-#    So: start the manager explicitly, then poll for the socket instead of assuming it.
+#    `loginctl enable-linger` returns as soon as the linger flag is set — it does NOT wait for
+#    systemd to have the per-user manager and its D-Bus socket up. On a FIRST provisioning of a
+#    brand-new user, /run/user/<uid>/bus therefore does not exist yet and step 7 raced it: every
+#    `systemctl --user` call died with "Failed to connect to bus", the topics were left disabled,
+#    and the old step 7 still printed "[ok]". Hit on 2026-07-29 provisioning the reference deployment's fourth agent. Only bites on
+#    the first run for a user — i.e. exactly when it matters. So: start the manager explicitly,
+#    then poll for the socket instead of assuming it.
 UID_N="$(id -u "$U")"
 loginctl enable-linger "$U" >/dev/null 2>&1 || true
 systemctl start "user@${UID_N}.service" >/dev/null 2>&1 || true
@@ -128,8 +166,8 @@ else
 fi
 
 # 7) Topic sessions — enable (+start) each key from the versioned registry.
-#    Reports the REAL state and fails loudly: a topic that did not come up is a broken provisioning,
-#    not a warning to scroll past.
+#    Reports the REAL state and fails loudly: a topic that did not come up is a broken
+#    provisioning, not a warning to scroll past.
 TOPIC_FAIL=0
 asU '
   set -u
@@ -138,8 +176,11 @@ asU '
   REG="'"$BASE/$BRAIN"'/deploy/topics.tsv"
   if [ ! -f "$REG" ]; then echo "  [warn] no deploy/topics.tsv — no topics enabled"; exit 0; fi
   rc=0
-  while read -r key name; do
-    case "$key" in ""|\#*) continue;; esac
+  # Read with awk on a literal TAB, matching claude-topic. `while read -r key name` split on ANY
+  # whitespace and silently dropped a final line with no trailing newline — so a hand-edited
+  # registry could lose its last topic here and in agentic-monitor while claude-topic still saw it.
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
     if systemctl --user enable --now "claude-topic@${key}.service" >/dev/null 2>&1; then
       st="$(systemctl --user is-active "claude-topic@${key}.service" 2>/dev/null || true)"
     else
@@ -149,9 +190,56 @@ asU '
       active|activating) echo "  [ok] topic ${key} ($st)";;
       *)                 echo "  [FAIL] topic ${key} (${st:-unknown})"; rc=1;;
     esac
-  done < "$REG"
+  done < <(awk -F"\t" "\$1 !~ /^[[:space:]]*(#|\$)/ {print \$1}" "$REG")
   exit $rc
 ' || TOPIC_FAIL=1
+
+# 8) Roster membership — the roster is what kb-sync / agentic-monitor / divergence-check iterate, so
+#    an agent that is provisioned but unlisted is silently unsynced and unmonitored while the monitor
+#    keeps reporting green. Registering it here is what makes provisioning a complete pipeline
+#    instead of a step someone has to remember to follow.
+ROSTER_SRC="$INFRA/fleet-agents"
+ROSTER_DST=/usr/local/share/agentic/fleet-agents
+if [ -f "$ROSTER_SRC" ]; then
+  if grep -qxF "$U" "$ROSTER_SRC"; then
+    echo "  [skip] '$U' already in $ROSTER_SRC"
+  else
+    printf '%s\n' "$U" >> "$ROSTER_SRC"
+    echo "  [ok] added '$U' to $ROSTER_SRC — COMMIT AND PUSH the infra repo so it is not local-only"
+  fi
+  # Refresh the installed copy the host scripts actually read.
+  install -D -m0644 "$ROSTER_SRC" "$ROSTER_DST"
+  echo "  [ok] $ROSTER_DST refreshed"
+else
+  echo "  [WARN] no $ROSTER_SRC — cannot register '$U'; kb-sync/monitor/divergence-check may not cover it"
+fi
+
+# 9) Nightly memory mirror for this agent. Enabled by DEFAULT: it is the only thing that makes the
+#    agent's runtime auto-memory durable, and leaving it opt-in is how the reference deployment's fourth agent ran for a day with
+#    durability silently off and no check able to see it. It is a deterministic rsync+git with a
+#    secret scan and no model in the loop — the reason it was safe to run unattended in the first
+#    place. Disable deliberately with: systemctl disable --now memory-mirror@$U.timer
+#    This is an UNATTENDED WRITER (it commits and pushes to the brain repo nightly), so say plainly
+#    what it will write and how to switch it off — that disclosure is what OPERATING.md's gate asks
+#    for, and provisioning is the explicit, human-invoked moment where it belongs.
+MIRROR_FAIL=0
+if [ -f /etc/systemd/system/memory-mirror@.timer ]; then
+  echo "  -- enabling the nightly memory mirror for '$U' --"
+  echo "     writes: ~$U/.claude/projects/-home-$U/memory  ->  <brain>/memory/auto/, then commits"
+  echo "             '[mirror] …' and pushes. Secret-scans before staging; aborts on a hit."
+  echo "     off:    sudo systemctl disable --now memory-mirror@${U}.timer"
+  if err_out="$(systemctl enable --now "memory-mirror@${U}.timer" 2>&1)"; then
+    echo "  [ok] memory-mirror@${U}.timer enabled (nightly ~05:00, staggered)"
+  else
+    echo "  [FAIL] could not enable memory-mirror@${U}.timer — this agent's memory is NOT durable"
+    echo "$err_out" | sed 's/^/         /'
+    MIRROR_FAIL=1
+  fi
+else
+  echo "  [FAIL] memory-mirror@.timer not installed — run install-host-services first;"
+  echo "         until then '$U' has no durable memory."
+  MIRROR_FAIL=1
+fi
 
 echo "== done. Reminder — restore out-of-band (not in git): MCP secrets in ~$U/.claude.json,"
 echo "   any ~$U/.config/$U/secrets.env, and Node in ~$U/.local/node if the agent uses npx-based MCP. =="
@@ -160,8 +248,15 @@ if [ "$TOPIC_FAIL" != 0 ]; then
   echo
   echo "!! At least one topic did NOT come up. The agent is provisioned but not reachable."
   echo "   Inspect as the agent:  systemctl --user status 'claude-topic@*'  and  journalctl _UID=$UID_N -n 50"
-  echo "   If the agent's first interactive login happened AFTER the topic first started, its stored"
-  echo "   sessionId has no transcript on disk and 'claude-topic restart' will refuse: use"
-  echo "   'claude-topic restart --new <key>' to start a fresh conversation."
+  echo "   A topic whose stored sessionId has no transcript on disk needs: claude-topic restart --new <key>"
+  exit 1
+fi
+
+# A printed [FAIL] with exit 0 is the same defect this batch was written to remove: the whole premise
+# is that an agent ran for a day with durability silently off. So make it non-zero.
+if [ "$MIRROR_FAIL" != 0 ]; then
+  echo
+  echo "!! '$U' is provisioned and reachable, but its memory is NOT durable — nothing will carry its"
+  echo "   runtime auto-memory into git. Fix the timer before treating this provisioning as done."
   exit 1
 fi

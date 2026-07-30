@@ -7,7 +7,7 @@
 # it is root-owned at /usr/local/bin/claude-topic (canonical source:
 # <ORG>/infra bin/claude-topic) and discovers the calling agent's own repo
 # for its topic registry. The command is named after the unit it drives.
-# `topic` remains as a compatibility symlink.
+# (the bare `topic` compatibility symlink was removed on 2026-07-30).
 #
 # Error-handling contract (the failure modes this guards against):
 #   - an unknown/typo'd key must never reach systemctl: `claude-topic@<typo>` is a
@@ -47,15 +47,16 @@ die() { err "$*"; exit 1; }
 # This agent's own repo: kb-agent-<role>-<this Unix username>, pinned to $(id -un)
 # rather than a bare kb-agent-*-* glob — kb-agent-shared/kb-agent-template can
 # never match this (neither ends in the username), so no separate exclusion is
-# needed. (An earlier `grep -vE 'kb-agent-shared|kb-agent-template'` exclusion was
-# actually dead code: those two names are single-token after the prefix and never
-# matched `kb-agent-*-*` to begin with. Its unanchored substring form was also a
-# bypass in its own right: renaming the real repo to include "kb-agent-shared" as a
-# substring hid it from the exclusion entirely.) Even pinned to this user, more than
-# one candidate can still exist (e.g. a planted `kb-agent-evil-<user>` alongside the
-# real one, from a prompt injection with write access to this agent's own home) —
-# refuse rather than guess which is real, since the loser's registry/display-name
-# would otherwise silently feed into `claude`.
+# needed. (The old `grep -vE 'kb-agent-shared|kb-agent-template'` was actually dead
+# code: those two names are single-token after the prefix and never matched
+# `kb-agent-*-*` to begin with — see scripts/kb-sync's own comment on this. Its
+# unanchored substring form was also a bypass in its own right: renaming the real
+# repo to include "kb-agent-shared" as a substring hid it from the exclusion
+# entirely.) Even pinned to this user, more than one candidate can still exist
+# (e.g. a planted `kb-agent-evil-<user>` alongside the real one, from a prompt
+# injection with write access to this agent's own home) — refuse rather than guess
+# which is real, since the loser's registry/display-name would otherwise silently
+# feed into `claude`.
 # NOTE: scripts/agentic-monitor keeps an independent copy of this same resolution —
 # keep both in sync. It additionally alarms on 0 candidates and "repo resolved but
 # no topics.tsv", which this script does not need to duplicate: those already
@@ -164,6 +165,70 @@ del_sid()   { tsv_delete "$STATE" "$1"; }
 reg_del()   { tsv_delete "$REG" "$1"; }
 reg_add()   { tsv_append_if_absent "$REG" "$1" "$2"; }
 
+# The registry is a GIT-TRACKED file (deploy/topics.tsv): the portable, versioned declaration
+# of which topics exist, which `provision-agent` reads to recreate them on a rebuilt box. So a
+# mutation written only to the working tree is NOT durable — it holds until the next reprovision
+# and then silently reverts to whatever HEAD says. (It also stalls this repo's kb-sync
+# `pull --ff-only` the moment the remote touches the same file; unrelated dirt does not, but a
+# collision on topics.tsv itself does.) Commit and push the one file we changed, mirroring
+# scripts/memory-mirror.
+#
+# PATH-SCOPED on purpose: `git commit -- <path>` commits the working-tree version of that single
+# file and leaves everything else alone — including an agent's staged, half-finished work
+# elsewhere in its own brain. Never `git add -A` here.
+#
+# NEVER FATAL: by the time this runs the systemd side already succeeded, so a git failure must
+# warn loudly rather than unwind a live topic. The daily agentic-divergence-check is the backstop
+# for a commit that did not get pushed.
+reg_commit() {  # reg_commit <verb> <key>
+  local verb="$1" key="$2" repo="${AGENT_REPO:-}"
+  if [ -z "$repo" ] || ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+    err "warning: no git repo at '${repo:-<unset>}' — ${REG##*/} change is local only"
+    return 0
+  fi
+  # A brand-new registry is untracked, and `git commit -- <path>` refuses an unknown pathspec.
+  # The `add` must be checked: on failure (a .gitignore match, a held index.lock, permissions) the
+  # `diff --quiet HEAD -- <untracked path>` below returns 0 — "no change" — so an unchecked add
+  # turns the one case this branch exists for into a completely silent local-only mutation.
+  if ! git -C "$repo" ls-files --error-unmatch -- "$REG" >/dev/null 2>&1; then
+    if ! git -C "$repo" add -- "$REG" >/dev/null 2>&1; then
+      err "warning: ${REG##*/} is untracked and could not be staged (gitignored? index locked?) — change is local only"
+      return 0
+    fi
+  fi
+  if git -C "$repo" diff --quiet HEAD -- "$REG" 2>/dev/null; then
+    return 0                                   # nothing actually changed
+  fi
+  # Whether it is safe to push is decided BEFORE we add a commit of our own. `git push` publishes
+  # the whole branch, not our one path-scoped commit: if the agent already had unpushed commits,
+  # pushing here would publish that unrelated, possibly half-finished work — and would silently
+  # clear the `ahead > 0` condition agentic-divergence-check exists to report. So when the repo is
+  # already ahead we commit and stop, leaving the pre-existing divergence visible to the daily
+  # check instead of resolving it on the agent's behalf.
+  local pre_ahead=0
+  if git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+    pre_ahead="$(git -C "$repo" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+  else
+    pre_ahead=unknown                          # no upstream: never guess, never push
+  fi
+  if ! git -C "$repo" commit -q -m "[topic] $verb $key" -- "$REG" 2>/dev/null; then
+    err "warning: could not commit ${REG##*/} — change is local only; commit it by hand"
+    return 0
+  fi
+  if [ "$pre_ahead" = unknown ]; then
+    err "warning: ${REG##*/} committed but the branch has no upstream — not pushing; set one and push by hand"
+    return 0
+  fi
+  if [ "$pre_ahead" -gt 0 ]; then
+    err "warning: ${REG##*/} committed but NOT pushed — this repo already had $pre_ahead unpushed commit(s) and pushing would publish them too; review and push by hand"
+    return 0
+  fi
+  if ! git -C "$repo" push -q 2>/dev/null; then
+    err "warning: ${REG##*/} committed but push failed — repo is ahead of origin; push it by hand"
+  fi
+  return 0
+}
+
 # `claude --resume <id>` hard-fails ("No conversation found with session ID") when the
 # transcript was never written — e.g. a session killed seconds after creation. Under
 # Restart=always that fail-loops the unit into 'failed' via StartLimitBurst, so check first.
@@ -176,7 +241,7 @@ transcript_exists() {
 
 usage() {
   # $PROG, not a hardcoded name: this is reachable as `claude-topic` or as the
-  # legacy `topic` symlink, and the help should match how it was invoked.
+  # any future alias, and the help should match how it was invoked.
   cat <<EOF
 Usage (systemd-managed topics — no tmux):
   $PROG list                        list topics: key, state, sessionId, display name
@@ -311,17 +376,46 @@ cmd_new() {
     die "'$key' is already registered as \"$existing\" — pick another key, or edit $REG to rename it"
   if [ "$(svc_state "$key")" = active ]; then die "topic '$key' is already running — use '$PROG restart $key'"; fi
   sid="$(state_sid "$key")"
+  local inherited_sid="$sid"        # remember whether the sessionId predates this invocation
   [ -z "$sid" ] || err "note: '$key' has a stored sessionId ($sid) — it will RESUME that conversation, not start a blank one"
 
+  # The row must exist BEFORE the unit starts — claude-topic@.service resolves the display name
+  # from the registry at startup — so it cannot simply be written after success. But a failed start
+  # then used to leave the row behind, uncommitted: an orphan entry for a topic that does not run,
+  # which agentic-monitor reports as down and which leaves the brain repo dirty. A dirty worktree
+  # makes kb-sync's `pull --ff-only` fail for that clone as soon as origin touches the same file,
+  # on a log line nobody reads. So: remember whether WE added it, and roll back on every failure
+  # path. `added` is 0 when the key was already registered with this same display name (reg_add is
+  # a no-op then) — rolling back in that case would delete a pre-existing topic.
+  local added=0
+  [ -n "$existing" ] || added=1
+  new_fail() {  # new_fail <message> — undo our own half-built topic, then die
+    # Undo BOTH sides. Removing only the registry row would leave the opposite orphan — an enabled
+    # unit with no registry entry — and agentic-monitor deliberately skips topics that aren't
+    # enabled, so it reports nothing either way. Leave the box in the state it was in before.
+    systemctl --user disable --now "$(svc "$key")" >/dev/null 2>&1 || true
+    systemctl --user reset-failed "$(svc "$key")" >/dev/null 2>&1 || true
+    # And the sessionId: `save_sid` runs before the final active check, so without this a failed
+    # `new` left a stored sessionId for a key with no registry row — a third orphan, and one no
+    # check can see because topics.state is deliberately not versioned. Only clear it if we did not
+    # inherit it: a pre-existing sessionId belongs to an earlier conversation and is the thing a
+    # later `new`/`restart` is meant to resume.
+    [ -n "$inherited_sid" ] || del_sid "$key"
+    [ "$added" = 1 ] && reg_del "$key"
+    die "$*"
+  }
   reg_add "$key" "$name"
   systemctl --user reset-failed "$(svc "$key")" 2>/dev/null || true
-  systemctl --user enable --now "$(svc "$key")" || die "failed to start $(svc "$key") — journalctl --user -u $(svc "$key") -n 50"
+  systemctl --user enable --now "$(svc "$key")" || \
+    new_fail "failed to start $(svc "$key") — journalctl --user -u $(svc "$key") -n 50"
   # Capture the sessionId claude just created so future restarts --resume it.
   sid="$(wait_session_id "$key")"
   if [ -n "$sid" ]; then save_sid "$key" "$sid"; else
     err "warning: no sessionId visible after 15s — run '$PROG remember $key' once it registers"
   fi
-  [ "$(svc_state "$key")" = active ] || die "'$key' is '$(svc_state "$key")' after start — journalctl --user -u $(svc "$key") -n 50"
+  [ "$(svc_state "$key")" = active ] || \
+    new_fail "'$key' is '$(svc_state "$key")' after start — journalctl --user -u $(svc "$key") -n 50"
+  reg_commit register "$key"
   echo "started '$key' (\"$name\") under systemd; sessionId: ${sid:-<pending>}"
 }
 
@@ -422,6 +516,7 @@ cmd_remove() {
   systemctl --user disable --now "$(svc "$key")" >/dev/null 2>&1 || true
   systemctl --user reset-failed "$(svc "$key")" >/dev/null 2>&1 || true
   reg_del "$key"; del_sid "$key"
+  reg_commit remove "$key"
   echo "removed '$key' — unregistered from ${REG##*/}, cleared state, unit disabled. Gone for good."
 }
 

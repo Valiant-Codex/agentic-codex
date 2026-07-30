@@ -19,7 +19,14 @@ alert.
 
 Checks include: Docker daemon up and no unhealthy/restarting containers; **critical containers present**
 (catches an exited/vanished reverse proxy) and **HTTP liveness** (catches "up but broken"); disk usage;
-available memory; failed systemd units; `kb-sync` freshness; and **every agent's topic sessions active**.
+available memory; failed **system** units; failed **per-agent user units** (an agent's own MCP-server
+service can fail where nothing else looks); `kb-sync` freshness; a missing/empty fleet roster; and
+**every agent's topic sessions active**.
+
+`MONITOR_EXPECT_CONTAINERS` is declarative on purpose — no code can infer whether an absent container
+is intentional. Own its maintenance in your deploy procedure: **add a name substring when you deploy
+a production service, remove it when you tear one down** (a stale entry alarms forever, which teaches
+you to ignore the monitor).
 
 Two properties keep it trustworthy:
 - **Hysteresis** — a problem must persist **2 cycles** before a `/fail`, so a single blip doesn't page you.
@@ -29,11 +36,11 @@ Two properties keep it trustworthy:
 ## Setup (done during bring-up)
 
 1. `sudo ./scripts/install-host-services` installs the `agentic-monitor` timer (plus `kb-sync` and the
-   weekly `agentic-update-check`).
+   daily update section of `agentic-divergence-check`).
 2. Create a check on healthchecks.io — **period ~5 min, grace ~20 min** — and connect it to **Telegram**
    (or email/Slack/etc.).
 3. Put its ping URL into `/etc/agentic-monitor.env` (mode 600, **not in Git**) as `HC_URL`.
-   Optionally add a second check as `UPDATE_HC_URL` for the weekly update report — that report feeds the
+   Optionally add a second check as `UPDATE_HC_URL` for the daily divergence + update report — it feeds the
    [patch-management runbook](../templates/kb-agent-shared/runbooks/patch-management.md) (security auto,
    feature bumps deliberate).
 
@@ -50,7 +57,7 @@ MONITOR_HTTP_CHECKS="traefik=http://localhost:80 dokploy=http://localhost:3000"
 - **Test detection, no ping:** `sudo agentic-monitor --dry-run`.
 - **Test the alert chain:** `curl --data-raw "test" "$HC_URL/fail"` then `curl "$HC_URL"` (clears).
 - **When it fires:** read the Telegram body — on a `/fail` it names what broke
-  (`containers:…`, `disk:92%`, `topics-down[<agent>]:…`, `kb-sync:stale(50m)`, `failed-units:…`). A
+  (`containers:…`, `disk:92%`, `topics-down[<agent>]:…`, `user-units[<agent>]:…`, `kb-sync:stale(50m)`, `failed-units:…`). A
   **missed heartbeat** (no body) means the box/Docker/network/monitor is down — inspect the host
   directly.
 - **Silence known noise:** add substrings to `MONITOR_EXCLUDE_CONTAINERS` / `MONITOR_EXCLUDE_UNITS` so a

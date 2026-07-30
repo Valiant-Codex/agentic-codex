@@ -29,7 +29,7 @@ context/             ← stable background specific to this agent (optional; own
 memory/              ← durable memory (distilled-memory.md + episodic/); see policies/memory-policy.md
 tools/               ← tool/MCP registry (README.md); secrets are ${ENV} placeholders, never committed
 skills/              ← folder-per-skill (<name>/SKILL.md); fleet-common ones symlink shared/skills/*
-deploy/              ← home-CLAUDE.md, topics.tsv, claude-settings.json (runtime wiring)
+deploy/              ← topics.tsv, claude-settings.json (+ any per-agent systemd user units)
 .mcp.json            ← MCP servers with ${ENV} placeholders — no secrets
 shared -> ../kb-agent-shared   ← committed symlink to the sibling clone (global governance)
 ```
@@ -45,7 +45,7 @@ Identity is split so durable "who you are" changes rarely and separately from mu
   to which agent), *Human-Confirm Gates*, *Autonomous-OK*, *Trust / Threat Model*, *Source Of Truth*,
   *Bootstrap Contract*.
 - **CLAUDE.md**: a thin (~15-line) adapter that loads SOUL + OPERATING + `shared/owner-profile.md` and
-  states the always-on untrusted-content rule. (An optional `AGENTS.md` sibling adapter serves
+  states the always-on untrusted-content rule. (It serves
   non-Claude harnesses; add it only when a second framework is actually in use.)
 - Who <OWNER> and the fleet are lives once, fleet-wide, in `shared/owner-profile.md` — never
   duplicated per agent.

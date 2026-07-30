@@ -1,9 +1,0 @@
-[Unit]
-Description=Run agentic-update-check weekly (Monday 08:00)
-
-[Timer]
-OnCalendar=Mon *-*-* 08:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target

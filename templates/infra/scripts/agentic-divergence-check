@@ -1,46 +1,84 @@
 #!/usr/bin/env bash
-# agentic-divergence-check — detect structural drift across the agent fleet (security review F12).
+# agentic-divergence-check — detect structural drift across the agent fleet (security review F12),
+# PLUS the weekly-turned-daily update-availability report (formerly the separate
+# agentic-update-check timer, folded in 2026-07-27: one file that checks and alarms only when it
+# finds something, instead of a silent daily detector feeding a once-a-week digest).
 #
 # READ-ONLY: it reports, it never fixes. Fixes go through `agent-audit` or a human.
-# Exits 0 when clean, 1 when drift is found, so the systemd unit lands in `failed` and
-# agentic-monitor surfaces it.
+# Exits 0 when clean, 1 when there is something to look at (drift OR a pending update), so the
+# systemd unit lands in `failed` but SuccessExitStatus=1 (see the .service file) keeps
+# agentic-monitor from paging on it — this script's own healthchecks.io ping is the alarm path for
+# both concerns, not the systemd-failed-unit path (that stays reserved for the checker itself
+# breaking: any exit code other than 0/1).
 #
-# DESIGN — self-maintaining invariants only, no vocabulary.
-# An earlier version grepped for stale *command patterns* (`git submodule`, `tmux …`,
-# `system-prompt`). That was a maintenance trap: it encoded the 2026 stack, nobody would prune it
-# as technologies change, it would eventually pass because it no longer matched anything (false
-# confidence), and it could even flag an agent's own true memory of a past migration. Judging
-# "this doc describes the old way" is semantic work and belongs to `agent-audit` (human, periodic).
-# What remains here are checks that stay true regardless of which technologies the fleet uses:
-#   - the brain has the shape the framework declares (identity files, adapters, folder-skills);
-#   - every symlink resolves, every referenced path exists (renames self-report);
-#   - skill metadata matches its folder (harness discoverability);
-#   - each clone agrees with its origin (nothing unpushed/behind — catches silent push/sync failure);
-#   - the live ~/CLAUDE.md entry point resolves and names files that exist;
-#   - the roster and the brains on disk agree (no agent silently uncovered).
+# DESIGN — two classes of check, and be honest about which is which.
 #
-# Managed by agentic-divergence-check.timer (daily). Read-only; see docs/divergence-check.md.
+# 1. STRUCTURAL INVARIANTS (self-maintaining, no vocabulary): the brain has the declared shape,
+#    every symlink resolves, every referenced path exists, skill metadata matches its folder, each
+#    clone agrees with its origin, the roster and the brains on disk agree. These stay true
+#    regardless of which technologies the fleet uses and never need pruning. An earlier version
+#    also grepped for stale *command patterns* (`git submodule`, `tmux …`) — a maintenance trap:
+#    it encoded the 2026 stack, nobody would prune it, it would eventually pass because it matched
+#    nothing (false confidence), and it could flag an agent's true memory of a past migration.
+#    Judging "this doc describes the old way" is semantic work for `agent-audit` (human, periodic).
+#
+# 2. CURRENT-STACK ASSERTIONS (vocabulary, deliberately): topics.tsv vs the systemd units actually
+#    enabled, per-agent installed artifacts (claude-settings, the topic unit), linger, the
+#    memory-mirror/host timers, and the updates section at the bottom (apt, Dokploy). These encode
+#    the systemd/Claude-Code runtime of today because there is no vocabulary-free way to assert
+#    them — whoever changes the stack must change these checks with it, and whoever prunes this
+#    file should know that class 1 will outlive class 2 by design.
+#
+# Managed by agentic-divergence-check.timer (daily, after the nightly memory mirror).
+# Canonical source: <ORG>/infra.
 set -uo pipefail
 
 ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
-# Workspace layout: brains live at ~<user>/$WS/kb-agent-<role>-<user>. Override ORG/WS if you differ.
-ORG="${ORG:-<ORG>}"
-WS="${WS:-github/$ORG}"
+# Brains live at ~<user>/github/<org>/kb-agent-<role>-<user>. Every org dir under ~/github is
+# swept, so no ORG parameter is needed here — a literal placeholder in a path would have made the
+# whole checker silently find nothing and report CLEAN.
+CONF=/etc/agentic-monitor.env
+# shellcheck disable=SC1090
+[ -r "$CONF" ] && . "$CONF"
 FAILS=0
-drift(){ echo "  [DRIFT] $*"; FAILS=$((FAILS+1)); }
+DRIFT_LOG=""
+drift(){ echo "  [DRIFT] $*"; FAILS=$((FAILS+1)); DRIFT_LOG="${DRIFT_LOG}${DRIFT_LOG:+; }$*"; }
+
+# Every command this checker runs AS an agent goes through here. NEVER `bash -lc`: a login shell
+# sources the agent's own ~/.profile, and a planted `git() { return 0; }` there makes every
+# rev-list/remote-update below succeed vacuously — i.e. the fleet's drift detector reports CLEAN
+# because the thing it is auditing told it to. Verified reproducible. agentic-monitor closed this on
+# 2026-07-26; this script, memory-mirror and provision-agent kept the hole until 2026-07-30.
+AGENT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+as_agent(){ runuser -u "$1" -- env PATH="$AGENT_PATH" bash --noprofile --norc -c "$2"; }
+
+# Source of the per-agent artifacts provision-agent installs as real copies (checked per brain
+# below): discover the first infra clone, override with INFRA_DIR=/path/to/infra.
+if [ -z "${INFRA_DIR:-}" ]; then
+  for _d in /home/*/github/*/infra; do [ -d "$_d/.git" ] && INFRA_DIR="$_d" && break; done
+fi
+INFRA_DIR="${INFRA_DIR:-/nonexistent}"
+# Repos that hold root-installed code and fleet governance. Unlike a brain or an app repo, nobody
+# authors in these interactively for long, and a dirty worktree here is not work-in-progress — it is
+# either an un-committed change to code that runs as root, or the state that makes kb-sync skip the
+# repo. provision-agent appends to infra/fleet-agents and asks a human to commit it, so this is the
+# assertion that keeps that from becoming the next silent manual step.
+STRICT_CLEAN_REPOS="${STRICT_CLEAN_REPOS:-infra kb-agent-shared}"
 
 echo "$(date -Is) agentic-divergence-check"
 
 if [ -f "$ROSTER_FILE" ]; then
   AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t')"
 else
-  echo "  [WARN] roster $ROSTER_FILE missing — falling back to on-disk discovery (fleet scripts may under-cover)"
+  # Not a warning. The roster is what kb-sync and agentic-monitor iterate; if it is gone they are
+  # each guessing (or now failing), and that is a fleet-wide coverage failure, not a note.
+  drift "roster: $ROSTER_FILE is MISSING — kb-sync/agentic-monitor cannot know the fleet; run install-host-services"
   AGENTS=""
 fi
 
 # --- roster vs reality: a brain on disk that nobody sweeps is worse than a missing one ---
-DISCOVERED="$(for h in /home/*; do u="$(basename "$h")"; [ -d "$h/$WS" ] || continue;
-  ls -d "$h/$WS"/kb-agent-*-"$u" >/dev/null 2>&1 && echo "$u"; done | sort -u)"
+DISCOVERED="$(for h in /home/*; do u="$(basename "$h")"; [ -d "$h/github" ] || continue;
+  ls -d "$h"/github/*/kb-agent-*-"$u" >/dev/null 2>&1 && echo "$u"; done | sort -u)"
 [ -z "$AGENTS" ] && AGENTS="$DISCOVERED"
 for u in $DISCOVERED; do
   grep -qx "$u" <<< "$AGENTS" || drift "roster: '$u' has a brain repo on disk but is not in $ROSTER_FILE (uncovered by fleet scripts)"
@@ -52,7 +90,7 @@ done
 check_brain(){ # <user> <repo>
   local u="$1" r="$2" n; n="$(basename "$r")"
   echo "== $n =="
-  local asu; asu(){ runuser -u "$u" -- bash -lc "$1"; }
+  local asu; asu(){ as_agent "$u" "$1"; }
 
   # 1) Declared brain shape (v2 identity split) + adapter wiring.
   for f in SOUL.md OPERATING.md CLAUDE.md; do [ -f "$r/$f" ] || drift "$n: missing $f"; done
@@ -98,28 +136,95 @@ check_brain(){ # <user> <repo>
     # refs — both 0 — so the check built to catch silent push failure fails silently itself.
     drift "$n: could not fetch from origin (expired token? network?) — sync state is UNKNOWN, not clean"
   fi
-  local ahead behind
-  ahead="$(asu "cd '$r' && git rev-list --count @{u}..HEAD 2>/dev/null" || echo 0)"
-  behind="$(asu "cd '$r' && git rev-list --count HEAD..@{u} 2>/dev/null" || echo 0)"
-  [ "${ahead:-0}" -gt 0 ] && drift "$n: $ahead commit(s) unpushed (push failing? clone diverging)"
-  [ "${behind:-0}" -gt 0 ] && drift "$n: $behind commit(s) behind origin (kb-sync skipping this repo?)"
+  # A branch with NO upstream made both counts come out 0 — `git rev-list @{u}..HEAD` errors, stderr
+  # was discarded, `|| echo 0` supplied the reassuring answer. So an agent that ran `git checkout -b`
+  # got a repo that kb-sync freezes (pull --ff-only also fails) AND that this check certified clean.
+  # Verified. Ask about the upstream first and treat its absence as drift in its own right.
+  local ahead behind branch
+  if ! asu "cd '$r' && git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1"; then
+    branch="$(asu "cd '$r' && git rev-parse --abbrev-ref HEAD 2>/dev/null" || echo '?')"
+    drift "$n: branch '$branch' has no upstream — sync state is UNKNOWN and kb-sync skips this repo"
+  else
+    ahead="$(asu "cd '$r' && git rev-list --count '@{u}..HEAD' 2>/dev/null" || echo 0)"
+    behind="$(asu "cd '$r' && git rev-list --count 'HEAD..@{u}' 2>/dev/null" || echo 0)"
+    [ "${ahead:-0}" -gt 0 ] && drift "$n: $ahead commit(s) unpushed (push failing? clone diverging)"
+    [ "${behind:-0}" -gt 0 ] && drift "$n: $behind commit(s) behind origin (kb-sync skipping this repo?)"
+  fi
+
+  # --- The topic registry is versioned state that a CLI mutates, so it drifts in three ways ---
+  # (uncommitted / not matching HEAD / not matching the units actually enabled). All three were live
+  # on 2026-07-29: claude-topic wrote deploy/topics.tsv and never committed it, so every agent's
+  # declaration had quietly diverged from the sessions really running, and a reprovision would have
+  # reverted them.
+  local reg="$r/deploy/topics.tsv"
+  if [ ! -f "$reg" ]; then
+    drift "$n: no deploy/topics.tsv — provision-agent would recreate no topics on a rebuilt box"
+  else
+    asu "cd '$r' && git ls-files --error-unmatch -- deploy/topics.tsv >/dev/null 2>&1" \
+      || drift "$n: deploy/topics.tsv is not tracked in git — topic changes are lost on reprovision"
+    asu "cd '$r' && git diff --quiet HEAD -- deploy/topics.tsv 2>/dev/null" \
+      || drift "$n: deploy/topics.tsv differs from HEAD (uncommitted topic change — claude-topic's commit failed?)"
+    # Registry vs the units systemd actually has enabled, both directions.
+    #
+    # NB on enumeration: `systemctl --user list-unit-files 'claude-topic@*.service'` returns NOTHING
+    # for a template's instances (verified) — it lists unit FILES, and an instance has none. So the
+    # registry direction asks `is-enabled` per key, and the reverse direction reads the
+    # `*.target.wants/` symlinks that `systemctl enable` actually creates. An earlier version of this
+    # check used list-unit-files and reported all four agents as having no enabled topics while every
+    # one of them was active — a false positive that would have trained everyone to ignore this check.
+    # topics.tsv is AGENT-WRITABLE, so every key read out of it is untrusted input being handled by
+    # root's shell. The first version of this block iterated `for k in $reg_keys` unquoted and
+    # interpolated `$k` straight into the `bash -c` string. All three consequences were reproduced:
+    # a key of `*` glob-expanded against the checker's cwd, `has space` split into two keys, and a key
+    # of `x'; echo INJECTED; true; :'` EXECUTED that code inside the inner shell. It runs as the agent,
+    # not root, so it is not privilege escalation — but the payoff is worse in context: a crafted key
+    # makes the is-enabled assertion below return 0 and thereby SUPPRESSES ITS OWN DRIFT FINDING. That
+    # is the "agents can lie to the checker" property this script's `as_agent` hardening exists to
+    # close, walked in through a second door.
+    # claude-topic already solved this (see its `reg_keys()`): filter to a known-safe charset and warn
+    # on anything else. Same rule here, plus `read` instead of word-splitting, plus the key passed as
+    # a positional argument rather than interpolated into the script text.
+    local reg_keys unit_keys home_dir k
+    home_dir="$(getent passwd "$u" | cut -d: -f6)"
+    reg_keys="$(awk -F'\t' '$1 !~ /^[[:space:]]*(#|$)/ {print $1}' "$reg" \
+      | grep -xE '[A-Za-z0-9._-]+' | sort -u)"
+    local badkeys; badkeys="$(awk -F'\t' '$1 !~ /^[[:space:]]*(#|$)/ {print $1}' "$reg" \
+      | grep -vxE '[A-Za-z0-9._-]+' | tr '\n' ' ')"
+    [ -n "${badkeys// /}" ] && drift "$n: deploy/topics.tsv has invalid topic key(s) — refusing to act on them: $badkeys"
+    if ! as_agent "$u" 'export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
+        systemctl --user show-environment >/dev/null 2>&1'; then
+      drift "$n: user manager unreachable for '$u' (linger off?) — topic enablement is UNKNOWN, not clean"
+    else
+      while IFS= read -r k; do
+        [ -n "$k" ] || continue
+        runuser -u "$u" -- env PATH="$AGENT_PATH" bash --noprofile --norc -c \
+          'export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
+           systemctl --user is-enabled --quiet "claude-topic@$1.service" 2>/dev/null' _ "$k" \
+          || drift "$n: topic '$k' is in the registry but its unit is not enabled (provisioning half-applied)"
+      done <<< "$reg_keys"
+    fi
+    unit_keys="$(ls "$home_dir"/.config/systemd/user/*.target.wants/claude-topic@*.service 2>/dev/null \
+      | sed 's#.*/claude-topic@##;s#\.service$##' | sort -u)"
+    while IFS= read -r k; do
+      [ -n "$k" ] || continue
+      # -F: the key is data, not a pattern. Without it `foo.bar` matches a registry line `fooxbar`
+      # and an unregistered unit is wrongly accepted. Reproduced.
+      grep -qxF "$k" <<< "$reg_keys" \
+        || drift "$n: topic unit '$k' is enabled but absent from the registry (it will not survive a reprovision)"
+    done <<< "$unit_keys"
+  fi
 
   # 6) The live entry point resolves. Cheap and load-bearing: the runtime reads ~/CLAUDE.md, and
   #    it silently lagged the repo during the v2 migration until provision-agent re-ran.
   local hc="$home/CLAUDE.md"
   if [ ! -e "$hc" ]; then drift "$n: ~/CLAUDE.md missing or dangling (agent boots with no bootstrap)"
   else
-    # Accept EITHER supported layout (see provision-agent step 3 and docs/portability.md):
-    # deploy/home-CLAUDE.md (three-layer, what the template ships) or the brain's root CLAUDE.md
-    # (single-file). What must hold either way is that ~/CLAUDE.md points INTO this brain repo, not
-    # at a stale or foreign path.
-    local got ok=0 cand
+    # ONE layout (2026-07-30): ~/CLAUDE.md must resolve to the brain's root CLAUDE.md — the single
+    # bootstrap. (The three-layer deploy/home-CLAUDE.md variant was dropped; see provision-agent.)
+    local got
     got="$(readlink -f "$hc")"
-    for cand in "$r/deploy/home-CLAUDE.md" "$r/CLAUDE.md"; do
-      cand="$(readlink -f "$cand" 2>/dev/null)" || continue
-      [ -n "$cand" ] && [ "$got" = "$cand" ] && { ok=1; break; }
-    done
-    [ "$ok" = 1 ] || drift "$n: ~/CLAUDE.md resolves to '$got', which is neither $r/deploy/home-CLAUDE.md nor $r/CLAUDE.md"
+    [ "$got" = "$(readlink -f "$r/CLAUDE.md" 2>/dev/null)" ] \
+      || drift "$n: ~/CLAUDE.md resolves to '$got', not $r/CLAUDE.md (the single supported bootstrap)"
     while IFS= read -r f; do
       [ -e "$r/$f" ] || drift "$n: ~/CLAUDE.md bootstrap names a missing file: $f"
     done < <(grep -oE '[A-Za-z0-9_/.-]+\.md' "$hc" 2>/dev/null | grep -v '^CLAUDE.md$' | sed "s#.*kb-agent-[a-z-]*/##" | sort -u)
@@ -159,12 +264,67 @@ PY
   if [ -n "$refbad" ]; then
     while IFS= read -r l; do [ -n "$l" ] && drift "$l"; done <<< "$refbad"
   fi
+
+  # 8) PER-AGENT INSTALLED ARTIFACTS. installed.manifest only covers root-installed paths, but
+  #    provision-agent also materialises two per-agent files as REAL COPIES — deliberately, so they do
+  #    not live-follow the auto-synced repos (findings F1/F3). A real copy is exactly what silently
+  #    goes stale: edit the source, and every agent keeps the old one until someone re-runs
+  #    provisioning, with nothing saying so. Same "edited the repo, forgot to re-install" class the
+  #    root manifest exists for, one directory down.
+  #    settings.json is the PERMISSION ALLOWLIST, so this is the highest-value of the two.
+  local dep="$r/deploy/claude-settings.json" liveset="$home/.claude/settings.json"
+  if [ ! -f "$dep" ]; then
+    drift "$n: no deploy/claude-settings.json — ~/.claude/settings.json (the permission allowlist) is unversioned and compared against nothing"
+  elif [ ! -f "$liveset" ]; then
+    drift "$n: ~/.claude/settings.json is MISSING though deploy/claude-settings.json exists (provisioning never applied it)"
+  elif ! cmp -s "$dep" "$liveset"; then
+    drift "$n: ~/.claude/settings.json differs from deploy/claude-settings.json — re-run provision-agent (permission allowlist is stale)"
+  fi
+  # (settings.local.json is deliberately NOT checked: per-machine, auto-accumulated, git-ignored.)
+  local liveunit="$home/.config/systemd/user/claude-topic@.service"
+  local srcunit="${INFRA_DIR}/systemd/claude-topic@.service"
+  if [ ! -f "$liveunit" ]; then
+    drift "$n: ~/.config/systemd/user/claude-topic@.service is missing — no topic can start"
+  elif [ -f "$srcunit" ] && ! cmp -s "$srcunit" "$liveunit"; then
+    drift "$n: claude-topic@.service differs from $srcunit — re-run provision-agent"
+  fi
+  # Any OTHER per-agent systemd user unit the brain declares (deploy/*.service|*.timer, e.g.
+  # an MCP server service). Two assertions: the installed copy matches the declared source
+  # (same stale-real-copy class as settings.json), and — the reverse — no *enabled* user service
+  # exists that the brain does not declare. The reverse direction is what catches the original
+  # sin: a hand-crafted unit living only on the box, which a rebuild silently loses. Enabled-only
+  # (default.target.wants), so transient/systemd-internal user units don't false-positive; the
+  # claude-topic@ instances have their own dedicated checks above.
+  local dsrc dlive uname
+  for dsrc in "$r"/deploy/*.service "$r"/deploy/*.timer; do
+    [ -f "$dsrc" ] || continue
+    uname="$(basename "$dsrc")"
+    case "$uname" in claude-topic@*) continue;; esac
+    dlive="$home/.config/systemd/user/$uname"
+    if [ ! -f "$dlive" ]; then
+      drift "$n: deploy/$uname is declared but not installed to ~/.config/systemd/user/ (service missing on this box)"
+    elif ! cmp -s "$dsrc" "$dlive"; then
+      drift "$n: ~/.config/systemd/user/$uname differs from deploy/$uname — stale real copy, re-install it"
+    fi
+  done
+  while IFS= read -r uname; do
+    [ -n "$uname" ] || continue
+    case "$uname" in claude-topic@*) continue;; esac
+    [ -f "$r/deploy/$uname" ] \
+      || drift "$n: user unit '$uname' is enabled but not declared in deploy/ — it exists only on this box and will NOT survive a rebuild"
+  done < <(find "$home"/.config/systemd/user/ -path '*.target.wants/*' \
+             \( -name '*.service' -o -name '*.timer' \) -printf '%f\n' 2>/dev/null | sort -u)
+
+  # 9) Linger. The single switch that decides whether this agent survives a reboot at all. Previously
+  #    only inferred, and only when the user manager happened to be unreachable at check time.
+  loginctl show-user "$u" --property=Linger 2>/dev/null | grep -q 'Linger=yes' \
+    || drift "$n: linger is OFF for '$u' — its topics will NOT come back after a reboot"
 }
 
 for u in $AGENTS; do
-  base="$(getent passwd "$u" | cut -d: -f6)/$WS"
-  brain="$(ls -d "$base"/kb-agent-*-"$u" 2>/dev/null | head -1)"
-  if [ -n "$brain" ] && [ -d "$brain/.git" ]; then check_brain "$u" "$brain"; else drift "$u: no brain repo found under $base"; fi
+  base="$(getent passwd "$u" | cut -d: -f6)/github"
+  brain="$(ls -d "$base"/*/kb-agent-*-"$u" 2>/dev/null | head -1)"
+  if [ -n "$brain" ] && [ -d "$brain/.git" ]; then check_brain "$u" "$brain"; else drift "$u: no brain repo found under $base/<org>/"; fi
 done
 
 # --- installed artifacts still match their repo source (catches "edited the repo, forgot to
@@ -174,7 +334,11 @@ MAN="/usr/local/share/agentic/installed.manifest"
 if [ -f "$MAN" ]; then
   while IFS='|' read -r dst src; do
     [ -n "$dst" ] || continue
-    if [ ! -e "$dst" ]; then drift "installed: $dst is MISSING (source $src)"
+    # The manifest records ABSOLUTE source paths from whichever clone ran the installer. Run it from a
+    # different path and every later comparison points at a source that may not exist — which would
+    # otherwise surface as a confusing "differs from <nonexistent>" forever.
+    if [ ! -e "$src" ]; then drift "installed: manifest source $src does not exist (installer was run from a different clone path) — re-run install-host-services from the canonical clone"
+    elif [ ! -e "$dst" ]; then drift "installed: $dst is MISSING (source $src)"
     elif ! cmp -s "$dst" "$src"; then drift "installed: $dst differs from $src — re-run install-host-services"
     fi
   done < "$MAN"
@@ -182,27 +346,130 @@ else
   echo "  [warn] no $MAN — run install-host-services to generate it"
 fi
 
+# AGENT_PATH is defined identically in four scripts (this one, memory-mirror, provision-agent,
+# agentic-monitor) — deliberately NOT factored into a shared lib (a new installed moving part) and
+# deliberately NOT including any agent-writable dir (see provision-agent's comment on the
+# planted-binary trade). Duplication is fine; SILENT divergence between the copies is not — one
+# script quietly running agents' commands with a different PATH than its siblings is exactly the
+# class this checker exists for. Assert the four definitions are still one.
+AP_COUNT="$(grep -h '^AGENT_PATH=' \
+  "$INFRA_DIR/scripts/agentic-divergence-check" "$INFRA_DIR/scripts/memory-mirror" \
+  "$INFRA_DIR/scripts/provision-agent" "$INFRA_DIR/scripts/agentic-monitor" 2>/dev/null | sort -u | grep -c .)"
+[ "${AP_COUNT:-0}" = 1 ] || drift "installed: AGENT_PATH definitions across the four infra scripts are not identical (found $AP_COUNT variants) — re-align them; a diverged PATH silently changes what runs as the agents"
+
 # --- timers that must be enabled (a job silently switched off is not a failed unit) ---
-for t in kb-sync.timer agentic-monitor.timer agentic-update-check.timer agentic-divergence-check.timer; do
+# This is the class that produced the reference deployment's fourth-agent gap: a NEVER-enabled templated instance never runs, so
+# it never becomes a failed unit either, so no failed-unit sweep can see it. The only way to catch it
+# is to assert the expectation — and to DERIVE that expectation from the roster, so that adding an
+# agent automatically widens what is checked instead of opening a hole.
+echo "== host timers =="
+for t in kb-sync.timer agentic-monitor.timer agentic-divergence-check.timer; do
   systemctl is-enabled --quiet "$t" 2>/dev/null || drift "timer $t is not enabled"
 done
+for u in $AGENTS; do
+  systemctl is-enabled --quiet "memory-mirror@${u}.timer" 2>/dev/null \
+    || drift "timer memory-mirror@${u}.timer is not enabled — '$u' has NO durable memory and nothing else would report it"
+done
+# The reverse: a timer left enabled for a user who is no longer in the fleet fires and fails nightly,
+# which trains everyone to ignore the failure. Catches a teardown done by hand (see the REMOVE
+# checklist in runbooks/manage-agents.md — the step everyone forgets).
+#
+# Enumerate with `list-units`, NOT `list-unit-files`. list-unit-files lists unit FILES, and a template
+# instance has none: `list-unit-files 'memory-mirror@*.timer'` returns only the TEMPLATE, whose state
+# is `indirect`, so `--state=enabled` filtered it out and this loop was DEAD CODE that could never
+# fire. Verified on systemd 255 with all four instances enabled. This is the same mistake that had
+# already been caught and fixed for the --user case above (see the NB on enumeration) — reintroduced
+# one section down, and invisible because a check that never fires looks exactly like a check that
+# passes. Any new assertion here needs a deliberately-broken fixture proving it fires; a CLEAN run is
+# not evidence.
+while IFS= read -r inst; do
+  [ -n "$inst" ] || continue
+  # -F: the instance name is data. Without it `foo.bar` would match a roster line `fooxbar`.
+  grep -qxF "$inst" <<< "$AGENTS" \
+    || drift "timer memory-mirror@${inst}.timer is enabled but '$inst' is not in the roster (stale teardown?)"
+done < <(systemctl list-units 'memory-mirror@*.timer' --all --no-legend --plain 2>/dev/null \
+          | awk '{print $1}' | sed 's/^memory-mirror@//;s/\.timer$//')
 
 # --- non-brain repos: sync state only. The linter's other checks are brain-shaped, but a frozen
 # --- shared/infra clone silently stops governance updates or leaves root-installed code unpushed. ---
 echo "== supporting repos =="
 for u in $AGENTS; do
   h="$(getent passwd "$u" | cut -d: -f6)"
-  for r in "$h/$WS"/*/; do
+  for r in "$h"/github/*/*/; do
     case "$(basename "$r")" in kb-agent-*-"$u") continue;; esac
     [ -d "$r/.git" ] || continue
-    runuser -u "$u" -- git -C "$r" remote update -p >/dev/null 2>&1 || { drift "$(basename "$r") [$u]: fetch failed — sync state UNKNOWN"; continue; }
-    a="$(runuser -u "$u" -- git -C "$r" rev-list --count @{u}..HEAD 2>/dev/null || echo 0)"
-    b="$(runuser -u "$u" -- git -C "$r" rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
-    [ "${a:-0}" -gt 0 ] && drift "$(basename "$r") [$u]: $a commit(s) unpushed"
-    [ "${b:-0}" -gt 0 ] && drift "$(basename "$r") [$u]: $b commit(s) behind origin (kb-sync skipping it?)"
+    rname="$(basename "$r")"
+    runuser -u "$u" -- git -C "$r" remote update -p >/dev/null 2>&1 || { drift "$rname [$u]: fetch failed — sync state UNKNOWN"; continue; }
+    # Same no-upstream fail-open as the brain check: both counts came out 0 and looked clean.
+    if ! runuser -u "$u" -- git -C "$r" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+      drift "$rname [$u]: branch has no upstream — sync state UNKNOWN and kb-sync skips it"
+    else
+      a="$(runuser -u "$u" -- git -C "$r" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+      b="$(runuser -u "$u" -- git -C "$r" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
+      [ "${a:-0}" -gt 0 ] && drift "$rname [$u]: $a commit(s) unpushed"
+      [ "${b:-0}" -gt 0 ] && drift "$rname [$u]: $b commit(s) behind origin (kb-sync skipping it?)"
+    fi
+    # Dirty worktree, for the repos where dirty is never work-in-progress (see STRICT_CLEAN_REPOS).
+    # This is the assertion that stops provision-agent's "COMMIT AND PUSH the roster" from becoming
+    # the next unenforced manual step — the exact class this tooling exists to remove.
+    strict=0; for scr in $STRICT_CLEAN_REPOS; do [ "$scr" = "$rname" ] && strict=1; done
+    # exact-token match, not `grep -w`: with -w a repo named "shared" would match inside
+    # "kb-agent-shared" (hyphen is a non-word char) and be wrongly held to the strict rule.
+    if [ "$strict" = 1 ]; then
+      porcelain="$(runuser -u "$u" -- git -C "$r" status --porcelain 2>/dev/null | head -5 | tr '\n' ' ')"
+      [ -n "${porcelain// /}" ] && drift "$rname [$u]: uncommitted changes ($porcelain) — root-installed code or governance left local-only; kb-sync will skip this repo once origin touches the same files"
+    fi
   done
 done
 
+echo "== updates =="
+updates=0
+
+# --- OS ---
+apt-get update -qq >/dev/null 2>&1 || true
+upg=$(apt list --upgradable 2>/dev/null | grep -c '/'); upg=${upg:-0}
+sec=$(apt list --upgradable 2>/dev/null | grep -ci -E 'security|-esm-'); sec=${sec:-0}
+reboot=no; [ -f /var/run/reboot-required ] && reboot=yes
+# Alarm only on actionable items: pending SECURITY updates (unattended-upgrades should auto-apply — if
+# still pending it's worth flagging). upgradable-count and reboot-required are REPORTED, not alarmed
+# (non-security is low-urgency; the reboot is deferred by choice and Livepatch covers the kernel).
+[ "${sec:-0}" -gt 0 ] && updates=1
+os="OS: ${upg} upgradable (${sec} security), reboot-required=${reboot}"
+
+# --- Dokploy (running version vs latest GitHub release) ---
+cur=$(docker service inspect dokploy --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+latest=$(curl -fsS -m 15 https://api.github.com/repos/Dokploy/dokploy/releases/latest 2>/dev/null \
+         | grep -oE '"tag_name"[^,]*' | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+dok="Dokploy: ${cur:-?}"
+if [ -n "$cur" ] && [ -n "$latest" ] && [ "$cur" != "$latest" ]; then
+  dok="$dok -> ${latest} UPDATE AVAILABLE"; updates=1
+else
+  dok="$dok (latest ${latest:-?})"
+fi
+
+# (A weekly memory-mirror commit COUNT used to be reported here. Removed 2026-07-30: it measured
+# nothing actionable — quiet nights are routine, so the number was noise in every report, and the
+# real freshness observables are already covered: the timer-enabled assertion above and
+# agentic-monitor's failed-unit sweeps. A per-agent "no commit in N days" check was also tried and
+# removed the same day for alarming on a healthy fleet; if freshness is ever truly wanted, the
+# observable is the timer's LastTriggerUSec, not a commit count.)
+
+report="$(date -Is) | $os | $dok | container images: wire Renovate on your infra repo (or review manually) | fleet: ${FAILS} drift finding(s)"
+# Put the actual finding text in the ping body, not just the count - so the Telegram message
+# itself answers "what broke" without anyone needing to check the journal or the HC dashboard.
+# Capped: a wall of findings would just get truncated by Telegram anyway, and the journal always
+# has the full list.
+if [ "$FAILS" -gt 0 ]; then
+  report="${report} | DRIFT: ${DRIFT_LOG:0:1500}"
+  [ "${#DRIFT_LOG}" -gt 1500 ] && report="${report}... (truncated, see journalctl -u agentic-divergence-check for the rest)"
+fi
+echo "$report"
+
+if [ -n "${UPDATE_HC_URL:-}" ]; then
+  suffix=""; { [ "$updates" = 1 ] || [ "$FAILS" -gt 0 ]; } && suffix="/fail"
+  curl -fsS -m 15 --data-raw "$report" "${UPDATE_HC_URL}${suffix}" -o /dev/null || true
+fi
+
 echo
-if [ "$FAILS" -eq 0 ]; then echo "$(date -Is) divergence-check: CLEAN"; exit 0
-else echo "$(date -Is) divergence-check: $FAILS drift finding(s)"; exit 1; fi
+if [ "$FAILS" -eq 0 ] && [ "$updates" = 0 ]; then echo "$(date -Is) divergence-check: CLEAN"; exit 0
+else echo "$(date -Is) divergence-check: $FAILS drift finding(s), updates=$updates"; exit 1; fi

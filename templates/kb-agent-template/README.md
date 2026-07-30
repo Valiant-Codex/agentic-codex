@@ -33,16 +33,13 @@ the worked example, entirely with placeholders. Fill them in and the same shape 
 
 The **canonical identity + operating contract lives in `SOUL.md`** (who the agent *is* — durable
 identity, voice, principles) **and `OPERATING.md`** (what it *does* — scope, threat model, gates,
-bootstrap) — framework-agnostic Markdown. The two adapters are thin pointers back to them, so the same
-brain runs under different agent runtimes without forking its identity:
-
-- `CLAUDE.md` — adapter for **Claude Code**.
-- `AGENTS.md` — adapter for other frameworks that read `AGENTS.md` (Codex, Cursor, …).
-
-Both are short and both say: *identity is in `SOUL.md`, operating contract in `OPERATING.md`; read them
-first.* Edit identity/contract in those files; never let the adapters drift into a second source of
-truth. Splitting durable *who-you-are* from mutable *what-you-do* is deliberate: it keeps identity from
-drifting when operational instructions change. See the Agentic Codex write-up (`docs/portability.md`).
+bootstrap) — framework-agnostic Markdown. `CLAUDE.md` at the repo root is the **single runtime
+bootstrap**: a thin pointer back to them, symlinked to `~/CLAUDE.md`, written with absolute
+`~/github/...` paths so it resolves from any cwd. Edit identity/contract in `SOUL.md`/`OPERATING.md`;
+never let the bootstrap drift into a second source of truth. Splitting durable *who-you-are* from
+mutable *what-you-do* is deliberate: it keeps identity from drifting when operational instructions
+change. The brain *content* (identity, memory, skills, tools) is plain Markdown and portable to
+another runtime; the wiring is Claude-Code-specific. See `docs/portability.md`.
 
 ## Repo shape
 
@@ -50,9 +47,7 @@ drifting when operational instructions change. See the Agentic Codex write-up (`
 |---|---|
 | `SOUL.md` | **Canonical** durable identity: who the agent is, voice, principles (loaded every session). |
 | `OPERATING.md` | **Canonical** operating contract: mission/scope, threat model, human-confirm gates, bootstrap. |
-| `CLAUDE.md` | Thin Claude Code adapter → `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`. |
-| `AGENTS.md` | Thin generic adapter → `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`. |
-| `deploy/home-CLAUDE.md` | The `~/CLAUDE.md` bootstrap symlinked into the home dir. |
+| `CLAUDE.md` | The single runtime bootstrap (symlinked to `~/CLAUDE.md`) → `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`. |
 | `deploy/topics.tsv` | Remote-Control topic sessions (`key<TAB>Display Name`). |
 | `deploy/claude-settings.json` | Curated, portable runtime settings (permissions, notifications). |
 | `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. |
@@ -80,9 +75,9 @@ over submodule.
 
 1. Copy this template to a new repo `<ORG>/kb-agent-<ROLE>-<AGENT>`.
 2. Replace every placeholder in the table above across all files.
-3. Create the sibling `shared` symlink and confirm it resolves to `../kb-agent-shared`.
-4. Install `deploy/home-CLAUDE.md` as `~/CLAUDE.md`, and `deploy/claude-settings.json` into the
-   runtime's settings location.
+3. Confirm the committed `shared` symlink resolves to the sibling `../kb-agent-shared` clone.
+4. `provision-agent` symlinks the root `CLAUDE.md` to `~/CLAUDE.md` and installs
+   `deploy/claude-settings.json` into the runtime's settings location.
 5. Provide real secrets **out of git** (an untracked env file the runtime reads for `${ENV}` values in
    `.mcp.json`).
 

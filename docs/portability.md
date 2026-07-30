@@ -16,53 +16,28 @@ The trick is a strict split between the canonical identity and the runtime adapt
   plain, framework-agnostic Markdown. Splitting durable identity from mutable instructions keeps
   identity from drifting when operational details change. Shared facts about the owner/org live once in
   `shared/owner-profile.md`.
-- **Adapters are thin and per-framework.** Each runtime reads a different entry file; each is a short
-  pointer to `SOUL.md` + `OPERATING.md`:
-  - `CLAUDE.md` → the adapter Claude Code reads first.
-  - `AGENTS.md` → the adapter several other tools (Codex, Cursor, and others) read.
-  - add another adapter file for another framework — the adapter itself is ~15 lines. The *runtime
-    wiring* underneath it is not: see the honest accounting below.
+- **One thin bootstrap.** The brain's root `CLAUDE.md` is the **single runtime entry point**: a short
+  pointer to `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`, written with **absolute**
+  `~/github/...` paths so it resolves from any working directory. `provision-agent` symlinks it to
+  `~/CLAUDE.md`; the supervised topic session runs with `WorkingDirectory=%h`, so that symlink is what
+  the running agent loads. Editing the repo edits the live bootstrap — a symlink, never a fork.
 
 ```
-      SOUL.md + OPERATING.md          ← canonical identity + contract (the value)
-          ▲        ▲        ▲
-     CLAUDE.md  AGENTS.md  <other>.md   ← thin adapters, one per framework
-   (Claude Code) (Codex/…)  (future)
+      SOUL.md + OPERATING.md      ← canonical identity + contract (the value)
+                ▲
+            CLAUDE.md             ← one thin bootstrap (symlinked to ~/CLAUDE.md)
+           (Claude Code)
 ```
 
-Switching or adding a framework means writing one small adapter **and rewriting the runtime wiring** —
-but not migrating your memory, skills or identity. Your
-`memory/`, `skills/`, `tools/`, and `context/` are already just Markdown — nothing framework-specific
-to port.
-
-On the box, the running location is a **symlink or installed copy**, never a fork of the content:
-`~/CLAUDE.md` points at `deploy/home-CLAUDE.md` in the brain repo, so editing the repo edits the live
-bootstrap.
-
-### The three bootstrap files, and which one actually runs
-
-A brain carries up to three entry points, and it is worth being precise about who reads each — they are
-easy to mistake for duplication:
-
-| File | Read when | Read by |
-|---|---|---|
-| `deploy/home-CLAUDE.md` | the supervised topic session runs (`WorkingDirectory=%h`, so cwd is `~`) | **always, in normal operation** |
-| `CLAUDE.md` (brain repo root) | someone runs Claude Code with cwd *inside* the brain repo | a human working on the brain |
-| `AGENTS.md` (brain repo root) | the same, under a non-Claude runtime (Codex, Cursor, …) | that runtime |
-
-Because the topic unit sets `WorkingDirectory=%h`, **only `deploy/home-CLAUDE.md` is loaded by the
-running agent.** The two repo-root files are *adapters*: they exist so the brain stays usable from
-inside the repo and portable across runtimes.
-
-> ⚠️ **If you only ever use one runtime and never open Claude Code inside the brain repo, the repo-root
-> adapters are dead weight — and they will drift.** They restate what `home-CLAUDE.md` says, nothing
-> loads them, so nothing catches them going stale. A specific trap: the root adapter naturally uses
-> repo-relative paths (`SOUL.md`, `shared/bootstrap.md`), which do **not** resolve from `~` — so if you
-> later "consolidate" by pointing `~/CLAUDE.md` at the root `CLAUDE.md`, the references break silently.
->
-> Choose deliberately: either keep the adapters and accept they need syncing (worth it for genuine
-> multi-runtime portability, which is the point of `AGENTS.md`), or drop them and keep
-> `deploy/home-CLAUDE.md` as the single bootstrap. Do not keep them by accident.
+> **Why only one file, and why Claude Code.** Earlier versions shipped a three-file arrangement
+> (`deploy/home-CLAUDE.md` as the runtime bootstrap plus repo-root `CLAUDE.md`/`AGENTS.md`
+> per-runtime adapters). It was dropped (v0.6.0): only one file was ever loaded in normal operation,
+> the others restated it, nothing caught them drifting apart — and they drifted. This framework's
+> *wiring* is deliberately built around Claude Code, because **Remote Control** (sessions reachable
+> from phone/web/desktop) is the reason the whole stack works the way it does; no other runtime
+> currently offers an equivalent. What stays portable is the part with accumulated value: the brain
+> content below. Adopting another runtime means writing its entry file and rewriting the wiring —
+> not migrating your memory, skills or identity.
 
 ### Why this matters beyond convenience
 - **No lock-in.** Your agents' accumulated knowledge isn't trapped in one vendor's memory store.
@@ -90,9 +65,6 @@ where the accumulated value lives.
 | `~/.claude.json` trust/onboarding flags | Claude Code first-run state |
 | Remote Control itself | The multi-device access path, and the reason this happy path is Claude Code |
 
-**Status of `AGENTS.md`:** shipped as a thin adapter for frameworks that read it (Codex, Cursor and
-similar), and kept deliberately short so it cannot become a second source of truth. It has **not been
-exercised in production** — only Claude Code has. Treat it as a head start, not a guarantee.
 
 ## Axis 2 — deployment portability (across machines)
 

@@ -7,7 +7,7 @@ tags:
 - governance
 - safety
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-07-30T00:00:00Z
 ---
 # Approval Policy
 
@@ -19,7 +19,7 @@ Define what the agent may do autonomously, what requires the owner's approval, a
 
 ### Agent and shared KB repositories
 - create, update, consolidate, rename, and archive internal KB documents;
-- commit coherent internal KB updates directly to `main`;
+- commit **and push** coherent internal KB updates directly to `main`;
 - create branches and PRs when useful.
 
 ### General
@@ -33,10 +33,10 @@ The agent must ask for approval before:
 
 - deleting or overwriting files outside normal KB consolidation;
 - making major repository restructures with unclear impact;
-- publishing or pushing substantive business/external-facing content;
+- publishing or pushing substantive business/client-facing content;
 - sending messages to third parties;
-- publishing externally-visible content;
-- changing prices or commitments;
+- publishing client-visible content;
+- changing prices, offers, or commitments;
 - modifying production infrastructure;
 - modifying scheduled automations, cron jobs, or timers;
 - activating automation workflows with external effects;
@@ -66,9 +66,19 @@ The default workflow for all repositories is:
 
 1. update the smallest coherent set of documents;
 2. keep the diff lean and easy to review later;
-3. commit directly to `main` when the change is internal and low-risk;
+3. commit directly to `main` when the change is internal and low-risk — commit as many times as the
+   task needs, but **push and verify the remote caught up** (`git status -sb` shows `ahead 0`, no
+   `[ahead N]`) **before reporting the task complete or ending the session**. A commit sitting
+   unpushed is not a finished task, regardless of how the session ends;
 4. use a branch or PR only when the change is risky, unusually large, or explicitly requested.
 
 **Repository-specific rules:**
 
-- agent repositories and `kb-agent-shared`: direct to `main` for internal, low-risk changes.
+- agent repositories and `kb-agent-shared`: direct to `main` for internal, low-risk changes, same
+  commit-and-push rule as above.
+
+**Why this is explicit:** a bare "commit to main" instruction was read as "committing is the finish
+line," so push silently became optional busywork dropped whenever a session ended, compacted, or a
+task was judged done right after the commit — leaving repos to drift out of sync with no autonomous
+recovery, since `kb-sync` only pulls. Push is not a separate, deferrable step from commit; treat the
+two as one atomic unit of work.

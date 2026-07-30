@@ -56,7 +56,7 @@ noise — log in first.
 ### (a2) Seed the brain repo — `provision-agent` cannot invent it
 
 **A brand-new brain repo is usually empty, and provisioning an empty repo produces a broken agent, quietly.**
-`provision-agent` symlinks `~/CLAUDE.md → <BRAIN>/deploy/home-CLAUDE.md` and reads
+`provision-agent` symlinks `~/CLAUDE.md → <BRAIN>/CLAUDE.md` (the brain's root bootstrap) and reads
 `<BRAIN>/deploy/topics.tsv`; if the repo has neither, you get a **dangling** `~/CLAUDE.md` (the agent
 boots with no bootstrap at all) and **zero topics enabled** (`[warn] no deploy/topics.tsv`).
 
@@ -64,7 +64,7 @@ So before step (c), scaffold the brain from `templates/kb-agent-template` and pu
 
 | Required | Why |
 |---|---|
-| `deploy/home-CLAUDE.md` | the target of `~/CLAUDE.md`; without it the agent has no bootstrap |
+| `CLAUDE.md` (repo root) | the target of `~/CLAUDE.md`; without it the agent has no bootstrap |
 | `deploy/topics.tsv` | the topic registry; without it no session is ever started |
 | `deploy/claude-settings.json` | else `~/.claude/settings.json` is skipped (`[warn]`), leaving no allowlist |
 | `SOUL.md` + `OPERATING.md` | what the bootstrap points at — a bootstrap naming missing files fails the divergence check |

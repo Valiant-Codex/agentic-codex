@@ -2,49 +2,59 @@
 # kb-sync — keep every agent's git clones current with their remotes.
 #
 # For each agent Unix user, fast-forwards every repo under
-# ~/github/<org>/* — including the standalone kb-agent-shared clone that each brain
-# reaches via the committed `shared -> ../kb-agent-shared` symlink, so governance stays
-# fresh with no submodule and no pointer bump. Fail-safe: fast-forward only — on a
-# non-ff / dirty repo it logs "skip" and moves on, never forcing or merging. Runs as each
-# user via runuser so file ownership and the per-user gh credential are honoured.
+# ~/github/<org>/* — including the standalone kb-agent-shared clone that
+# each brain reaches via the committed `shared -> ../kb-agent-shared` symlink, so
+# governance stays fresh with no submodule and no pointer bump. Fail-safe:
+# fast-forward only — on a non-ff / dirty repo it logs "skip" and moves on, never
+# forcing or merging. Runs as each user via runuser so file ownership and the
+# per-user gh credential are honoured.
 #
-# Managed by kb-sync.timer (every 15 min). This is Tier-2 of the config model: it refreshes
-# ONLY inert data (governance markdown, brain content). It must NEVER install an executable
-# or grant a permission — that is provisioning's job (Tier-3). See the Agentic Codex docs (config-model.md).
-#
-# Agents are auto-discovered: any Unix user with a ~/github/<org>/kb-agent-<role>-<name>
-# brain. Override with AGENTS="user1 user2" in /etc/agentic-monitor.env if needed.
+# Managed by kb-sync.timer (every 15 min). Canonical source: <ORG>/infra.
 set -uo pipefail
 
-[ -r /etc/agentic-monitor.env ] && . /etc/agentic-monitor.env
+# Fleet roster — single source of truth (installed from infra/fleet-agents).
+# NO built-in fallback list. The previous version fell back to a hardcoded
+# example list` with a WARN on stderr and still exited 0 — so when a fourth agent joined the fleet, a missing
+# roster file would have left it unsynced while this script reported success. Duplicating the roster
+# in code is precisely the failure the roster file exists to prevent. Fail loudly instead: exit
+# non-zero so the unit lands in `failed` and agentic-monitor pages, rather than guessing.
+ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
+if [ ! -f "$ROSTER_FILE" ]; then
+  echo "$(date -Is) kb-sync: FATAL roster $ROSTER_FILE missing — refusing to guess the fleet. Run install-host-services." >&2
+  exit 1
+fi
+AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t' | tr '\n' ' ')"
+if [ -z "${AGENTS// /}" ]; then
+  echo "$(date -Is) kb-sync: FATAL roster $ROSTER_FILE is empty — nothing would be synced." >&2
+  exit 1
+fi
 
-discover_agents() {
-  local h u
-  for h in /home/*; do
-    [ -d "$h" ] || continue
-    u="$(basename "$h")"
-    # a real brain repo is kb-agent-<role>-<name> (two dashes) — this glob excludes
-    # kb-agent-shared and kb-agent-template, which are single-token and never match.
-    compgen -G "$h/github/*/kb-agent-*-*/" >/dev/null 2>&1 && echo "$u"
-  done
-}
-
-AGENTS="${AGENTS:-$(discover_agents)}"
-
+# A single skip is normal (an agent's work-in-progress, a transient conflict). ALL repos skipping is
+# not: that is a dead token, DNS, or a GitHub outage — yet it used to exit 0 and log lines nobody
+# reads, indistinguishable from a clean run. Count, and fail the unit only on the 100%-skip case, so
+# agentic-monitor (which already has 2-cycle hysteresis to absorb a transient outage) pages on the
+# real failure mode without paging on ordinary WIP.
+seen=0 ok=0
 for u in $AGENTS; do
-  home="$(getent passwd "$u" | cut -d: -f6)" || continue
-  # each org workspace dir under ~/github (usually one: ~/github/<org>)
-  for base in "$home"/github/*/; do
-    [ -d "$base" ] || continue
-    for repo in "$base"*/; do
-      [ -e "${repo}.git" ] || continue
-      name="$(basename "$repo")"
-      if runuser -u "$u" -- git -C "$repo" pull --ff-only --quiet 2>/dev/null; then
-        status="ok"
-      else
-        status="skip(non-ff/dirty)"
-      fi
-      echo "$(date -Is) ${u}/${name}: ${status}"
-    done
+  # `getent | cut` exits with cut's status, always 0, so `|| continue` here was dead code and a
+  # roster typo fell through to the [ -d ] check with an empty home. Ask getent directly.
+  getent passwd "$u" >/dev/null || { echo "$(date -Is) ${u}: no such user (roster typo?)" >&2; continue; }
+  home="$(getent passwd "$u" | cut -d: -f6)"
+  base="$home/github"
+  [ -d "$base" ] || continue
+  for repo in "$base"/*/*/; do
+    [ -e "${repo}.git" ] || continue
+    name="$(basename "$repo")"
+    seen=$((seen+1))
+    if runuser -u "$u" -- git -C "$repo" pull --ff-only --quiet 2>/dev/null; then
+      status="ok"; ok=$((ok+1))
+    else
+      status="skip(non-ff/dirty/fetch-failed)"
+    fi
+    echo "$(date -Is) ${u}/${name}: ${status}"
   done
 done
+if [ "$seen" -gt 0 ] && [ "$ok" -eq 0 ]; then
+  echo "$(date -Is) kb-sync: FATAL all ${seen} repos failed to pull — token expired? network/GitHub down? Nothing synced." >&2
+  exit 1
+fi

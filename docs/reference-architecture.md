@@ -8,22 +8,24 @@ other secrets appear here — those never leave the private side.)
 
 ## The fleet
 
-Three agents run as Claude Code sessions on one Debian-based VPS, each a distinct Unix user with its own
-GitHub bot account and brain repo. They're named after Tolkien's smiths and delvers — a small,
-memorable convention, not a requirement.
+Four agents run as Claude Code sessions on one Debian-based VPS, each a distinct Unix user with its
+own GitHub bot account and brain repo. They're named after Tolkien's smiths, delvers and keepers — a
+small, memorable convention, not a requirement.
 
 | Agent | Archetype | Privilege | What it owns |
 |---|---|---|---|
 | **Durin** | root-agent | `sudo` — owns the host | Infra/ops: users, packages, Docker & Dokploy, Cloudflare zone (Tunnel + Access), backups, provisioning new agents, and the `agentic-monitor` heartbeat. The only privileged principal. |
 | **Galadriel** | cos-agent | none | Chief of Staff: research, business reasoning, orchestration, content, intel briefings. Broad tools, no root. |
 | **Celebrimbor** | dev-agent | none (own deploy token) | Build/deploy: the marketing website and n8n automation workflows, using its own scoped deploy rights — never routed through root. |
+| **Elrond** | cfo-agent | none | Finance & admin: bookkeeping, fiscal-compliance prep, the unified agenda. Isolated by data-residency rules (its brain holds procedures, never financial data). |
 
 Named for delvers and smiths on purpose: the privileged one, *Durin*, "works beneath everything, where
 the foundations are" — a reminder that the privilege is a liability to handle, not a power to enjoy.
 
 ## How the layers are instantiated
 
-- **Brains** — `kb-agent-ops-durin`, `kb-agent-cos-galadriel`, `kb-agent-dev-celebrimbor`: each a Git
+- **Brains** — `kb-agent-ops-durin`, `kb-agent-cos-galadriel`, `kb-agent-dev-celebrimbor`,
+  `kb-agent-cfo-elrond`: each a Git
   repo of OKF-style Markdown (identity, memory, skills, tools), reaching shared governance through a
   `shared -> ../kb-agent-shared` sibling-clone symlink.
 - **Governance** — `kb-agent-shared`: the policies, templates, decisions, runbooks, and cross-agent
@@ -40,9 +42,12 @@ the foundations are" — a reminder that the privilege is a liability to handle,
   **Tunnel** (no public inbound ports) with **Access** in front of admin UIs (Dokploy, a Cockpit
   console). Durin also runs the daily VPS backups.
 - **Celebrimbor** deploys the website and builds **n8n** workflows with its own deploy token.
-- **Vaultwarden** runs as a Dokploy app and holds every agent's secrets, so a box rebuild restores
-  secrets from one place — and is itself **backed up off the box, regularly**, since a VPS incident
-  would otherwise take the secrets down with it ([`secrets.md`](secrets.md)).
+- **Vaultwarden** runs as a Dokploy app as the owner's secret store (reachable only over the
+  tailnet). Being honest about the current state: the agents' own tokens live in per-user files on
+  the box (`~/.config/gh/hosts.yml`, `~/.claude.json`, `~/.config/<agent>/secrets.env`) and are
+  restored by hand on a rebuild; the box (Vaultwarden included) is covered by daily provider
+  snapshots. Consolidating every agent secret into the store, with an off-box export, is the
+  documented open item ([`secrets.md`](secrets.md)) — not yet the achieved state.
 - **Monitoring**: `agentic-monitor` heartbeats a **healthchecks.io** check that fans out to
   **Telegram** — silence is the alarm ([`monitoring.md`](monitoring.md)).
 
@@ -60,7 +65,7 @@ The private side keeps decision records; the load-bearing ones are baked into th
 
 ## What this shows
 
-The reference deployment is proof the shape holds up in daily use: three agents with different
+The reference deployment is proof the shape holds up in daily use: four agents with different
 privileges and lanes, driven from phone and laptop, recoverable from Git + a restored secret, and loud
 when something breaks. Your deployment can be a single agent or a larger fleet — the templates and the
 config model are the same either way.

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # agentic-monitor — host-level health check + heartbeat to an external dead-man's switch.
 #
-# The single monitoring component (see the Agentic Codex docs (monitoring.md)). Runs on the HOST (systemd timer,
-# ~5 min), OUTSIDE Docker, so it survives a Dokploy/Docker failure. Each run does a few binary
+# The single monitoring component (see the Agentic Codex docs, monitoring.md).
+# Runs on the HOST (systemd timer, ~5 min),
+# OUTSIDE Docker, so it survives a Dokploy/Docker failure. Each run does a few binary
 # local checks, then pings healthchecks.io:
 #   - all ok            -> ping <HC_URL>              (heartbeat)
 #   - problem, 1st time -> ping <HC_URL> (body notes it, no alarm yet — hysteresis)
@@ -30,20 +31,33 @@ MONITOR_EXPECT_CONTAINERS="${MONITOR_EXPECT_CONTAINERS:-}"   # substrings that M
 MONITOR_HTTP_CHECKS="${MONITOR_HTTP_CHECKS:-}"               # "label=url ..."; alarm only if no HTTP response at all
 MONITOR_MEM_MIN_PCT="${MONITOR_MEM_MIN_PCT:-5}"             # alarm if available memory < this % of total
 STATE=/run/agentic-monitor.state       # ephemeral (cleared on reboot — fine)
-
-# Agents auto-discovered (any user with a ~/github/<org>/kb-agent-<role>-<name> brain);
-# override with AGENTS="user1 user2" in the env file.
-discover_agents() {
-  local h u
-  for h in /home/*; do
-    [ -d "$h" ] || continue
-    u="$(basename "$h")"
-    compgen -G "$h/github/*/kb-agent-*-*/" >/dev/null 2>&1 && echo "$u"
-  done
-}
-AGENTS="${AGENTS:-$(discover_agents)}"
+ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
+# Explicit PATH for every command run AS an agent (never a login shell — see check 5's comment).
+# The same definition exists in agentic-divergence-check / memory-mirror / provision-agent;
+# the divergence check asserts all four stay identical, so edit them together.
+AGENT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 problems=()
+
+# Fleet roster — single source of truth (installed from infra/fleet-agents).
+# NO hardcoded fallback list. The previous version guessed a hardcoded example list with a WARN
+# on stderr that nothing reads, and still exited 0 — so a missing roster would have left the newest agent
+# unmonitored while this monitor kept pinging green. That is the worst possible failure mode for a
+# monitor: silently narrowing its own scope. Now a missing roster is itself an alarmed problem, and
+# coverage falls back to on-disk discovery (same approach as agentic-divergence-check) so the fleet
+# is still swept while the misconfiguration is being reported.
+if [ -f "$ROSTER_FILE" ]; then
+  AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t' | tr '\n' ' ')"
+else
+  problems+=("roster-missing[$ROSTER_FILE]")
+  AGENTS="$(for h in /home/*; do u="$(basename "$h")"
+    [ -d "$h/github" ] || continue
+    ls -d "$h"/github/*/kb-agent-*-"$u" >/dev/null 2>&1 && echo "$u"
+  done | sort -u | tr '\n' ' ')"
+fi
+if [ -z "${AGENTS// /}" ]; then
+  problems+=("roster-empty[no agents to monitor]")
+fi
 
 # 1) Docker: daemon up, and no unhealthy/restarting containers (minus known-noise excludes).
 if command -v docker >/dev/null 2>&1; then
@@ -76,8 +90,6 @@ if [ -n "${mt:-}" ] && [ "${mt:-0}" -gt 0 ] 2>/dev/null; then
 fi
 
 # 2c) HTTP reachability (e.g. traefik/dokploy) — alarm only if nothing responds at all.
-# -k skips TLS verify: intended for LOCAL liveness (http://localhost) — don't point this at a
-# remote HTTPS endpoint expecting cert validation.
 for chk in $MONITOR_HTTP_CHECKS; do
   lbl="${chk%%=*}"; url="${chk#*=}"
   code=$(curl -sk -o /dev/null -w '%{http_code}' -m 8 "$url" 2>/dev/null || echo 000)
@@ -99,26 +111,27 @@ if [ -n "$last" ]; then
   [ "$lts" -gt 0 ] && [ $((now - lts)) -gt 2400 ] && problems+=("kb-sync:stale($(((now-lts)/60))m)")
 fi
 
-# 5) Agent topic sessions: every ENABLED key in each agent's topics.tsv must be active.
+# 5) Agent topic sessions: every key in each agent's topics.tsv must be active.
 # Repo resolution must match bin/claude-topic's exactly (same username-pinned glob,
 # same refuse-not-guess rule on ambiguity) — kept in sync by hand, there is no
 # shared library between this host-level script and the per-agent wrapper.
 # Diverging here would make a hijacked/broken repo LOOK healthy: if the wrapper
 # refuses to run but this check keeps resolving something else (or nothing, or a
 # registry-less decoy), the monitor pings green while the agent is silently down —
-# found and fixed 2026-07-26: an earlier version alarmed only on >1 candidates, but
-# 0 candidates (repo simply moved/renamed away — the cheapest version of this
-# attack) and "repo resolved but topics.tsv missing" both fell through to a silent
-# `exit 0`. Sentinels are prefixed with `!`, a character `require_valid_key` never
-# allows in a real topic key, so a topic coincidentally named e.g. `NO-REPO` can't
-# be confused with one of these.
-# `bash -lc` (login shell) sources the agent's own (agent-owned) ~/.profile/
-# ~/.bash_profile — found and fixed 2026-07-26: a planted shell function
-# (`systemctl() { return 0; }`) there silently neutralizes every is-enabled/
-# is-active check below, regardless of repo resolution. `--noprofile --norc` plus
-# an explicit PATH removes that entirely.
+# found and fixed 2026-07-26: the previous version alarmed only on >1 candidates,
+# but 0 candidates (repo simply moved/renamed away — the CHEAPEST version of this)
+# and "repo resolved but topics.tsv missing" both fell through to `exit 0`, silent.
+# Sentinels are prefixed with `!`, a character `require_valid_key` never allows in a
+# real topic key, so a topic coincidentally named e.g. `NO-REPO` can't be confused
+# with one of these.
+# `bash -lc` (login shell) sources the agent's OWN `~/.profile`/`~/.bash_profile` —
+# found and fixed 2026-07-26: an agent-planted shell function (`systemctl() { return
+# 0; }`) there silently neutralizes every is-enabled/is-active check below,
+# regardless of repo resolution. `--noprofile --norc` plus an explicit PATH removes
+# that entirely — verified a planted `systemctl` function no longer intercepts
+# anything once profile-sourcing is disabled.
 for u in $AGENTS; do
-  dead=$(runuser -u "$u" -- env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  dead=$(runuser -u "$u" -- env PATH="$AGENT_PATH" \
     bash --noprofile --norc -c '
     export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
     cands="$(ls -d ~/github/*/kb-agent-*-"$(id -un)"/ 2>/dev/null)"
@@ -146,6 +159,20 @@ for u in $AGENTS; do
     '') ;;
     *) problems+=("topics-down[$u]:$(echo "$dead" | tr ' ' ',')") ;;
   esac
+done
+
+# 6) Failed USER units, per roster agent. The failed-unit sweep in (3) only sees SYSTEM units;
+# an agent's own user manager can carry failed services (an MCP server, a topic that hit an edge
+# case) that nothing else reports — found 2026-07-30 in the reference deployment via an unmanaged per-agent MCP service,
+# which could have failed forever with no alarm. Same exclusion list as (3); claude-topic@ units
+# also surface here if they fail outright, complementing (5)'s enabled-but-not-active check.
+for u in $AGENTS; do
+  fuser=$(runuser -u "$u" -- env PATH="$AGENT_PATH" bash --noprofile --norc -c '
+    export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
+    systemctl --user list-units --state=failed --no-legend --plain 2>/dev/null' 2>/dev/null | awk '{print $1}')
+  for x in $MONITOR_EXCLUDE_UNITS; do fuser=$(printf '%s\n' "$fuser" | grep -vF "$x"); done
+  fuser=$(printf '%s' "$fuser" | grep -v '^$' | paste -sd, -)
+  [ -n "$fuser" ] && problems+=("user-units[$u]:$fuser")
 done
 
 # --- Decide + ping (with 2-cycle hysteresis via STATE) ---
