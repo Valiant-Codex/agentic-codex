@@ -46,6 +46,7 @@ Accept the fingerprint, enter the root password (or your key unlocks it). You're
 
 ```bash
 apt update && apt -y upgrade
+apt install -y git gh rsync python3     # the tools the agent stack needs; not all are on minimal images
 ```
 
 ## 3. Make it reachable the easy way — Tailscale
@@ -108,7 +109,7 @@ loginctl enable-linger root-agent        # keep its sessions running even when n
 **Why linger?** Without it, the agent's background sessions would stop the moment you log out, and
 wouldn't come back after a reboot. Linger keeps them alive 24/7 — which is the whole point.
 
-Let Tailscale reach this user too, then switch to it:
+Then switch to it:
 
 ```bash
 su - root-agent                          # become the agent user

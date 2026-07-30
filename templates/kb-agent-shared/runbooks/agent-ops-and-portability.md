@@ -66,7 +66,7 @@ The `claude-topic` wrapper is **root-owned** at `/usr/local/bin/claude-topic` (c
 with each agent's `~/.local/bin/claude-topic` symlinked to it — so no agent can rewrite what another agent
 executes (a fleet security hardening measure). The command is named after the
 unit it drives (`claude-topic` → `claude-topic@<key>.service` → `topics.tsv`); it was renamed from the
-bare `topic`, which survives as a compatibility symlink. It is systemd-native:
+bare `topic` (the compatibility symlink was later removed). It is systemd-native:
 
 ```
 claude-topic list                     # all topics: key, service state, sessionId, display name

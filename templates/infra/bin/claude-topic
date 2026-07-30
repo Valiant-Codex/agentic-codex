@@ -369,6 +369,10 @@ cmd_new() {
   require_valid_key "$key"; require_systemd
   [ -n "$name" ] || die "empty display name"
   case "$name" in *$'\t'*) die "display name may not contain a tab (the registry is TSV)" ;; esac
+  # Newline/CR would write a SECOND row into the TSV (row injection: the injected line can be a
+  # perfectly valid key+name that later tooling trusts). The registry is line-oriented; the name
+  # must stay one line.
+  case "$name" in *$'\n'*|*$'\r'*) die "display name may not contain a newline" ;; esac
   require_safe_value "display name" "$name"
   [ -n "$AGENT_REPO" ] || die "no agent repo found under $HOME_DIR/github/<org> (expected kb-agent-<role>-<name>/)"
   existing="$(reg_name "$key")"

@@ -24,12 +24,18 @@ U="${1:?usage: [ORG=<github-org>] provision-agent <unix-user> <brain-repo>}"
 BRAIN="${2:?usage: [ORG=<github-org>] provision-agent <unix-user> <brain-repo>}"
 ORG="${ORG:?set ORG=<your-github-org> (the GitHub org that owns the brain + infra repos)}"
 ORG_URL="https://github.com/${ORG}"
-# infra (source of the wrapper + unit) lives in the provisioner's own clone; discover it
-# (first git checkout named 'infra' under any agent home). Override with INFRA=/path/to/infra.
+# infra (source of the wrapper + unit) comes from the PROVISIONER'S OWN clone — resolved via
+# SUDO_USER (this script self-elevates, so SUDO_USER is the human-driven invoking user). NEVER
+# glob every /home/*: any unprivileged agent can clone infra into its own home (org read is
+# enough) with malicious COMMITTED changes — the dirty-worktree guard below would pass — and a
+# first-match glob would then install that agent's bin/claude-topic ROOT-OWNED for the whole
+# fleet: precisely the channel the three-tier config model exists to forbid. Override with
+# INFRA=/path/to/infra only if you know why.
 if [ -z "${INFRA:-}" ]; then
-  for d in /home/*/github/*/infra; do [ -d "$d/.git" ] && INFRA="$d" && break; done
+  _ihome="$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)"
+  for d in "$_ihome"/github/*/infra; do [ -d "$d/.git" ] && INFRA="$d" && break; done
 fi
-[ -n "${INFRA:-}" ] && [ -d "$INFRA/.git" ] || { echo "FATAL: cannot find an 'infra' git clone; set INFRA=/path/to/infra"; exit 1; }
+[ -n "${INFRA:-}" ] && [ -d "$INFRA/.git" ] || { echo "FATAL: cannot find an 'infra' git clone under the invoking user's home; set INFRA=/path/to/infra"; exit 1; }
 
 # `getent | cut` always exits 0 (the pipeline status is cut's), so `|| true` was dead and a
 # nonexistent user fell through to the emptiness check below. Ask getent directly instead.
@@ -82,6 +88,15 @@ INFRA_BEHIND="$(git -C "$INFRA" rev-list --count 'HEAD..@{u}' 2>/dev/null || ech
 if [ "$INFRA_BEHIND" != 0 ]; then
   echo "  [WARN] $INFRA is ${INFRA_BEHIND} commit(s) behind origin — the wrapper about to be"
   echo "         installed fleet-wide may be stale. 'git -C $INFRA pull --ff-only' first if unsure."
+fi
+# AHEAD is a FAIL, not a warn: a locally-committed wrapper passes the dirty check above, and
+# installing it root-owned fleet-wide before it is pushed/reviewed is exactly the channel the
+# three-tier config model forbids. Push first; origin is the reviewable source of truth.
+INFRA_AHEAD="$(git -C "$INFRA" rev-list --count '@{u}..HEAD' 2>/dev/null || echo unknown)"
+if [ "$INFRA_AHEAD" != 0 ] && [ "$INFRA_AHEAD" != unknown ]; then
+  echo "  [FAIL] $INFRA has $INFRA_AHEAD commit(s) not on origin — refusing to install an"
+  echo "         unpushed wrapper fleet-wide. Push (and let it be reviewable) first."
+  exit 1
 fi
 if cmp -s "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic; then
   echo "  [skip] /usr/local/bin/claude-topic already matches $INFRA/bin/claude-topic"

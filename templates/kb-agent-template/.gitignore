@@ -14,8 +14,6 @@ hosts.yml
 settings.local.json
 .claude.json
 .claude.json.bak
-deploy/topics.state
-hosts.yml
 
 # Node / tooling
 node_modules/

@@ -53,9 +53,11 @@ AGENT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 as_agent(){ runuser -u "$1" -- env PATH="$AGENT_PATH" bash --noprofile --norc -c "$2"; }
 
 # Source of the per-agent artifacts provision-agent installs as real copies (checked per brain
-# below): discover the first infra clone, override with INFRA_DIR=/path/to/infra.
+# below). Derived from the ROOT-WRITTEN manifest (the installer records where it installed from) —
+# never from globbing agent homes: an agent-planted infra clone would otherwise become the
+# comparison source and could mask or fabricate installed-artifact drift. Override: INFRA_DIR=.
 if [ -z "${INFRA_DIR:-}" ]; then
-  for _d in /home/*/github/*/infra; do [ -d "$_d/.git" ] && INFRA_DIR="$_d" && break; done
+  INFRA_DIR="$(awk -F'|' '$1=="/etc/systemd/system/kb-sync.service"{print $2}' /usr/local/share/agentic/installed.manifest 2>/dev/null | sed 's#/systemd/kb-sync.service$##')"
 fi
 INFRA_DIR="${INFRA_DIR:-/nonexistent}"
 # Repos that hold root-installed code and fleet governance. Unlike a brain or an app repo, nobody
@@ -79,7 +81,12 @@ fi
 # --- roster vs reality: a brain on disk that nobody sweeps is worse than a missing one ---
 DISCOVERED="$(for h in /home/*; do u="$(basename "$h")"; [ -d "$h/github" ] || continue;
   ls -d "$h"/github/*/kb-agent-*-"$u" >/dev/null 2>&1 && echo "$u"; done | sort -u)"
-[ -z "$AGENTS" ] && AGENTS="$DISCOVERED"
+# Fall back to discovery ONLY when the roster FILE is missing (that case already recorded drift
+# above). An EXISTING-but-empty roster must NOT be papered over: with the old unconditional
+# fallback, AGENTS became DISCOVERED and the two reconciliation loops below compared the discovered
+# set against itself — a no-op in exactly the shipped-template state (empty roster). Now an empty
+# roster with brains on disk drifts per brain via the first loop.
+[ -z "$AGENTS" ] && [ ! -f "$ROSTER_FILE" ] && AGENTS="$DISCOVERED"
 for u in $DISCOVERED; do
   grep -qx "$u" <<< "$AGENTS" || drift "roster: '$u' has a brain repo on disk but is not in $ROSTER_FILE (uncovered by fleet scripts)"
 done
@@ -227,7 +234,7 @@ check_brain(){ # <user> <repo>
       || drift "$n: ~/CLAUDE.md resolves to '$got', not $r/CLAUDE.md (the single supported bootstrap)"
     while IFS= read -r f; do
       [ -e "$r/$f" ] || drift "$n: ~/CLAUDE.md bootstrap names a missing file: $f"
-    done < <(grep -oE '[A-Za-z0-9_/.-]+\.md' "$hc" 2>/dev/null | grep -v '^CLAUDE.md$' | sed "s#.*kb-agent-[a-z-]*/##" | sort -u)
+    done < <(grep -oE '[A-Za-z0-9_/.-]+\.md' "$hc" 2>/dev/null | grep -v '^CLAUDE.md$' | sed "s#.*kb-agent-[A-Za-z0-9-]*/##" | sort -u)
   fi
 
   # 7) Referenced paths exist. Vocabulary-free and self-maintaining: renames/removals self-report.
@@ -321,7 +328,9 @@ PY
     || drift "$n: linger is OFF for '$u' — its topics will NOT come back after a reboot"
 }
 
-for u in $AGENTS; do
+# Iterate the UNION of roster and discovered: a brain missing from the roster already drifted
+# above, and still deserves its per-brain checks rather than a blind spot.
+for u in $(printf '%s\n%s\n' "$AGENTS" "$DISCOVERED" | grep . | sort -u); do
   base="$(getent passwd "$u" | cut -d: -f6)/github"
   brain="$(ls -d "$base"/*/kb-agent-*-"$u" 2>/dev/null | head -1)"
   if [ -n "$brain" ] && [ -d "$brain/.git" ]; then check_brain "$u" "$brain"; else drift "$u: no brain repo found under $base/<org>/"; fi
@@ -352,10 +361,14 @@ fi
 # planted-binary trade). Duplication is fine; SILENT divergence between the copies is not — one
 # script quietly running agents' commands with a different PATH than its siblings is exactly the
 # class this checker exists for. Assert the four definitions are still one.
+if [ ! -d "$INFRA_DIR" ]; then
+  drift "installed: no infra clone found (manifest missing or moved) — AGENT_PATH and per-agent unit sources cannot be verified"
+else
 AP_COUNT="$(grep -h '^AGENT_PATH=' \
   "$INFRA_DIR/scripts/agentic-divergence-check" "$INFRA_DIR/scripts/memory-mirror" \
   "$INFRA_DIR/scripts/provision-agent" "$INFRA_DIR/scripts/agentic-monitor" 2>/dev/null | sort -u | grep -c .)"
 [ "${AP_COUNT:-0}" = 1 ] || drift "installed: AGENT_PATH definitions across the four infra scripts are not identical (found $AP_COUNT variants) — re-align them; a diverged PATH silently changes what runs as the agents"
+fi
 
 # --- timers that must be enabled (a job silently switched off is not a failed unit) ---
 # This is the class that produced the reference deployment's fourth-agent gap: a NEVER-enabled templated instance never runs, so

@@ -19,7 +19,10 @@ High-signal facts are **distilled from the working tier into the canonical tier*
 
 ## The nightly mirror (optional, deterministic)
 
-> **Optional.** Ships with the timer **disabled**; enable per agent when you want it. It is Claude-Code
+> **Enabled by `provision-agent`, with disclosure.** Provisioning an agent turns its mirror timer on
+> and prints exactly what the job writes and how to switch it off (`sudo systemctl disable --now
+> memory-mirror@<user>.timer`) — it is an unattended writer, and leaving it opt-in is how an agent
+> once ran for a day with durability silently off. It is Claude-Code
 > specific only in the path it reads (that runtime's memory store).
 
 A per-agent timer (`memory-mirror@<user>.timer`, ~05:00, staggered) runs `memory-mirror`, which copies

@@ -29,8 +29,11 @@ You cannot do these for yourself; verify them, don't assume them:
    name. Git identity is set (`git config --global user.name/user.email`).
 6. This repo (`agentic-codex`) is cloned — these steps assume **`~/agentic-codex`** — and you were told
    to read this file.
-7. **Runtime deps present:** `git` and `python3` (default on Debian-based distros; `claude-topic` uses `python3` to
-   read session IDs), plus **Node** in `~/.local/node` if any MCP server runs via `npx`.
+7. **Runtime deps present:** `git`, `gh` (the GitHub CLI — required by the token wiring and by
+   `provision-agent`'s auth check), `rsync` (used nightly by `memory-mirror`) and `python3`
+   (`claude-topic` uses it to read session IDs). None of these can be assumed present on a minimal
+   cloud image: `sudo apt install -y git gh rsync python3`. Plus **Node** in `~/.local/node` if any
+   MCP server runs via `npx`.
 
 Quick self-check:
 
@@ -88,8 +91,8 @@ cp -r "$AC/templates/kb-agent-template/." ./<BRAIN>
 
 > **The brain repo name is a hard requirement, not an example.** It must be
 > `kb-agent-<ROLE>-<AGENT>` where `<AGENT>` is exactly the Unix user. All three host scripts discover
-> the brain by that shape (`kb-agent-*-<user>`); with any other name `kb-sync` skips the agent and the
-> monitor never checks its sessions — **both silently**.
+> the brain by that shape (`kb-agent-*-<user>`); with any other name the monitor, the divergence check
+> and `memory-mirror` all go blind on that agent — **silently**.
 
 Now **replace the placeholders** (`<ORG>`, `<AGENT>`, `<ROLE>`, `<VPS_HOST>`, `<TZ>`, `<OWNER>`) with
 real values in the copied files, and fill in — these three are what make an agent useful from its first

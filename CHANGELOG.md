@@ -6,6 +6,59 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.1] — 2026-07-30 — What the adversarial review of v0.6.0 found
+
+v0.6.0 shipped with "no known holes"; an independent adversarial review (a fresh agent, briefed to
+refute, reading the repo as a stranger) found ten real issues the same afternoon — including one the
+release itself introduced. Every claim was re-verified line-by-line before fixing; the assertions
+below were fixture-proven to fire.
+
+### Security
+- **`provision-agent` sourced the fleet-wide root-owned wrapper from the first `infra` clone in ANY
+  agent's home.** Introduced by v0.6.0's generalization (the reference deployment pins the path). Any
+  unprivileged agent with org read could clone `infra` into its own home with malicious *committed*
+  changes — the dirty-worktree guard passes on committed changes — and alphabetical first-match would
+  install its `bin/claude-topic` root-owned for every agent. Now resolved from the **invoking user's**
+  home (`SUDO_USER`), and a clone **ahead of origin is a hard FAIL** (unpushed commits must not reach
+  a fleet-wide root install). `agentic-divergence-check` had the same first-match glob for its
+  comparison source; it now derives `INFRA_DIR` from the root-written manifest instead.
+- `claude-topic new` rejects newlines/CR in display names (a multi-line name wrote a second, valid
+  row into the TSV registry — row injection).
+
+### Fixed
+- **`agentic-monitor` silently dropped the last registry line when it lacked a trailing newline**
+  (`while read` returns 1 on an unterminated final line) — that topic was simply never monitored.
+  Now read via charset-filtered awk, like every other registry consumer. Fixture-proven.
+- **The dead-man's switch ran green against the placeholder URL.** The example env pre-filled
+  `HC_URL=https://hc-ping.com/REPLACE-…`, the `:?` guard only catches *unset*, and ping failures are
+  deliberately swallowed — skip the monitoring step and the monitor reports success forever while
+  pinging nothing. The example now ships empty values (the guard fires loudly) and a still-a-
+  placeholder URL is FATAL.
+- **The roster reconciliation was a no-op in exactly the shipped state.** With an existing-but-empty
+  roster (what the template ships), `AGENTS` fell back to the discovered set and the both-ways
+  comparison compared discovery against itself. The fallback now applies only when the roster *file*
+  is missing; an empty roster with brains on disk drifts per brain, and per-brain checks iterate the
+  union. Fixture-proven (8 findings fire on a live fleet with an emptied roster).
+- **The walkthrough never installs `gh` or `rsync`**, which the procedure hard-requires (token
+  wiring, provisioning auth check, nightly mirror): a literal stranger dead-ended at step 7 with
+  `gh: command not found`. Both docs now install the four runtime deps explicitly.
+- **The shipped permission template allowlisted the `topic` wrapper this release deleted** (and not
+  `claude-topic`, which agents actually run) — every newly-provisioned agent got dead allowlist
+  entries. Fixed, along with the wrong `node` path.
+- **`docs/memory.md` said the mirror "ships disabled — enable when you want it"**, contradicting
+  v0.6.0's own provision-enables-it-with-disclosure behavior *and* the divergence check that asserts
+  the timer on. The disclosure a cautious adopter reads first now matches what happens.
+- `manage-agents.md` used paths that don't exist in a deployed org (`templates/infra/...`), taught
+  hand-editing the roster that `provision-agent` now maintains, and its REMOVE checklist omitted the
+  memory-mirror timer (a leftover instance fails nightly after `userdel` and pages every cycle) and
+  the roster line. All three fixed.
+- Stale text: `agent-ops-and-portability.md` still said the bare `topic` symlink survives; the env
+  example still named the deleted weekly `agentic-update-check`; the divergence timer's comment still
+  told a human to enable what the installer enables; `README_AGENT` claimed a misnamed brain makes
+  `kb-sync` skip it (kb-sync is roster-driven and name-agnostic — it is the monitor, the divergence
+  check and the mirror that go blind). The brain template's `.gitignore` carried a duplicate
+  `hosts.yml` and a `deploy/topics.state` path that never existed.
+
 ## [0.6.0] — 2026-07-30 — The audit release: propagate everything the reference deployment learned, delete what drifted
 
 A full adversarial audit of both sides (the reference deployment and this repo) found that a dozen
@@ -350,6 +403,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.6.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.1
 [0.6.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.5.0
 [0.4.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.1

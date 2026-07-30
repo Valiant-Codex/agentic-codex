@@ -1,7 +1,7 @@
 # Daily fleet divergence check (~08:00, after the nightly memory mirror AND after
 # apt-daily-upgrade.timer's 06:00-07:00 window, so it doesn't race unattended-upgrades and
 # report a security update as pending when it's actually about to be auto-installed).
-# Enable once the fleet is clean: sudo systemctl enable --now agentic-divergence-check.timer
+# Enabled by install-host-services (nothing is left opt-in); the check itself asserts this timer is on.
 # Canonical source: <ORG>/infra.
 [Unit]
 Description=Daily fleet divergence check

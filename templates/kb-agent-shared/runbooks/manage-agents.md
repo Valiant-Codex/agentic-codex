@@ -107,7 +107,7 @@ PY
 
 ### (c) Apply the rest with `provision-agent` — do NOT do it by hand
 
-From `templates/infra/scripts/`, run:
+From your deployed infra clone (`~/github/<ORG>/infra/scripts/`), run:
 
 ```bash
 ORG=<ORG> provision-agent <AGENT> <BRAIN>
@@ -123,17 +123,11 @@ manually** — reference `provision-agent`.
 The agent is then auto-kept-current by `kb-sync`. Brain **content** (the SOUL.md and OPERATING.md identity,
 tools, skills) is authored by the agent (or its designated maintainer), not by the root-agent.
 
-### (d) Add the agent to the fleet roster
+### (d) Commit the roster change provision-agent made
 
-```bash
-echo '<AGENT>' >> templates/infra/fleet-agents   # in your infra clone, then commit + push
-sudo ./templates/infra/scripts/install-host-services   # reinstalls the roster to /usr/local/share/agentic/
-```
-
-Skipping this does not break the agent, but `agentic-divergence-check` will report it daily as "has a
-brain repo on disk but is not in the roster (uncovered by fleet scripts)" — and that report is how you
-would otherwise notice a *missing* agent, so leaving a known-good finding in it trains you to ignore it.
-See the comments in `fleet-agents` for which scripts actually read it and how to make it authoritative.
+`provision-agent` already appended `<AGENT>` to `infra/fleet-agents` and refreshed the installed
+copy — do **not** edit the roster by hand. What remains is the git half: commit and push the infra
+repo (the daily divergence check reports a dirty infra clone until you do).
 
 ## MANAGE sessions
 
@@ -152,11 +146,16 @@ session won't pick it up otherwise.
 # 1. Stop + disable all its topic services, then linger
 sudo -u <AGENT> -H bash -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); for s in $(systemctl --user list-units "claude-topic@*" --all --plain --no-legend | awk "{print \$1}"); do systemctl --user disable --now "$s"; done'
 sudo loginctl disable-linger <AGENT>
-# 2. Back up the home if anything un-pushed matters, then remove the user
+# 2. Disable its nightly memory-mirror timer (a leftover one FAILS nightly after userdel and pages
+#    the monitor every cycle until someone notices)
+sudo systemctl disable --now memory-mirror@<AGENT>.timer
+# 3. Back up the home if anything un-pushed matters, then remove the user
 sudo tar czf /root/backup-<AGENT>-$(date +%F).tgz /home/<AGENT>   # keep until sure
 sudo userdel -r <AGENT>
+# 4. Remove <AGENT> from infra/fleet-agents, commit + push, and re-run install-host-services —
+#    the divergence check reports a stale roster line (and a stale mirror timer) either way
 ```
-3. GitHub (owner, or a token with org admin): **revoke the bot PAT**, remove the bot as collaborator or
+5. GitHub (owner, or a token with org admin): **revoke the bot PAT**, remove the bot as collaborator or
    delete the bot account, and **archive the brain repo**.
 4. **Record a decision** documenting the decommission.
 
