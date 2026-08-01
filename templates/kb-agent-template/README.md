@@ -39,7 +39,7 @@ bootstrap**: a thin pointer back to them, symlinked to `~/CLAUDE.md`, written wi
 never let the bootstrap drift into a second source of truth. Splitting durable *who-you-are* from
 mutable *what-you-do* is deliberate: it keeps identity from drifting when operational instructions
 change. The brain *content* (identity, memory, skills, tools) is plain Markdown and portable to
-another runtime; the wiring is Claude-Code-specific. See `docs/portability.md`.
+another runtime; the wiring is Claude-Code-specific. See docs/portability.md in the agentic-codex repo.
 
 ## Repo shape
 
@@ -52,8 +52,8 @@ another runtime; the wiring is Claude-Code-specific. See `docs/portability.md`.
 | `deploy/claude-settings.json` | Curated, portable runtime settings (permissions, notifications). |
 | `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. |
 | `tools/` | This agent's tool notes. |
-| `skills/` | This agent's skills, **folder-per-skill** (`<name>/SKILL.md`); fleet-common ones symlink `shared/skills/*`. See `docs/skills.md`. |
-| `memory/` | This agent's durable memory — two-tier (`distilled-memory.md` + `episodic/` + machine-mirrored `auto/`). See `docs/memory.md`. |
+| `skills/` | This agent's skills, **folder-per-skill** (`<name>/SKILL.md`); fleet-common ones symlink `shared/skills/*`. See docs/skills.md in the agentic-codex repo. |
+| `memory/` | This agent's durable memory — two-tier (`distilled-memory.md` + `episodic/` + machine-mirrored `auto/`). See docs/memory.md in the agentic-codex repo. |
 | `context/` | Working context and scratch notes. |
 | `shared/` | Symlink → sibling clone `../kb-agent-shared` (global policies, decisions, runtime reference). |
 
@@ -68,7 +68,7 @@ shared -> ../kb-agent-shared
 
 Clone both repos as siblings under `~/github/<ORG>/`, and a sync timer fast-forwards them (no submodule
 commands). If `shared/` does not resolve, clone `<ORG>/kb-agent-shared` next to this repo. See
-the Agentic Codex write-up (`docs/config-model.md` in the agentic-codex repo) for why sibling-clone
+docs/config-model.md in the agentic-codex repo for why sibling-clone
 over submodule.
 
 ## How a root agent scaffolds a new brain

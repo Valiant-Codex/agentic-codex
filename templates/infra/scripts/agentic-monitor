@@ -48,7 +48,7 @@ problems=()
 # coverage falls back to on-disk discovery (same approach as agentic-divergence-check) so the fleet
 # is still swept while the misconfiguration is being reported.
 if [ -f "$ROSTER_FILE" ]; then
-  AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t' | tr '\n' ' ')"
+  AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t\r' | tr '\n' ' ')"
 else
   problems+=("roster-missing[$ROSTER_FILE]")
   AGENTS="$(for h in /home/*; do u="$(basename "$h")"

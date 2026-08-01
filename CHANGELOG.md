@@ -6,6 +6,63 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.2] — 2026-08-01 — What an end-to-end provisioning test found (and what the review of those fixes found)
+
+v0.6.1 was reviewed but never *executed*: nobody had run the documented bring-up on a real machine.
+This release is the result of doing that — a throwaway Unix user, these templates, a stubbed runtime,
+local git origins — plus an adversarial review of the fixes it produced. Nine defects, every one
+reproduced live and re-proven fixed by re-running the same test.
+
+### Security
+- **`install-host-services` was a complete bypass of `provision-agent`'s protections.** It installed
+  the root-owned fleet-wide `claude-topic` wrapper *and* the fleet roster with none of the
+  dirty-worktree / unpushed / roster-shrink guards. On an established box (where "it's the fresh-host
+  bootstrap" stops being true) that is the same root-execution channel the config model exists to
+  forbid, reachable through the other door. Both guards now apply there too.
+- **The fleet-wide wrapper install no longer runs first.** It was step 1, so a provisioning that
+  failed at step 2 still left *every other agent's* wrapper replaced, with nothing to roll it back —
+  reproduced when a failed test run swapped the live wrapper. It now runs only after this agent's own
+  clones, symlinks and settings are in place; the read-only git guards that can abort it stay at
+  step 0, before anything is mutated at all.
+
+### Fixed
+- **Provisioning silently redefined the whole fleet.** Refreshing the installed roster from the
+  provisioner's clone replaced it wholesale: reproduced end-to-end, one run left
+  `/usr/local/share/agentic/fleet-agents` containing **only** the newly-provisioned agent, so
+  `kb-sync` stopped syncing and `agentic-monitor` stopped watching four live agents — silently, since
+  a monitor cannot alarm about agents it no longer knows. Both installers now **refuse** a roster
+  that drops names which still have a Unix user and a brain repo on the box, and the roster is only
+  mutated after that guard can no longer abort. Verified it fires on that exact case and does not
+  block a legitimate superset.
+- **A freshly provisioned agent's topics had no stored sessionId at all** — `topics.state` did not
+  even exist. `claude-topic list` showed `active` with an empty session, which the runbook itself
+  calls unhealthy, and the next reboot would have started **blank conversations and orphaned the
+  history** (the incident class the wrapper exists to prevent, reached through the provisioning
+  door). Provisioning now captures each sessionId, with a retry budget larger than the 15s the
+  wrapper itself allows for the session file to appear.
+- **Nothing could detect that state afterwards.** Neither the monitor nor the divergence check ever
+  looked at `topics.state`, so a scrolled-past warning was the only signal. The daily check now
+  asserts that every **enabled** topic has a stored sessionId — fixture-proven to fire on a removed
+  state row and to stay silent on a healthy fleet.
+- **Roster comparisons now strip CR.** With CRLF line endings the new guard both false-positived
+  (blocking a legitimate run) and false-negatived (waving a drop through). Fixed in every roster
+  reader.
+- **A brand-new brain was dirty from minute one**: the fleet-common skill symlinks provisioning
+  creates were untracked, and nothing said so. Provisioning now reports them (it deliberately never
+  commits into an agent's own repo) and the runbook says to commit them.
+- **Every adopter's brain reported four broken references on day one.** The brain template's README
+  pointed at `docs/*.md` files that exist in *this* repo, not in a deployed brain — four standing
+  findings in the daily report, which is how a report teaches you to ignore it. The pointers are now
+  exact and outside backticks, so they are precise without being checked as repo-relative paths.
+- **The bring-up never installed `gh` or `rsync`**, which the documented procedure hard-requires: a
+  literal stranger dead-ended at the token step with `gh: command not found`.
+
+### Verified working (the point of running it)
+The `gh` precondition blocks as designed; `memory-mirror` refused to push a repo that already had
+unpushed work and exited non-zero; `remember` + `restart` resumed the same conversation; the
+committed `shared` symlink survives `cp -r` and resolves; teardown via the REMOVE checklist left no
+failed unit, no timer and no home behind.
+
 ## [0.6.1] — 2026-07-30 — What the adversarial review of v0.6.0 found
 
 v0.6.0 shipped with "no known holes"; an independent adversarial review (a fresh agent, briefed to
@@ -403,6 +460,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.6.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.2
 [0.6.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.1
 [0.6.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.5.0

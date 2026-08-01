@@ -70,7 +70,7 @@ STRICT_CLEAN_REPOS="${STRICT_CLEAN_REPOS:-infra kb-agent-shared}"
 echo "$(date -Is) agentic-divergence-check"
 
 if [ -f "$ROSTER_FILE" ]; then
-  AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t')"
+  AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t\r')"
 else
   # Not a warning. The roster is what kb-sync and agentic-monitor iterate; if it is gone they are
   # each guessing (or now failing), and that is a fleet-wide coverage failure, not a note.
@@ -218,6 +218,18 @@ check_brain(){ # <user> <repo>
       # and an unregistered unit is wrongly accepted. Reproduced.
       grep -qxF "$k" <<< "$reg_keys" \
         || drift "$n: topic unit '$k' is enabled but absent from the registry (it will not survive a reprovision)"
+    done <<< "$unit_keys"
+    # A topic can be enabled, running, and still have NO stored sessionId — ~/.config/agent/topics.state
+    # is runtime state that only `claude-topic new/remember/stop/restart` writes. Provisioning used to
+    # leave exactly that state (fixed 2026-08-01), and nothing anywhere could see it: the next reboot
+    # would start a BLANK conversation and orphan the history (the 2026-07-17 incident class). The
+    # monitor only asks is-active, so this is the one place that can assert it. Missing file = every
+    # enabled topic is unanchored, which is precisely the case worth shouting about.
+    local state_file="$home_dir/.config/agent/topics.state"
+    while IFS= read -r k; do
+      [ -n "$k" ] || continue
+      awk -F'\t' -v key="$k" '$1==key && $2 ~ /^[0-9a-fA-F-]{36}$/ {f=1} END{exit !f}' "$state_file" 2>/dev/null \
+        || drift "$n: topic '$k' is enabled but has NO stored sessionId — a restart or reboot would start a BLANK conversation and orphan its history (fix: claude-topic remember $k)"
     done <<< "$unit_keys"
   fi
 

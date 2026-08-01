@@ -120,6 +120,11 @@ real copy, enables linger, and starts each topic in `deploy/topics.tsv`. It fail
 is missing (that is why (a)/(b) come first). **Do not re-do the clone/symlink/unit/topic steps
 manually** — reference `provision-agent`.
 
+`provision-agent` also symlinks every fleet-common skill from `shared/skills/` into the brain's
+`skills/`, and prints them if they are untracked: **commit those symlinks** — they are part of the
+brain's declared shape, and leaving them untracked keeps the repo dirty from day one (provisioning
+deliberately never commits into an agent's own repo).
+
 The agent is then auto-kept-current by `kb-sync`. Brain **content** (the SOUL.md and OPERATING.md identity,
 tools, skills) is authored by the agent (or its designated maintainer), not by the root-agent.
 

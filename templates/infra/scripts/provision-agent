@@ -71,12 +71,12 @@ if ! asU 'gh auth status >/dev/null 2>&1'; then
   exit 1
 fi
 
-# 1) Root-owned claude-topic wrapper (once, global; source in infra).
-#    This is a per-agent command with a FLEET-WIDE side effect: it rewrites the wrapper every agent
-#    executes, from whatever state the provisioner's infra clone happens to be in. Provisioning one
-#    new agent from a stale or locally-edited clone would silently change what all the others run.
-#    So say what is being installed, and refuse to do it silently from a clone that disagrees with
-#    origin.
+# 0b) Wrapper preconditions — READ-ONLY git checks, done BEFORE anything is mutated.
+#    These used to sit next to the install itself; when the install moved after the per-agent work
+#    (see 4b), they moved with it — so a dirty/unpushed wrapper aborted the run only AFTER the
+#    agent's repos, ~/CLAUDE.md and ~/.claude/settings.json had already been written, leaving a
+#    half-provisioned agent in no roster with no durable memory. A check that can run first must
+#    run first; only the mutation belongs late.
 # `diff --quiet -- <path>` compares worktree against the INDEX, so a `git add`ed but uncommitted
 # wrapper passed this guard and got installed fleet-wide. Compare against HEAD. Reproduced.
 if ! git -C "$INFRA" diff --quiet HEAD -- bin/claude-topic 2>/dev/null; then
@@ -97,12 +97,6 @@ if [ "$INFRA_AHEAD" != 0 ] && [ "$INFRA_AHEAD" != unknown ]; then
   echo "  [FAIL] $INFRA has $INFRA_AHEAD commit(s) not on origin — refusing to install an"
   echo "         unpushed wrapper fleet-wide. Push (and let it be reviewable) first."
   exit 1
-fi
-if cmp -s "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic; then
-  echo "  [skip] /usr/local/bin/claude-topic already matches $INFRA/bin/claude-topic"
-else
-  install -m0755 -o root -g root "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic
-  echo "  [ok] /usr/local/bin/claude-topic (root-owned) — CHANGED, affects every agent"
 fi
 
 # 2) Repos — brain + kb-agent-shared sibling (clone if missing; else kb-sync keeps them fresh).
@@ -138,6 +132,12 @@ asU "ln -sfn '$BASE/$BRAIN/skills' '$H/.claude/skills'"
 # discovered through the whole-dir symlink above. Auto-discovers whatever the shared layer ships,
 # so adding a fleet-common skill needs no per-agent step. Idempotent; never clobbers a real dir.
 asU 'shopt -s nullglob; cd "'"$BASE/$BRAIN"'" && mkdir -p skills && for s in shared/skills/*/; do n=$(basename "$s"); [ -e "skills/$n" ] || ln -s "../shared/skills/$n" "skills/$n"; done'
+# Those symlinks are part of the brain's declared shape, so they belong in git — but provisioning
+# must never commit into an agent's own repo, so say it instead of silently leaving the worktree
+# dirty forever (a freshly provisioned brain had 5 untracked symlinks from minute one; end-to-end
+# test, 2026-08-01).
+UNTRACKED_SKILLS="$(asU "cd '$BASE/$BRAIN' && git ls-files --others --exclude-standard -- skills/ 2>/dev/null | tr '\n' ' '" || true)"
+[ -n "${UNTRACKED_SKILLS// /}" ] && echo "  [note] untracked file(s) under skills/ in $BRAIN (the fleet-common symlinks just created, and anything else) — commit what belongs in git so the brain repo stays clean: $UNTRACKED_SKILLS"
 echo "  [ok] symlinks: shared, ~/CLAUDE.md -> $BOOTSTRAP, ~/.local/bin/claude-topic, ~/.claude/skills"
 
 # 4) Settings — install the curated, portable source as a REAL copy (not a symlink).
@@ -152,6 +152,25 @@ if asU "[ -f '$SRC_SETTINGS' ]"; then
   echo "  [ok] ~/.claude/settings.json (real copy from deploy/claude-settings.json)"
 else
   echo "  [warn] $BRAIN has no deploy/claude-settings.json — skipping settings install"
+fi
+
+# 4b) Root-owned claude-topic wrapper (global; source in infra).
+#    ORDERING IS DELIBERATE (moved after the per-agent work): this is the ONE step with a FLEET-WIDE
+#    side effect, and it used to run first — so a provisioning that failed later (a clone that could
+#    not be written, a missing bootstrap) still left every other agent's wrapper replaced, with
+#    nothing to roll it back. Found by an end-to-end throwaway provisioning test, where exactly that
+#    happened. Doing it here means the blast-radius step only runs once this agent's own
+#    repos/symlinks/settings are actually in place.
+#    This is a per-agent command with a FLEET-WIDE side effect: it rewrites the wrapper every agent
+#    executes, from whatever state the provisioner's infra clone happens to be in. Provisioning one
+#    new agent from a stale or locally-edited clone would silently change what all the others run.
+#    So say what is being installed, and refuse to do it silently from a clone that disagrees with
+#    origin.
+if cmp -s "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic; then
+  echo "  [skip] /usr/local/bin/claude-topic already matches $INFRA/bin/claude-topic"
+else
+  install -m0755 -o root -g root "$INFRA/bin/claude-topic" /usr/local/bin/claude-topic
+  echo "  [ok] /usr/local/bin/claude-topic (root-owned) — CHANGED, affects every agent"
 fi
 
 # 5) systemd user unit — real copy from infra (not a symlink into shared).
@@ -205,6 +224,22 @@ asU '
       active|activating) echo "  [ok] topic ${key} ($st)";;
       *)                 echo "  [FAIL] topic ${key} (${st:-unknown})"; rc=1;;
     esac
+    # CAPTURE THE SESSION ID. Enabling the unit starts the session but stores nothing, so the topic
+    # ran with an EMPTY sessionId and ~/.config/agent/topics.state did not even exist — meaning the
+    # next reboot (or any restart) would start a BLANK conversation and orphan the history, which is
+    # the exact incident `claude-topic` was built to prevent, reached through the provisioning door.
+    # The runbook even says "active with an empty sessionId is not healthy" while this step produced
+    # precisely that. Reproduced end-to-end on 2026-08-01. `remember` is the verb the wrapper provides for
+    # this; the session file appears a beat after exec, so retry briefly. Never fatal: a topic that
+    # is up but not yet remembered is recoverable with one command, and we print it.
+    if [ "$st" = active ] || [ "$st" = activating ]; then
+      remembered=0
+      for _try in $(seq 1 20); do   # > the 15s budget claude-topic itself allows for the session file
+        if claude-topic remember "$key" >/dev/null 2>&1; then remembered=1; break; fi
+        sleep 1
+      done
+      [ "$remembered" = 1 ] || echo "  [warn] topic ${key} started but no sessionId stored yet — run: claude-topic remember ${key}"
+    fi
   done < <(awk -F"\t" "\$1 !~ /^[[:space:]]*(#|\$)/ {print \$1}" "$REG")
   exit $rc
 ' || TOPIC_FAIL=1
@@ -216,13 +251,39 @@ asU '
 ROSTER_SRC="$INFRA/fleet-agents"
 ROSTER_DST=/usr/local/share/agentic/fleet-agents
 if [ -f "$ROSTER_SRC" ]; then
-  if grep -qxF "$U" "$ROSTER_SRC"; then
-    echo "  [skip] '$U' already in $ROSTER_SRC"
-  else
+  ROSTER_APPEND=0
+  grep -qxF "$U" "$ROSTER_SRC" || ROSTER_APPEND=1
+  # Refresh the installed copy the host scripts actually read — but NEVER let it silently SHRINK.
+  # The installed roster is what kb-sync syncs and agentic-monitor sweeps, so a refresh from a clone
+  # that does not know about some agent drops that agent from both, silently: the monitor does not
+  # alarm about agents it has never heard of, and only the next daily divergence run would notice.
+  # Reproduced end-to-end on 2026-08-01 — provisioning one agent from a second infra clone left the
+  # live roster containing ONLY the new agent while four real agents ran unmonitored.
+  if [ -f "$ROSTER_DST" ]; then
+    lost=""
+    while IFS= read -r nm; do
+      [ -n "$nm" ] || continue
+      grep -qxF "$nm" <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_SRC" | tr -d ' \t\r') && continue
+      # only names that are still real agents on this box (a decommissioned one SHOULD disappear)
+      getent passwd "$nm" >/dev/null 2>&1 || continue
+      ls -d "$(getent passwd "$nm" | cut -d: -f6)"/github/*/kb-agent-*-"$nm" >/dev/null 2>&1 && lost="$lost $nm"
+    done < <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_DST" | tr -d ' \t\r')
+    if [ -n "${lost// /}" ]; then
+      echo "  [FAIL] refusing to install a roster that DROPS live agent(s):$lost"
+      echo "         $ROSTER_SRC does not list them, but they have Unix users and brain repos on this box."
+      echo "         Installing it would silently remove them from kb-sync and agentic-monitor."
+      echo "         Fix the roster in this infra clone (or provision from the canonical one), then re-run."
+      exit 1
+    fi
+  fi
+  # Only now — after the guard cannot abort — mutate the clone and the live copy. Appending first
+  # meant an aborted run left the clone edited and "COMMIT AND PUSH" printed for work it then undid.
+  if [ "$ROSTER_APPEND" = 1 ]; then
     printf '%s\n' "$U" >> "$ROSTER_SRC"
     echo "  [ok] added '$U' to $ROSTER_SRC — COMMIT AND PUSH the infra repo so it is not local-only"
+  else
+    echo "  [skip] '$U' already in $ROSTER_SRC"
   fi
-  # Refresh the installed copy the host scripts actually read.
   install -D -m0644 "$ROSTER_SRC" "$ROSTER_DST"
   echo "  [ok] $ROSTER_DST refreshed"
 else

@@ -45,6 +45,21 @@ fi
 echo "  [ok] agentic-monitor"
 
 # claude-topic wrapper — root-owned, fleet-global.
+# GUARDED, exactly as provision-agent guards it: this installs the binary EVERY agent executes, from
+# whatever state this clone happens to be in. Without these checks the installer was a complete
+# bypass of provision-agent's protections on an established box (found by adversarial review,
+# 2026-08-01) — "it's the fresh-host bootstrap" stops being true the moment the host is not fresh.
+if ! git -C "$HERE" diff --quiet HEAD -- bin/claude-topic 2>/dev/null; then
+  echo "  [FAIL] $HERE/bin/claude-topic has uncommitted changes — installing it would push an"
+  echo "         unreviewed wrapper to ALL agents. Commit or revert it first."
+  exit 1
+fi
+HERE_AHEAD="$(git -C "$HERE" rev-list --count '@{u}..HEAD' 2>/dev/null || echo unknown)"
+if [ "$HERE_AHEAD" != 0 ] && [ "$HERE_AHEAD" != unknown ]; then
+  echo "  [FAIL] $HERE has $HERE_AHEAD commit(s) not on origin — refusing to install an unpushed"
+  echo "         wrapper fleet-wide. Push (and let it be reviewable) first."
+  exit 1
+fi
 # It has always been listed in installed.manifest but only provision-agent actually installed it, so
 # on a fresh host (this script's whole purpose) agentic-divergence-check reported
 # "installed: /usr/local/bin/claude-topic is MISSING — re-run install-host-services" and re-running
@@ -52,7 +67,27 @@ echo "  [ok] agentic-monitor"
 inst 0755 bin/claude-topic /usr/local/bin/claude-topic
 echo "  [ok] /usr/local/bin/claude-topic (root-owned)"
 
-# fleet roster — single source of truth for kb-sync / agentic-monitor / divergence-check
+# fleet roster — single source of truth for kb-sync / agentic-monitor / divergence-check.
+# Same shrink guard provision-agent applies: installing a roster from a clone that does not know
+# about some agent silently drops it from kb-sync and the monitor, and the monitor cannot alarm
+# about agents it no longer knows. Reproduced end-to-end via provision-agent on 2026-08-01; this
+# script had the identical unguarded install (adversarial review, same day).
+ROSTER_DST=/usr/local/share/agentic/fleet-agents
+if [ -f "$ROSTER_DST" ]; then
+  lost=""
+  while IFS= read -r nm; do
+    [ -n "$nm" ] || continue
+    grep -qxF "$nm" <(grep -vE '^[[:space:]]*(#|$)' "$HERE/fleet-agents" | tr -d ' \t\r') && continue
+    getent passwd "$nm" >/dev/null 2>&1 || continue
+    ls -d "$(getent passwd "$nm" | cut -d: -f6)"/github/*/kb-agent-*-"$nm" >/dev/null 2>&1 && lost="$lost $nm"
+  done < <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_DST" | tr -d ' \t\r')
+  if [ -n "${lost// /}" ]; then
+    echo "  [FAIL] refusing to install a roster that DROPS live agent(s):$lost"
+    echo "         $HERE/fleet-agents does not list them, but they have Unix users and brain repos here."
+    echo "         Installing it would silently remove them from kb-sync and agentic-monitor."
+    exit 1
+  fi
+fi
 inst 0644 fleet-agents /usr/local/share/agentic/fleet-agents
 echo "  [ok] fleet roster (/usr/local/share/agentic/fleet-agents)"
 
@@ -122,7 +157,7 @@ if [ "${1:-}" = "--enable-writers" ]; then
         echo "     [FAIL] memory-mirror@${u}.timer — '$u' has no durable memory"
         echo "$err_out" | sed 's/^/            /'
       fi
-    done < <(grep -vE '^\s*(#|$)' "$HERE/fleet-agents" | tr -d ' \t')
+    done < <(grep -vE '^\s*(#|$)' "$HERE/fleet-agents" | tr -d ' \t\r')
   else
     echo "     [FAIL] no $HERE/fleet-agents — cannot enable per-agent timers"
   fi

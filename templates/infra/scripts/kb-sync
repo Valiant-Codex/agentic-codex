@@ -23,7 +23,7 @@ if [ ! -f "$ROSTER_FILE" ]; then
   echo "$(date -Is) kb-sync: FATAL roster $ROSTER_FILE missing — refusing to guess the fleet. Run install-host-services." >&2
   exit 1
 fi
-AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t' | tr '\n' ' ')"
+AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t\r' | tr '\n' ' ')"
 if [ -z "${AGENTS// /}" ]; then
   echo "$(date -Is) kb-sync: FATAL roster $ROSTER_FILE is empty — nothing would be synced." >&2
   exit 1
