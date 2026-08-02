@@ -48,8 +48,11 @@ Design + rationale: the Agentic Codex docs (`monitoring.md`). This is the operat
 - **Silence known noise:** add a substring to `MONITOR_EXCLUDE_CONTAINERS` / `MONITOR_EXCLUDE_UNITS` in
   `/etc/agentic-monitor.env` — exclude the known so a real problem stands out. Keep excludes few and
   documented.
-- **Add a check:** append to the `problems` array in `scripts/agentic-monitor`, then reinstall
-  (`install-host-services`, or `sudo install -m0755 scripts/agentic-monitor /usr/local/bin/agentic-monitor`).
+- **Add a check:** append to the `problems` array in `scripts/agentic-monitor`, commit and push it,
+  then reinstall with `install-host-services`. Not by hand: a direct
+  `sudo install … /usr/local/bin/agentic-monitor` puts unreviewed code in root's path, writes no
+  manifest row, and leaves the daily divergence check comparing the new binary against whatever
+  source the manifest still names.
 
 ## Portability (new VPS)
 

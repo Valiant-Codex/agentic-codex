@@ -13,14 +13,13 @@
 # Under systemd, sessions survive crashes (Restart=always) and reboot (user service
 # + `loginctl enable-linger <agent>`) with no tmux — Remote Control is the access path.
 #
-# Install (per agent, once; run when the target topic is idle), as that agent's user:
-#   sudo install -m0755 -o root -g root infra/bin/claude-topic /usr/local/bin/claude-topic   # once, global
-#   ln -sfn /usr/local/bin/claude-topic ~/.local/bin/claude-topic
-#   install -m0644 infra/systemd/claude-topic@.service \
-#           ~/.config/systemd/user/claude-topic@.service   # real copy, not a symlink
-#   sudo loginctl enable-linger <agent-user>
-#   systemctl --user daemon-reload
-#   systemctl --user enable --now claude-topic@<key>.service
+# Install: `provision-agent <unix-user> <brain-repo>` does all of it (wrapper, this unit, linger,
+# topics, roster, memory mirror) and is the ONLY supported way. This comment used to spell out the
+# steps by hand, starting with `sudo install … /usr/local/bin/claude-topic` addressed to the agent's
+# own user — i.e. it told an unprivileged agent to root-install the binary every OTHER agent
+# executes, from its own clone, with none of the dirty/unpushed/roster guards. That is exactly the
+# channel the three-tier config model exists to forbid, and this file is copied into every agent's
+# home, so the instruction shipped to all of them. Removed 2026-08-02; use provision-agent.
 
 [Unit]
 Description=Claude Code Remote Control topic %i

@@ -111,16 +111,17 @@ maps `key -> sessionId` so a restart resumes the same conversation. `claude-topi
 ### Provision systemd for an agent (once)
 
 ```bash
-sudo install -m0755 -o root -g root infra/bin/claude-topic /usr/local/bin/claude-topic   # once, global (root)
-ln -sfn /usr/local/bin/claude-topic ~/.local/bin/claude-topic
-mkdir -p ~/.config/systemd/user
-install -m0644 infra/systemd/claude-topic@.service \
-        ~/.config/systemd/user/claude-topic@.service   # real copy, not a symlink into shared
-sudo loginctl enable-linger <agent-user>   # once per agent (root)
-systemctl --user daemon-reload
-# then, per topic:
-claude-topic new <key> "<Display Name>"           # register + start under systemd
+sudo ORG=<your-github-org> scripts/provision-agent <unix-user> <brain-repo>   # from the canonical infra clone
+# then, per topic, as that agent:
+claude-topic new <key> "<Display Name>"                                       # register + start under systemd
 ```
+
+`provision-agent` installs the wrapper, the topic unit, linger, the topics, the roster entry and the
+nightly memory mirror, and refuses to act on a clone that is dirty, unpushed, or would shrink the
+fleet roster. This section used to list those steps as hand-run commands, beginning with
+`sudo install … /usr/local/bin/claude-topic` — a root install of the binary **every** agent executes,
+with none of those guards, addressed to the agent's own user. Do not reintroduce it: if provisioning
+needs a new step, the step belongs in `provision-agent`, not in a runbook someone has to remember.
 
 ## Fresh-VPS recovery / migration (disaster recovery)
 

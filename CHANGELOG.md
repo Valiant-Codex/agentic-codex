@@ -6,6 +6,79 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.3] — 2026-08-02 — Guards that ran after the mutation, and guards that opened when they could not tell
+
+v0.6.2 moved `provision-agent`'s read-only checks above its first mutation and wrote down why: *a
+check that can run first must run first; only the mutation belongs late*. A second audit — plus an
+independent adversarial review briefed to refute it — found that the reasoning had never crossed the
+file boundary, and that three guards were weaker than they read. Every fix below was proven against a
+deliberately-broken fixture, and a legitimate install was re-run each time to prove it still succeeds.
+
+### Security
+- **`install-host-services` installed six root-owned artifacts before any guard could speak.**
+  `kb-sync`, `agentic-monitor` and their four systemd units were written to `/usr/local/bin` and
+  `/etc/systemd/system` at the top of the script; the git guards sat two thirds of the way down. A
+  guard that fires there does not prevent a bad install — it **guarantees a half-finished one**.
+  Reproduced; the reference deployment still carried the evidence (an orphaned mode-0600 manifest
+  temp file holding exactly those six rows, from a run that died at the old guard). Every read-only
+  precondition — worktree, unpushed commits, roster-shrink — now runs at step 0 in **both**
+  installers, before anything is written.
+- **The dirty-worktree guard only ever looked at `bin/claude-topic`.** Uncommitted changes to
+  `kb-sync`, `agentic-monitor`, `agentic-divergence-check` and `memory-mirror` installed root-owned
+  with no check at all — and `kb-sync` runs as root every fifteen minutes across every agent home.
+  Reproduced: injected code in `scripts/kb-sync` installed, exit 0. The check now covers everything
+  the installer installs, and uses `git status --porcelain` rather than `git diff`, which exits 0
+  for a path git does not track — so an **untracked** `bin/claude-topic` used to sail through too.
+- **The unpushed-commits guard was skipped whenever it could not answer.** `AHEAD=$(… || echo
+  unknown)` followed by `[ "$AHEAD" != unknown ]` meant a clone with no upstream — a locally created
+  branch, a detached HEAD, or an infra repo not yet pushed, which is exactly the fresh-host bootstrap
+  this script is for — bypassed it entirely. Reproduced: an unreviewed, unpushed wrapper installed
+  fleet-wide with the guard printing `[ok]`. A missing upstream is now itself a FAIL. The correct
+  shape already existed three times in this codebase (`claude-topic`'s `reg_commit`, `memory-mirror`,
+  `agentic-divergence-check`): ask about `@{u}` first, treat its absence as a finding.
+- **Two shipped documents taught the bypass.** `claude-topic@.service` — a file copied into *every*
+  agent's home — carried an "install, as that agent's user" comment beginning with `sudo install …
+  /usr/local/bin/claude-topic`: an instruction telling an unprivileged agent to root-install the
+  binary every other agent executes, from its own clone, with none of these guards. `monitoring.md`
+  offered the same shortcut for `agentic-monitor`, which additionally writes no manifest row. Both
+  removed; `agent-ops-and-portability.md`'s hand-run provisioning block is now one `provision-agent`
+  call.
+
+### Fixed
+- **An emptied roster silently switched three assertion families off.** The per-brain loop iterated
+  the union of roster and discovered agents; the mirror-timer, stale-timer and supporting-repo
+  sections still iterated the roster alone. With an existing-but-empty roster the checker therefore
+  stopped verifying `infra` and `kb-agent-shared` entirely — including the `STRICT_CLEAN_REPOS`
+  dirty-worktree assertion that backstops both installers — while simultaneously reporting all four
+  live `memory-mirror@` timers as `enabled but not in the roster (stale teardown?)`, a message whose
+  remedy is to **disable durable memory for the whole fleet**. Reproduced: 8 findings, 4 of them
+  wrong, and nothing indicating that anything had stopped being asserted. The set is now computed
+  once and used everywhere. This is the class v0.6.1 called out and fixed one section higher up.
+- **`memory-mirror` picked the brain repo with `head -1`.** It is an unattended writer that
+  `rsync --delete`s into the repo it picks and then commits and pushes there, so with two candidates
+  (a rename left half-done) it published an agent's memory into the **wrong repo** — while
+  `claude-topic`, facing the identical ambiguity, refuses to start at all. The writer is now at least
+  as cautious as the launcher; `agentic-divergence-check` refuses the same ambiguity instead of
+  auditing whichever repo it happened to pick.
+- **Nothing verified what the manifest does *not* contain.** The installed-artifact check iterates
+  rows in the manifest, so it proves "everything installed is listed" and never the reverse — which
+  is how a root-owned temp file sat beside the very file that loop reads, unseen. A sweep now reports
+  anything in `/usr/local/share/agentic` the manifest does not account for. Deliberately not extended
+  to `/usr/local/bin`, which is shared with the rest of the system: sweeping there would flag every
+  binary a host legitimately has. `install-host-services` also now `trap`s its temp manifest, so the
+  leftovers stop being created in the first place.
+- **`INFRA_DIR` — the checker's own root of trust — was asserted to be nothing.** It is derived from
+  the manifest, i.e. from whichever clone last ran the installer, and every "installed matches
+  source" comparison, the `AGENT_PATH` assertion and the per-agent unit comparison resolve through
+  it. A run from a throwaway clone silently re-points all of them, after which the comparison
+  compares the odd install against the odd source and agrees. v0.6.1 closed the read side of this;
+  the write side stayed open. The checker now asserts that its root of trust is a clone it actually
+  audits, and `docs/divergence-check.md` no longer claims the manifest's coverage "cannot drift" —
+  it states precisely which direction it proves.
+- A roster name with no Unix user reported `no brain repo found under /github/<org>/` — a path that
+  does not exist and does not name the real problem. Same dead-`||` idiom already fixed in `kb-sync`,
+  `memory-mirror` and `provision-agent`; this was the fourth copy.
+
 ## [0.6.2] — 2026-08-01 — What an end-to-end provisioning test found (and what the review of those fixes found)
 
 v0.6.1 was reviewed but never *executed*: nobody had run the documented bring-up on a real machine.
@@ -460,6 +533,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.6.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.3
 [0.6.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.2
 [0.6.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.1
 [0.6.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.0

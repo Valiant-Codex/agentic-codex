@@ -50,7 +50,17 @@ scan(){ grep -rilE "$SECRET_RE" "$1" 2>/dev/null; }   # prints offending files, 
 getent passwd "$U" >/dev/null || { log "ERROR: no such user '$U'"; exit 1; }
 HOME_DIR="$(getent passwd "$U" | cut -d: -f6)"
 BASE="$HOME_DIR/github"
-BRAIN="$(ls -d "$BASE"/*/kb-agent-*-"$U" 2>/dev/null | head -1)"
+# NEVER `head -1` here. This job is an UNATTENDED WRITER: it rsyncs --delete into the repo it picks
+# and then commits and pushes there. With two candidates (a rename left half-done) the old
+# first-match would silently mirror the agent's memory into the WRONG repo and publish it — while
+# claude-topic, facing the identical ambiguity, refuses to start at all. The writer must be at
+# least as cautious as the launcher, so: refuse and alarm rather than guess.
+mapfile -t BRAINS < <(ls -d "$BASE"/*/kb-agent-*-"$U" 2>/dev/null)
+if [ "${#BRAINS[@]}" -gt 1 ]; then
+  log "ERROR: multiple candidate brain repos under $BASE (${BRAINS[*]}) — refusing to guess which is real; mirroring into the wrong one would publish this agent's memory to the wrong repo"
+  exit 1
+fi
+BRAIN="${BRAINS[0]:-}"
 [ -n "$BRAIN" ] && [ -d "$BRAIN/.git" ] || { log "ERROR: brain repo not found under $BASE"; exit 1; }
 AUTOMEM="$HOME_DIR/.claude/projects/-home-$U/memory"
 

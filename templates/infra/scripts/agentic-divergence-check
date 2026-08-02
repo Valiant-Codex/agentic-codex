@@ -94,6 +94,17 @@ for u in $AGENTS; do
   grep -qx "$u" <<< "$DISCOVERED" || drift "roster: '$u' is listed but has no brain repo on disk"
 done
 
+# The set every later per-agent assertion iterates. Computed ONCE, here, because the sections below
+# used to each pick their own: the per-brain loop took the union while the mirror-timer, stale-timer
+# and supporting-repo sections took roster-only. With an emptied or truncated roster that split made
+# three assertion families go silently dark (infra/kb-agent-shared stopped being checked at all,
+# including the STRICT_CLEAN_REPOS dirty guard that backstops the installers) while the stale-timer
+# loop simultaneously false-positived every live agent's mirror timer as "stale teardown?" — a
+# message whose remedy is to DISABLE durable memory for the whole fleet. Reproduced with an emptied
+# roster: 8 findings, 4 of them wrong, and no sign that anything had stopped being asserted.
+# One set, used everywhere: a roster problem then drifts once, loudly, without disarming the checker.
+ALL_AGENTS="$(printf '%s\n%s\n' "$AGENTS" "$DISCOVERED" | grep . | sort -u)"
+
 check_brain(){ # <user> <repo>
   local u="$1" r="$2" n; n="$(basename "$r")"
   echo "== $n =="
@@ -342,9 +353,24 @@ PY
 
 # Iterate the UNION of roster and discovered: a brain missing from the roster already drifted
 # above, and still deserves its per-brain checks rather than a blind spot.
-for u in $(printf '%s\n%s\n' "$AGENTS" "$DISCOVERED" | grep . | sort -u); do
+for u in $ALL_AGENTS; do
+  # `getent | cut` exits with cut's status, always 0, so a roster name with no Unix user used to
+  # fall through with an EMPTY home and report "no brain repo found under /github/<org>/" — a path
+  # that does not exist and does not name the real problem. Same dead-`||` idiom already fixed in
+  # kb-sync, memory-mirror and provision-agent; this was the fourth copy. Ask getent.
+  if ! getent passwd "$u" >/dev/null; then
+    drift "$u: listed in the roster but there is no such Unix user (roster typo, or a teardown that skipped the roster)"
+    continue
+  fi
   base="$(getent passwd "$u" | cut -d: -f6)/github"
-  brain="$(ls -d "$base"/*/kb-agent-*-"$u" 2>/dev/null | head -1)"
+  # >1 candidate is ambiguous, and `head -1` would silently pick one — see memory-mirror for why
+  # guessing here is not safe. claude-topic refuses in the same situation; so do we.
+  mapfile -t _brains < <(ls -d "$base"/*/kb-agent-*-"$u" 2>/dev/null)
+  if [ "${#_brains[@]}" -gt 1 ]; then
+    drift "$u: multiple candidate brain repos under $base (${_brains[*]}) — refusing to guess which is real; rename or remove the stale one"
+    continue
+  fi
+  brain="${_brains[0]:-}"
   if [ -n "$brain" ] && [ -d "$brain/.git" ]; then check_brain "$u" "$brain"; else drift "$u: no brain repo found under $base/<org>/"; fi
 done
 
@@ -367,6 +393,27 @@ else
   echo "  [warn] no $MAN — run install-host-services to generate it"
 fi
 
+# Anything sitting in the agentic state dir that the manifest does NOT account for. The manifest
+# check above is one-directional by construction: it iterates rows IN the manifest, so it proves
+# "everything installed is listed" and says nothing about "everything present is listed". That gap
+# hid a root-owned mode-0600 `installed.manifest.XXXXXX` left by an aborted installer run — beside
+# the file this very loop reads, and invisible to it.
+# Deliberately scoped to /usr/local/share/agentic (a directory this tooling owns outright) and NOT
+# to /usr/local/bin, which is shared with the rest of the system: sweeping there would flag every
+# unrelated binary a host legitimately has, i.e. a check that costs more than it detects.
+if [ -d /usr/local/share/agentic ] && [ -f "$MAN" ]; then
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    # The manifest cannot list itself (it records what `inst()` installed, and it is not installed
+    # by inst()) — skipping it is not an exception carved out to make a run pass, it is the one
+    # file whose absence from its own inventory is correct by construction. Caught by this very
+    # check false-positiving on a healthy fleet the first time it ran.
+    [ "$f" = "$MAN" ] && continue
+    grep -qxF "$f" <(awk -F'|' '{print $1}' "$MAN" 2>/dev/null) \
+      || drift "installed: $f is in /usr/local/share/agentic but not in the manifest — leftover from an aborted install, or something installed by hand; remove it or install it properly"
+  done < <(find /usr/local/share/agentic -maxdepth 1 -type f 2>/dev/null | sort)
+fi
+
 # AGENT_PATH is defined identically in four scripts (this one, memory-mirror, provision-agent,
 # agentic-monitor) — deliberately NOT factored into a shared lib (a new installed moving part) and
 # deliberately NOT including any agent-writable dir (see provision-agent's comment on the
@@ -376,6 +423,19 @@ fi
 if [ ! -d "$INFRA_DIR" ]; then
   drift "installed: no infra clone found (manifest missing or moved) — AGENT_PATH and per-agent unit sources cannot be verified"
 else
+# INFRA_DIR is this checker's root of trust: every "installed artifact still matches its source"
+# comparison, the AGENT_PATH assertion and the per-agent unit comparison all resolve through it, and
+# it is whatever path last ran install-host-services. So a run from a throwaway clone silently
+# re-points the checker at that clone — and then "installed matches source" compares the odd install
+# against the odd source and agrees. The supporting-repos sweep below audits clones under a fleet
+# agent's ~/github/<org>/ (clean, pushed, not behind); a clone OUTSIDE that tree is audited by
+# nothing at all. Assert that the root of trust is one of the repos this checker actually vets.
+_infra_audited=0
+for _u in $ALL_AGENTS; do
+  getent passwd "$_u" >/dev/null || continue
+  case "$INFRA_DIR/" in "$(getent passwd "$_u" | cut -d: -f6)"/github/*) _infra_audited=1; break;; esac
+done
+[ "$_infra_audited" = 1 ] || drift "installed: the manifest says the host services were installed from '$INFRA_DIR', which is not inside any fleet agent's ~/github/<org>/ — that clone is audited by nothing (not its cleanliness, not whether it is pushed), yet it is the source every 'installed matches source' comparison trusts. Re-run install-host-services from the canonical infra clone."
 AP_COUNT="$(grep -h '^AGENT_PATH=' \
   "$INFRA_DIR/scripts/agentic-divergence-check" "$INFRA_DIR/scripts/memory-mirror" \
   "$INFRA_DIR/scripts/provision-agent" "$INFRA_DIR/scripts/agentic-monitor" 2>/dev/null | sort -u | grep -c .)"
@@ -391,7 +451,7 @@ echo "== host timers =="
 for t in kb-sync.timer agentic-monitor.timer agentic-divergence-check.timer; do
   systemctl is-enabled --quiet "$t" 2>/dev/null || drift "timer $t is not enabled"
 done
-for u in $AGENTS; do
+for u in $ALL_AGENTS; do
   systemctl is-enabled --quiet "memory-mirror@${u}.timer" 2>/dev/null \
     || drift "timer memory-mirror@${u}.timer is not enabled — '$u' has NO durable memory and nothing else would report it"
 done
@@ -410,15 +470,16 @@ done
 while IFS= read -r inst; do
   [ -n "$inst" ] || continue
   # -F: the instance name is data. Without it `foo.bar` would match a roster line `fooxbar`.
-  grep -qxF "$inst" <<< "$AGENTS" \
-    || drift "timer memory-mirror@${inst}.timer is enabled but '$inst' is not in the roster (stale teardown?)"
+  grep -qxF "$inst" <<< "$ALL_AGENTS" \
+    || drift "timer memory-mirror@${inst}.timer is enabled but '$inst' is neither in the roster nor on disk (stale teardown?)"
 done < <(systemctl list-units 'memory-mirror@*.timer' --all --no-legend --plain 2>/dev/null \
           | awk '{print $1}' | sed 's/^memory-mirror@//;s/\.timer$//')
 
 # --- non-brain repos: sync state only. The linter's other checks are brain-shaped, but a frozen
 # --- shared/infra clone silently stops governance updates or leaves root-installed code unpushed. ---
 echo "== supporting repos =="
-for u in $AGENTS; do
+for u in $ALL_AGENTS; do
+  getent passwd "$u" >/dev/null || continue
   h="$(getent passwd "$u" | cut -d: -f6)"
   for r in "$h"/github/*/*/; do
     case "$(basename "$r")" in kb-agent-*-"$u") continue;; esac

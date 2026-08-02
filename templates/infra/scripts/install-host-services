@@ -11,6 +11,79 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"   # infra repo root
 
 echo "== install-host-services (from $HERE) =="
 
+# --- STEP 0: READ-ONLY PRECONDITIONS. Nothing below this block is allowed to mutate the host until
+# --- every one of these has passed.
+#
+# ORDERING IS THE WHOLE POINT (2026-08-02). These checks used to sit next to the wrapper install,
+# two thirds of the way down — so `kb-sync`, `agentic-monitor` and their four systemd units were
+# already installed ROOT-OWNED from this clone before the first guard could speak. A guard that runs
+# after the mutation does not prevent a bad install, it GUARANTEES a half-finished one: reproduced,
+# and the reference deployment still carried the evidence months later (an orphaned mode-0600
+# manifest temp file holding exactly those six rows, from a run that died at the old guard).
+# `provision-agent` learned this on 2026-08-01 and hoisted its own guards to step 0 — "a check that
+# can run first must run first; only the mutation belongs late". The same reasoning applies here and
+# was simply never carried across the file boundary. Both installers must stay in step: any guard
+# added to one belongs in the other.
+guard_fail(){ echo "  [FAIL] $*"; exit 1; }
+
+# 0a) The worktree that is about to become root-owned code must be clean. `git status --porcelain`
+#     (not `git diff`) on purpose: it reports UNTRACKED files too, and `git diff --quiet HEAD -- <p>`
+#     silently exits 0 for a path git does not track — so an untracked `bin/claude-topic` used to
+#     sail straight through the old guard and get installed. Scoped to the trees this script
+#     installs from, so unrelated dirt elsewhere in the repo cannot block a legitimate bootstrap.
+#     This is not a new standard: agentic-divergence-check already declares `infra` a
+#     STRICT_CLEAN repo precisely because a dirty worktree here is never work-in-progress.
+DIRT="$(git -C "$HERE" status --porcelain -- bin scripts systemd fleet-agents 2>/dev/null)"
+if [ -n "$DIRT" ]; then
+  echo "$DIRT" | sed 's/^/         /'
+  guard_fail "$HERE has uncommitted or untracked changes in the files this installer makes
+         root-owned (listed above). Installing them would put unreviewed code in /usr/local/bin,
+         where kb-sync and agentic-divergence-check run it as root. Commit or revert first."
+fi
+
+# 0b) Unpushed commits. FAIL-CLOSED on a missing upstream: the old form was
+#     `AHEAD=$(... || echo unknown)` followed by `[ "$AHEAD" != 0 ] && [ "$AHEAD" != unknown ]`,
+#     so "unknown" skipped the guard entirely and an unreviewed, unpushed wrapper installed
+#     fleet-wide with the guard printing [ok]. Reproduced. Reachable in ordinary use: a locally
+#     created branch, a detached HEAD, or — most likely of all, since this IS the fresh-host
+#     bootstrap tool — an infra repo that has not been pushed anywhere yet.
+#     The correct shape already existed three times in this codebase (claude-topic's reg_commit,
+#     memory-mirror, agentic-divergence-check): ask about @{u} first, treat its absence as its own
+#     finding rather than as a reason to relax.
+if ! git -C "$HERE" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  guard_fail "$HERE has no upstream branch, so 'is this code pushed and reviewable?' cannot be
+         answered — refusing to install it root-owned fleet-wide. Push this repo and set an
+         upstream (git push -u origin <branch>) first."
+fi
+HERE_AHEAD="$(git -C "$HERE" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+[ "${HERE_AHEAD:-0}" = 0 ] || guard_fail "$HERE has $HERE_AHEAD commit(s) not on origin — refusing to install an unpushed
+         wrapper fleet-wide. Push (and let it be reviewable) first."
+HERE_BEHIND="$(git -C "$HERE" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
+[ "${HERE_BEHIND:-0}" = 0 ] && : || echo "  [WARN] $HERE is ${HERE_BEHIND} commit(s) behind origin — what is about to be installed
+         fleet-wide may be stale. 'git -C $HERE pull --ff-only' first if unsure."
+
+# 0c) Roster shrink guard — moved up with the others. Installing a roster from a clone that does not
+#     know about some agent silently drops it from kb-sync and the monitor, and a monitor cannot
+#     alarm about agents it no longer knows. Reproduced end-to-end 2026-08-01. It is a read-only
+#     comparison, so it belongs here rather than two thirds of the way down where an abort would
+#     already have replaced six root-owned files.
+ROSTER_DST=/usr/local/share/agentic/fleet-agents
+if [ -f "$ROSTER_DST" ] && [ -f "$HERE/fleet-agents" ]; then
+  lost=""
+  while IFS= read -r nm; do
+    [ -n "$nm" ] || continue
+    grep -qxF "$nm" <(grep -vE '^[[:space:]]*(#|$)' "$HERE/fleet-agents" | tr -d ' \t\r') && continue
+    getent passwd "$nm" >/dev/null 2>&1 || continue
+    ls -d "$(getent passwd "$nm" | cut -d: -f6)"/github/*/kb-agent-*-"$nm" >/dev/null 2>&1 && lost="$lost $nm"
+  done < <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_DST" | tr -d ' \t\r')
+  if [ -n "${lost// /}" ]; then
+    guard_fail "refusing to install a roster that DROPS live agent(s):$lost
+         $HERE/fleet-agents does not list them, but they have Unix users and brain repos here.
+         Installing it would silently remove them from kb-sync and agentic-monitor."
+  fi
+fi
+echo "  [ok] preconditions: worktree clean, pushed, roster keeps every live agent"
+
 # Every install goes through this helper, which also writes the manifest row — so the manifest is a
 # BYPRODUCT of installing, not a second hand-maintained list. The previous version duplicated every
 # install as a `src:dst` pair further down; add an install line, forget the pair, and that artifact
@@ -18,6 +91,11 @@ echo "== install-host-services (from $HERE) =="
 mkdir -p /usr/local/share/agentic
 MANIFEST=/usr/local/share/agentic/installed.manifest
 MANIFEST_TMP="$(mktemp "${MANIFEST}.XXXXXX")"
+# Clean it up on ANY exit path. Without this every aborted run left a root-owned mode-0600
+# `installed.manifest.XXXXXX` behind that nothing removed and nothing could see (the manifest
+# check iterates rows IN the manifest, so a stray file beside it is invisible). One such file
+# had been sitting on the reference deployment since the run that produced it.
+trap 'rm -f "$MANIFEST_TMP"' EXIT
 inst() {  # inst <mode> <repo-relative-src> <dst>
   install -D -m"$1" -o root -g root "$HERE/$2" "$3"
   echo "$3|$HERE/$2" >> "$MANIFEST_TMP"
@@ -44,22 +122,11 @@ else
 fi
 echo "  [ok] agentic-monitor"
 
-# claude-topic wrapper — root-owned, fleet-global.
-# GUARDED, exactly as provision-agent guards it: this installs the binary EVERY agent executes, from
-# whatever state this clone happens to be in. Without these checks the installer was a complete
-# bypass of provision-agent's protections on an established box (found by adversarial review,
-# 2026-08-01) — "it's the fresh-host bootstrap" stops being true the moment the host is not fresh.
-if ! git -C "$HERE" diff --quiet HEAD -- bin/claude-topic 2>/dev/null; then
-  echo "  [FAIL] $HERE/bin/claude-topic has uncommitted changes — installing it would push an"
-  echo "         unreviewed wrapper to ALL agents. Commit or revert it first."
-  exit 1
-fi
-HERE_AHEAD="$(git -C "$HERE" rev-list --count '@{u}..HEAD' 2>/dev/null || echo unknown)"
-if [ "$HERE_AHEAD" != 0 ] && [ "$HERE_AHEAD" != unknown ]; then
-  echo "  [FAIL] $HERE has $HERE_AHEAD commit(s) not on origin — refusing to install an unpushed"
-  echo "         wrapper fleet-wide. Push (and let it be reviewable) first."
-  exit 1
-fi
+# claude-topic wrapper — root-owned, fleet-global. Guarded at step 0 (worktree clean + pushed),
+# exactly as provision-agent guards it: this installs the binary EVERY agent executes, from whatever
+# state this clone happens to be in. Without those checks the installer was a complete bypass of
+# provision-agent's protections on an established box (found by adversarial review, 2026-08-01) —
+# "it's the fresh-host bootstrap" stops being true the moment the host is not fresh.
 # It has always been listed in installed.manifest but only provision-agent actually installed it, so
 # on a fresh host (this script's whole purpose) agentic-divergence-check reported
 # "installed: /usr/local/bin/claude-topic is MISSING — re-run install-host-services" and re-running
@@ -68,26 +135,7 @@ inst 0755 bin/claude-topic /usr/local/bin/claude-topic
 echo "  [ok] /usr/local/bin/claude-topic (root-owned)"
 
 # fleet roster — single source of truth for kb-sync / agentic-monitor / divergence-check.
-# Same shrink guard provision-agent applies: installing a roster from a clone that does not know
-# about some agent silently drops it from kb-sync and the monitor, and the monitor cannot alarm
-# about agents it no longer knows. Reproduced end-to-end via provision-agent on 2026-08-01; this
-# script had the identical unguarded install (adversarial review, same day).
-ROSTER_DST=/usr/local/share/agentic/fleet-agents
-if [ -f "$ROSTER_DST" ]; then
-  lost=""
-  while IFS= read -r nm; do
-    [ -n "$nm" ] || continue
-    grep -qxF "$nm" <(grep -vE '^[[:space:]]*(#|$)' "$HERE/fleet-agents" | tr -d ' \t\r') && continue
-    getent passwd "$nm" >/dev/null 2>&1 || continue
-    ls -d "$(getent passwd "$nm" | cut -d: -f6)"/github/*/kb-agent-*-"$nm" >/dev/null 2>&1 && lost="$lost $nm"
-  done < <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_DST" | tr -d ' \t\r')
-  if [ -n "${lost// /}" ]; then
-    echo "  [FAIL] refusing to install a roster that DROPS live agent(s):$lost"
-    echo "         $HERE/fleet-agents does not list them, but they have Unix users and brain repos here."
-    echo "         Installing it would silently remove them from kb-sync and agentic-monitor."
-    exit 1
-  fi
-fi
+# The shrink guard that protects this ran at step 0, before anything was mutated.
 inst 0644 fleet-agents /usr/local/share/agentic/fleet-agents
 echo "  [ok] fleet roster (/usr/local/share/agentic/fleet-agents)"
 

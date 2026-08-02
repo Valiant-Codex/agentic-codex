@@ -77,26 +77,66 @@ fi
 #    agent's repos, ~/CLAUDE.md and ~/.claude/settings.json had already been written, leaving a
 #    half-provisioned agent in no roster with no durable memory. A check that can run first must
 #    run first; only the mutation belongs late.
-# `diff --quiet -- <path>` compares worktree against the INDEX, so a `git add`ed but uncommitted
-# wrapper passed this guard and got installed fleet-wide. Compare against HEAD. Reproduced.
-if ! git -C "$INFRA" diff --quiet HEAD -- bin/claude-topic 2>/dev/null; then
-  echo "  [FAIL] $INFRA/bin/claude-topic has uncommitted changes — installing it would push an"
-  echo "         unreviewed wrapper to ALL agents. Commit or revert it first."
+# `git status --porcelain`, not `git diff`: `diff --quiet -- <path>` compares worktree against the
+# INDEX (so a `git add`ed but uncommitted wrapper passed) and, worse, exits 0 for a path git does
+# not track at all — an UNTRACKED bin/claude-topic sailed straight through. `status --porcelain`
+# reports modified, staged and untracked in one shot. Scoped to what this script installs.
+DIRT="$(git -C "$INFRA" status --porcelain -- bin/claude-topic systemd/claude-topic@.service fleet-agents 2>/dev/null)"
+if [ -n "$DIRT" ]; then
+  echo "$DIRT" | sed 's/^/         /'
+  echo "  [FAIL] $INFRA has uncommitted or untracked changes in the files this script installs"
+  echo "         (listed above) — installing them would push unreviewed code to ALL agents."
+  echo "         Commit or revert them first."
   exit 1
-fi
-INFRA_BEHIND="$(git -C "$INFRA" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo unknown)"
-if [ "$INFRA_BEHIND" != 0 ]; then
-  echo "  [WARN] $INFRA is ${INFRA_BEHIND} commit(s) behind origin — the wrapper about to be"
-  echo "         installed fleet-wide may be stale. 'git -C $INFRA pull --ff-only' first if unsure."
 fi
 # AHEAD is a FAIL, not a warn: a locally-committed wrapper passes the dirty check above, and
 # installing it root-owned fleet-wide before it is pushed/reviewed is exactly the channel the
 # three-tier config model forbids. Push first; origin is the reviewable source of truth.
-INFRA_AHEAD="$(git -C "$INFRA" rev-list --count '@{u}..HEAD' 2>/dev/null || echo unknown)"
-if [ "$INFRA_AHEAD" != 0 ] && [ "$INFRA_AHEAD" != unknown ]; then
+# FAIL-CLOSED on a missing upstream: the old `|| echo unknown` + `!= unknown` form SKIPPED this
+# guard entirely for a clone with no upstream (a locally created branch, a detached HEAD, a repo
+# not yet pushed), so an unreviewed unpushed wrapper installed fleet-wide with the guard printing
+# [ok]. Reproduced. claude-topic's reg_commit and memory-mirror already had the right shape.
+if ! git -C "$INFRA" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  echo "  [FAIL] $INFRA has no upstream branch, so 'is this code pushed and reviewable?' cannot be"
+  echo "         answered — refusing to install it root-owned fleet-wide. Push it and set an"
+  echo "         upstream (git push -u origin <branch>) first."
+  exit 1
+fi
+INFRA_AHEAD="$(git -C "$INFRA" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+if [ "${INFRA_AHEAD:-0}" != 0 ]; then
   echo "  [FAIL] $INFRA has $INFRA_AHEAD commit(s) not on origin — refusing to install an"
   echo "         unpushed wrapper fleet-wide. Push (and let it be reviewable) first."
   exit 1
+fi
+INFRA_BEHIND="$(git -C "$INFRA" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
+if [ "${INFRA_BEHIND:-0}" != 0 ]; then
+  echo "  [WARN] $INFRA is ${INFRA_BEHIND} commit(s) behind origin — the wrapper about to be"
+  echo "         installed fleet-wide may be stale. 'git -C $INFRA pull --ff-only' first if unsure."
+fi
+
+# 0c) Roster shrink guard — a READ-ONLY comparison, so it runs here with the other preconditions
+#     rather than at step 8. It used to sit next to the roster install, which meant an abort could
+#     happen only AFTER step 4b had already replaced the fleet-wide wrapper: the same
+#     "wide-blast action before a validation that could abort it" class that moving the wrapper
+#     install fixed on 2026-08-01, just a few steps later in the same script.
+ROSTER_SRC="$INFRA/fleet-agents"
+ROSTER_DST=/usr/local/share/agentic/fleet-agents
+if [ -f "$ROSTER_SRC" ] && [ -f "$ROSTER_DST" ]; then
+  lost=""
+  while IFS= read -r nm; do
+    [ -n "$nm" ] || continue
+    grep -qxF "$nm" <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_SRC" | tr -d ' \t\r') && continue
+    # only names that are still real agents on this box (a decommissioned one SHOULD disappear)
+    getent passwd "$nm" >/dev/null 2>&1 || continue
+    ls -d "$(getent passwd "$nm" | cut -d: -f6)"/github/*/kb-agent-*-"$nm" >/dev/null 2>&1 && lost="$lost $nm"
+  done < <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_DST" | tr -d ' \t\r')
+  if [ -n "${lost// /}" ]; then
+    echo "  [FAIL] refusing to install a roster that DROPS live agent(s):$lost"
+    echo "         $ROSTER_SRC does not list them, but they have Unix users and brain repos on this box."
+    echo "         Installing it would silently remove them from kb-sync and agentic-monitor."
+    echo "         Fix the roster in this infra clone (or provision from the canonical one), then re-run."
+    exit 1
+  fi
 fi
 
 # 2) Repos — brain + kb-agent-shared sibling (clone if missing; else kb-sync keeps them fresh).
@@ -248,36 +288,12 @@ asU '
 #    an agent that is provisioned but unlisted is silently unsynced and unmonitored while the monitor
 #    keeps reporting green. Registering it here is what makes provisioning a complete pipeline
 #    instead of a step someone has to remember to follow.
-ROSTER_SRC="$INFRA/fleet-agents"
-ROSTER_DST=/usr/local/share/agentic/fleet-agents
+#    The shrink guard that protects this ran at step 0c, before anything was mutated.
 if [ -f "$ROSTER_SRC" ]; then
   ROSTER_APPEND=0
   grep -qxF "$U" "$ROSTER_SRC" || ROSTER_APPEND=1
-  # Refresh the installed copy the host scripts actually read — but NEVER let it silently SHRINK.
-  # The installed roster is what kb-sync syncs and agentic-monitor sweeps, so a refresh from a clone
-  # that does not know about some agent drops that agent from both, silently: the monitor does not
-  # alarm about agents it has never heard of, and only the next daily divergence run would notice.
-  # Reproduced end-to-end on 2026-08-01 — provisioning one agent from a second infra clone left the
-  # live roster containing ONLY the new agent while four real agents ran unmonitored.
-  if [ -f "$ROSTER_DST" ]; then
-    lost=""
-    while IFS= read -r nm; do
-      [ -n "$nm" ] || continue
-      grep -qxF "$nm" <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_SRC" | tr -d ' \t\r') && continue
-      # only names that are still real agents on this box (a decommissioned one SHOULD disappear)
-      getent passwd "$nm" >/dev/null 2>&1 || continue
-      ls -d "$(getent passwd "$nm" | cut -d: -f6)"/github/*/kb-agent-*-"$nm" >/dev/null 2>&1 && lost="$lost $nm"
-    done < <(grep -vE '^[[:space:]]*(#|$)' "$ROSTER_DST" | tr -d ' \t\r')
-    if [ -n "${lost// /}" ]; then
-      echo "  [FAIL] refusing to install a roster that DROPS live agent(s):$lost"
-      echo "         $ROSTER_SRC does not list them, but they have Unix users and brain repos on this box."
-      echo "         Installing it would silently remove them from kb-sync and agentic-monitor."
-      echo "         Fix the roster in this infra clone (or provision from the canonical one), then re-run."
-      exit 1
-    fi
-  fi
-  # Only now — after the guard cannot abort — mutate the clone and the live copy. Appending first
-  # meant an aborted run left the clone edited and "COMMIT AND PUSH" printed for work it then undid.
+  # Mutate the clone and the live copy only here. Appending first meant an aborted run left the
+  # clone edited and "COMMIT AND PUSH" printed for work it then undid.
   if [ "$ROSTER_APPEND" = 1 ]; then
     printf '%s\n' "$U" >> "$ROSTER_SRC"
     echo "  [ok] added '$U' to $ROSTER_SRC — COMMIT AND PUSH the infra repo so it is not local-only"
