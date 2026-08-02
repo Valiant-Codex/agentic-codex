@@ -22,8 +22,55 @@ This is the operating procedure.
 - **Daily** — the updates section of `agentic-divergence-check` (08:00, after the apt-daily-upgrade window) reports OS + Dokploy status to the `agentic-updates`
   healthchecks.io check → Telegram, only when something is *actionable* (pending security, or a Dokploy
   release). A deferred reboot alone is reported, not alarmed.
-- **Renovate** opens image-digest-bump PRs on `<ORG>/infra`.
+- **On request** — the root-agent runs the diagnosis pass below over Dokploy and the stacks it runs,
+  and reports. Nothing is scheduled and nothing opens pull requests.
 - When either surfaces something, the root-agent proposes the deliberate step to the owner.
+
+## Diagnosis pass (read-only)
+
+Four questions. Nothing here mutates anything.
+
+**1. Platform** — `docker service inspect dokploy --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'`
+against the project's latest release (or `settings-getUpdateData` via MCP).
+
+**2. Per service: is the deployed compose what the branch says?** Read the inventory from Dokploy's own
+database, **naming the columns** — see Safety, this is the one way to ask that does not hand back every
+production secret:
+
+```bash
+PG=$(sudo docker ps --format '{{.Names}}' | grep '^dokploy-postgres' | head -1)
+sudo docker exec "$PG" psql -U dokploy -d dokploy -A -F'|' -c \
+ 'select name,"appName","composePath","customGitUrl","customGitBranch","autoDeploy","composeStatus" from compose order by name;'
+```
+
+Then diff **that service's own directory** between the deployed commit
+(`sudo git -C /etc/dokploy/compose/<appName>/code rev-parse HEAD`) and the branch.
+**Never report "N commits behind" as the answer**: the working copy trails the whole repo, most of
+which is unrelated to that service. In the reference deployment one stack sat 62 commits behind with a
+compose file byte-identical to `main`. Only the per-service diff carries information.
+
+Expect a permanently modified `compose.yaml` in every working copy: Dokploy re-serialises the file it
+deploys (dropping quotes, comments and blank lines). That is expected dirt, not drift.
+
+**3. Images: is a newer one published?**
+
+```bash
+local=$(sudo docker image inspect <image> --format '{{index .RepoDigests 0}}' | sed 's/.*@//')
+remote=$(sudo docker buildx imagetools inspect <image> --format '{{.Manifest.Digest}}')
+```
+
+**Self-check, and it is not optional: a *pinned* tag must compare equal.** If it does not, the method
+is wrong, not the image — stop and fix the method. That check is what caught the obvious first
+attempt: `docker manifest inspect --verbose | .[0].Descriptor.digest` returns the *platform-specific*
+manifest digest while the local `RepoDigests` entry is the *index* digest, so every image on the box
+looked stale, pinned ones included. `buildx imagetools` returns the index digest and compares
+correctly. Services running under Docker **Swarm** reference images by digest and have no local image
+under the tag, so the comparison returns nothing for them — that is correct, and their updates are
+question 1.
+
+**4. Orphans** — containers whose compose project is no longer a Dokploy service, and volumes no
+container references. Both are **reports only**: an `idle` service also leaves its volumes
+unreferenced, and those are dormant data, not garbage. Deleting a volume is a human-confirm gate.
 
 ## OS updates
 
@@ -54,20 +101,39 @@ Only on the owner's go. Backup first; verify after.
 
 ## Container image update
 
-1. Review the Renovate PR in `infra` (what image, old→new digest/version).
-2. Merge it.
-3. **Deploy the service** in Dokploy (compose → redeploy for `<appName>`) — `autoDeploy=false`, so
+1. If the tag is pinned, bump it in `apps/<service>/compose.yaml`, commit and push. For a floating tag
+   (`:latest`, `:stable`) there is nothing to edit — **a redeploy is itself the update**, which is
+   precisely why deploys are deliberate.
+2. **Deploy the service** in Dokploy (compose → redeploy for `<appName>`) — `autoDeploy=false`, so
    nothing deploys on the push alone.
-4. Verify the container comes back healthy (`agentic-monitor` covers the critical ones). Rollback =
-   revert the PR + redeploy.
+3. Verify the container comes back healthy (`agentic-monitor` covers the critical ones). Rollback =
+   restore the previous tag/digest + redeploy.
+
+**The pull-first gotcha — floating tags.** A redeploy alone will **not** fetch a newer image:
+`docker compose up -d --build` reuses whatever is cached locally when the tag already exists, even
+after the registry has moved on. Observed in the reference deployment on an app that was six minor
+versions stale — the redeploy reported "done" in about a second and changed nothing. Fix: run
+`docker compose -p <appName> -f <composePath> pull <service...>` **first**, then redeploy. Back up the
+app's database first if the jump is more than a point release, and watch the startup logs for the
+migration run.
 
 ## Safety
 
 - Dokploy updates, kernel reboots, and anything that restarts host services are **human-confirm gates**
   (`policies/approval-policy.md`) — inspect/backup, then wait for the owner.
-- Querying Dokploy (`compose-one`, etc.) returns **service env secrets in plaintext**; never persist
-  them (not to git/logs/memory). Dokploy MCP access ⇒ read access to all production secrets — a
-  threat-model fact.
+- **Any `compose-*` MCP call that returns the service object hands back `env` in plaintext** —
+  database passwords, admin passwords, app keys. This is not limited to reads: `compose-update`
+  returns them in its *response*, so a write you had every right to make still spills the secrets into
+  whatever transcript or log is capturing the session.
+  **So: read service metadata with the named-column SQL query in the diagnosis pass above, and reach
+  for `compose-*` only when you actually need to change something.**
+  This warning previously said only "never persist them". That was not enough: in the reference
+  deployment an agent that had written this very line then leaked three sets of credentials in one
+  session, because the instruction described what to do *afterwards* instead of naming the safe way to
+  ask. A warning that does not offer the alternative does not change behaviour.
+- Dokploy MCP access ⇒ read access to every production secret — a threat-model fact, and the query
+  above is how you avoid exercising it. If a credential does pass through, treat it as exposed and
+  tell the owner to rotate it.
 
 ## Related
 

@@ -540,7 +540,7 @@ fi
 # removed the same day for alarming on a healthy fleet; if freshness is ever truly wanted, the
 # observable is the timer's LastTriggerUSec, not a commit count.)
 
-report="$(date -Is) | $os | $dok | container images: wire Renovate on your infra repo (or review manually) | fleet: ${FAILS} drift finding(s)"
+report="$(date -Is) | $os | $dok | fleet: ${FAILS} drift finding(s)"
 # Put the actual finding text in the ping body, not just the count - so the Telegram message
 # itself answers "what broke" without anyone needing to check the journal or the HC dashboard.
 # Capped: a wall of findings would just get truncated by Telegram anyway, and the journal always
