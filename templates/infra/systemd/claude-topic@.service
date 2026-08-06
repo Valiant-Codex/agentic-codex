@@ -13,6 +13,15 @@
 # Under systemd, sessions survive crashes (Restart=always) and reboot (user service
 # + `loginctl enable-linger <agent>`) with no tmux — Remote Control is the access path.
 #
+# WHAT Restart=always DOES NOT BUY YOU (2026-08-06). It keeps the PROCESS alive. It does
+# not keep the topic REACHABLE. The Remote Control bridge id is derived from the resumed
+# conversation, so a restart re-announces the same bridge id; if the server has dropped
+# that bridge — a hard reboot did, for eleven of twelve topics — the session announces a
+# dead id, logs "/remote-control is active" to its own transcript, and is unreachable
+# forever while this unit reports active and enabled. Every automated signal stayed green
+# through a total outage. The recovery is a NEW conversation: `claude-topic rotate <key>`.
+# After any hard reboot, run `claude-topic urls` and actually open them.
+#
 # Install: `provision-agent <unix-user> <brain-repo>` does all of it (wrapper, this unit, linger,
 # topics, roster, memory mirror) and is the ONLY supported way. This comment used to spell out the
 # steps by hand, starting with `sudo install … /usr/local/bin/claude-topic` addressed to the agent's

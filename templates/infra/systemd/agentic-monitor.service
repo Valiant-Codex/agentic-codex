@@ -5,4 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# systemd's default for Type=oneshot is TimeoutStartUSec=infinity, so a run that wedges
+# hangs forever, sends neither heartbeat nor alarm, and blocks the timer. That is exactly
+# what happened on 2026-08-06: the 12:51:38 run started while the box was swap-thrashing
+# and never returned, so the memory alarm it would have raised never left the machine.
+# 120s: worst case is 2 HTTP checks at curl -m 8 plus the final ping at curl -m 15 --retry 3
+# (~60s), so a healthy run has ample headroom while a wedged one dies and shows up as a
+# failed unit — and, because no ping went out, as a missed beat on healthchecks.io.
+TimeoutStartSec=120
 ExecStart=/usr/local/bin/agentic-monitor

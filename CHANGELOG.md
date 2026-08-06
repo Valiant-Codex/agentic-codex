@@ -6,6 +6,45 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.4] — 2026-08-06 — Three green checks and a total outage
+
+A host ran out of memory and thrashed until it was rebooted. Every topic session came back
+`active` and `enabled`; eleven of twelve were permanently unreachable from the app. Three
+independent monitoring layers reported healthy throughout. The framework had no way to say
+otherwise, and — worse — encouraged the belief that `Restart=always` covered this.
+
+### Added
+- **`claude-topic rotate <key>`** — the recovery verb for an unreachable topic. The Remote Control
+  bridge id is derived from the *resumed conversation*, so a restart re-announces the same id;
+  when the server has dropped that bridge, restarting is a no-op and the topic is unreachable
+  forever. `rotate` abandons the conversation and starts a fresh one, appending the abandoned
+  sessionId to `topics.rotated` **before** discarding anything, so nothing becomes unaddressable.
+  It waits for the new bridge and prints the URL, because the only real confirmation is a human
+  opening it.
+- **`claude-topic urls`** — every topic's Remote Control URL in one command. Recovering from the
+  incident meant hand-parsing `~/.claude/sessions/*.json` against `/proc`; this makes the only
+  honest health check a five-second operation. `status` now shows the bridge URL too.
+
+### Changed
+- **`agentic-monitor`: `TimeoutStartSec=120`.** `Type=oneshot` inherits
+  `TimeoutStartUSec=infinity`, so the run that started while the host was thrashing never
+  returned — no alarm, no heartbeat, timer blocked. A wedged run now dies and surfaces both as a
+  failed unit and as a missed beat on the dead-man's switch.
+- **Memory alarms on first detection.** The 2-cycle hysteresis is correct for flapping checks and
+  wrong for memory, because the second cycle is the one that wedges. Memory sets `urgent=1`;
+  every other check keeps the hysteresis.
+- **Memory threshold 5% → 15%**, in the script default and `agentic-monitor.env.example`. At 5%
+  the host may no longer be able to send the ping. Note the deployed env file pins this key and
+  overrides the script default — changing the script alone is inert.
+
+### Documented
+- **`Restart=always` does not keep a topic reachable**, stated in `claude-topic@.service`. It
+  keeps the process alive. Those are different properties and the difference was an outage.
+- **Do not build a local reachability check.** Every host-visible signal records what the session
+  *announced*, not what the server honours, so such a check reports green for exactly the failure
+  it claims to catch. The scope limit is written into both `bin/claude-topic` and the topics check
+  in `agentic-monitor`, so the gap is not "fixed" by making it invisible.
+
 ## [0.6.3] — 2026-08-02 — Guards that ran after the mutation, and guards that opened when they could not tell
 
 v0.6.2 moved `provision-agent`'s read-only checks above its first mutation and wrote down why: *a

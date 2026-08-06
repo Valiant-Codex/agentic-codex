@@ -75,6 +75,7 @@ AGENT_REPO="${AGENT_REPO%/}"
 REG="${AGENT_REPO}/deploy/topics.tsv"          # versioned: key<TAB>Display Name
 STATE_DIR="${HOME_DIR}/.config/agent"
 STATE="${STATE_DIR}/topics.state"              # runtime: key<TAB>sessionId
+ROTATED="${STATE_DIR}/topics.rotated"          # append-only: when<TAB>key<TAB>abandoned sessionId<TAB>name
 
 svc()       { echo "claude-topic@${1}.service"; }
 # awk (exact field match), not grep -P: keys may contain '.', a regex metachar.
@@ -245,6 +246,12 @@ usage() {
   cat <<EOF
 Usage (systemd-managed topics — no tmux):
   $PROG list                        list topics: key, state, sessionId, display name
+  $PROG urls                        list every topic's Remote Control URL (test them by hand)
+  $PROG rotate <key>                abandon the conversation and start fresh, so the topic
+                                           gets a NEW bridge id — the fix when a topic is
+                                           active but the app says "session can't be
+                                           found". The abandoned sessionId is appended to
+                                           topics.rotated first, so it stays addressable.
   $PROG new <key> "<Display Name>"  register + start a new topic under systemd
   $PROG restart <key>               systemctl restart (resumes the same sessionId)
   $PROG stop <key>                  stop + disable the topic's service (survives as state)
@@ -305,6 +312,32 @@ session_id_live() {
   f="${SESS_DIR}/${cp}.json"
   [ -f "$f" ] && python3 -c "import json;print(json.load(open('$f')).get('sessionId',''))" 2>/dev/null || true
 }
+# Live Remote Control bridge id from the running claude's session file.
+#
+# READ THIS BEFORE TRUSTING IT: this is the id the session ANNOUNCES, not proof that the
+# server still honours it. The two diverge, and that divergence is the 2026-08-06 outage:
+# the bridge id is derived from the RESUMED conversation, so `--resume <sid>` re-announces
+# the same bridge id on every restart. When the server drops that bridge (the hard reboot
+# did, for eleven of twelve topics), the session keeps announcing the dead id, writes
+# "/remote-control is active" into its own transcript, and is unreachable forever —
+# while the unit sits there active and green. Restarting cannot fix it: it re-announces
+# the same dead id. Only a NEW conversation mints a new bridge (`$PROG rotate <key>`).
+#
+# So: use this to PRINT a URL for a human to test. Never use it as a health signal.
+# Reachability is not observable from this host — do not write a check that pretends it is.
+bridge_id_live() {
+  local cp f; cp="$(claude_pid_for "$1")"; [ -n "$cp" ] || return 0
+  f="${SESS_DIR}/${cp}.json"
+  [ -f "$f" ] && python3 -c "import json;print(json.load(open('$f')).get('bridgeSessionId') or '')" 2>/dev/null || true
+}
+# Same beat-after-exec race as wait_session_id, and worse here: the bridge id lands after
+# the sessionId, so a rotate that printed immediately reported '<no bridge>' on a perfectly
+# good start — the one output guaranteed to look like the failure it just repaired.
+wait_bridge_id() {
+  local key="$1" i b
+  for i in $(seq 1 40); do b="$(bridge_id_live "$key")"; [ -n "$b" ] && { echo "$b"; return 0; }; sleep 0.5; done
+  return 0
+}
 # Poll for the sessionId of a just-(re)started topic — the session file is written a
 # beat after exec, so reading it immediately reports empty on a perfectly good start.
 wait_session_id() {
@@ -361,7 +394,60 @@ cmd_status() {
   [ -z "$stored" ] || [ -z "$live" ] || [ "$stored" = "$live" ] || \
     err "warning: live sessionId differs from stored — '$PROG remember $k' to reconcile"
   reg_has "$k" || err "warning: '$k' has a service but no entry in $REG — it cannot be restarted until registered"
+  local b bu; b="$(bridge_id_live "$k")"
+  bu="<none — not on Remote Control>"; [ -z "$b" ] || bu="https://claude.ai/code/$b"
+  echo "bridge:     $bu"
+  [ -z "$b" ] || echo "            (open it to test: active+enabled does NOT mean reachable — see bridge_id_live)"
   systemctl --user show -p MainPID -p NRestarts -p ActiveEnterTimestamp "$(svc "$k")" 2>/dev/null | sed 's/^/  /'
+}
+
+# Print every topic's Remote Control URL. Exists because recovering from a dead bridge
+# used to mean hand-parsing ~/.claude/sessions/*.json against /proc — an afternoon of
+# archaeology on 2026-08-06. The URLs are the ONLY way to tell a live topic from a
+# green-but-unreachable one, and only a human clicking them can do that.
+cmd_urls() {
+  require_systemd
+  printf '%-18s %-12s %s\n' KEY STATE URL
+  local k st b bu
+  for k in $(all_keys); do
+    if unit_known "$k"; then st="$(svc_state "$k")"; [ -n "$st" ] || st=unknown
+    else st="not-started"; fi
+    b="$(bridge_id_live "$k")"
+    bu="<no bridge>"; [ -z "$b" ] || bu="https://claude.ai/code/$b"
+    printf '%-18s %-12s %s\n' "$k" "$st" "$bu"
+  done
+  err "note: a URL here proves the session ANNOUNCED that bridge, not that the server still serves it.
+  If one answers 'session can't be found', that topic needs '$PROG rotate <key>'."
+}
+
+# Abandon a topic's conversation and start a fresh one, so it gets a NEW bridge id.
+#
+# The recovery verb for the 2026-08-06 failure mode. `restart` deliberately cannot do this
+# (it resumes, hence re-announces the same dead bridge), and `restart --new` discards the
+# stored sessionId with only a stderr warning — fine when a human is watching, not fine as
+# the documented recovery path for a whole fleet. `rotate` appends the abandoned id to
+# $ROTATED first, so every replaced conversation stays addressable afterwards.
+cmd_rotate() {
+  local key="$1" old
+  require_valid_key "$key"; require_systemd; require_registry; require_known_key "$key"
+  old="$(state_sid "$key")"; [ -n "$old" ] || old="$(session_id_live "$key")"
+  if [ -n "$old" ]; then
+    umask 077
+    printf '%s\t%s\t%s\t%s\n' "$(date -Is)" "$key" "$old" "$(reg_name "$key")" >> "$ROTATED" \
+      || die "could not append to $ROTATED — refusing to discard $old with no record of it"
+    err "note: recorded abandoned sessionId $old for '$key' in $ROTATED
+  Its transcript stays on disk; put the id back in $STATE and '$PROG restart $key' to read it again."
+  else
+    err "note: '$key' had no sessionId to abandon — this is a plain fresh start"
+  fi
+  cmd_restart --new "$key"
+  local b; b="$(wait_bridge_id "$key")"
+  if [ -n "$b" ]; then
+    echo "new Remote Control URL: https://claude.ai/code/$b"
+    echo "open it — that is the only way to confirm the rotate actually took."
+  else
+    err "warning: '$key' is running but announced no bridge within 20s — '$PROG status $key'"
+  fi
 }
 
 cmd_new() {
@@ -559,6 +645,8 @@ main() {
   local cmd="$1"; shift
   case "$cmd" in
     list)             cmd_list ;;
+    urls)             cmd_urls ;;
+    rotate)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_rotate "$1" ;;
     status)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_status "$1" ;;
     new)              [ $# -ge 2 ] || { usage; exit 2; }; cmd_new "$1" "$2" ;;
     restart)          [ $# -ge 1 ] || { usage; exit 2; }; cmd_restart "$@" ;;

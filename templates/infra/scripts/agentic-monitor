@@ -30,7 +30,9 @@ MONITOR_EXCLUDE_CONTAINERS="${MONITOR_EXCLUDE_CONTAINERS:-}"
 MONITOR_EXCLUDE_UNITS="${MONITOR_EXCLUDE_UNITS:-}"
 MONITOR_EXPECT_CONTAINERS="${MONITOR_EXPECT_CONTAINERS:-}"   # substrings that MUST be running (catch exited/missing)
 MONITOR_HTTP_CHECKS="${MONITOR_HTTP_CHECKS:-}"               # "label=url ..."; alarm only if no HTTP response at all
-MONITOR_MEM_MIN_PCT="${MONITOR_MEM_MIN_PCT:-5}"             # alarm if available memory < this % of total
+# Raised 5 -> 15 on 2026-08-06. At 5% the box is already thrashing and the check itself
+# may not survive long enough to ping; 15% still leaves headroom to alarm and to act.
+MONITOR_MEM_MIN_PCT="${MONITOR_MEM_MIN_PCT:-15}"            # alarm if available memory < this % of total
 STATE=/run/agentic-monitor.state       # ephemeral (cleared on reboot — fine)
 ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
 # Explicit PATH for every command run AS an agent (never a login shell — see check 5's comment).
@@ -39,6 +41,7 @@ ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
 AGENT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 problems=()
+urgent=0        # set by any check that must alarm on first detection, skipping the hysteresis
 
 # Fleet roster — single source of truth (installed from infra/fleet-agents).
 # NO hardcoded fallback list. The previous version guessed a hardcoded example list with a WARN
@@ -87,7 +90,10 @@ memline=$(free | awk '/^Mem:/{print $2, $7}')
 mt=${memline% *}; ma=${memline#* }
 if [ -n "${mt:-}" ] && [ "${mt:-0}" -gt 0 ] 2>/dev/null; then
   mpct=$(( ma * 100 / mt ))
-  [ "$mpct" -lt "$MONITOR_MEM_MIN_PCT" ] && problems+=("mem-avail:${mpct}%")
+  # Memory is the one check that must not wait for the 2-cycle confirmation below: memory
+  # pressure escalates within a single 5-minute interval, and the second cycle is precisely
+  # the one that wedges (2026-08-06). Mark it urgent so it alarms on first detection.
+  [ "$mpct" -lt "$MONITOR_MEM_MIN_PCT" ] && { problems+=("mem-avail:${mpct}%"); urgent=1; }
 fi
 
 # 2c) HTTP reachability (e.g. traefik/dokploy) — alarm only if nothing responds at all.
@@ -113,6 +119,16 @@ if [ -n "$last" ]; then
 fi
 
 # 5) Agent topic sessions: every key in each agent's topics.tsv must be active.
+#
+# SCOPE — this check proves the unit is running. It does NOT prove the topic is reachable,
+# and the two are genuinely different: on 2026-08-06 all twelve topics were active and
+# enabled while eleven were unreachable from the app, because a resumed session
+# re-announces a bridge id the server had already dropped. This check was green for the
+# entire outage and was right to be — reachability is not observable from this host.
+# Do NOT "fix" that by inventing a reachability heuristic here: every local signal
+# (the session file, the transcript's bridge_status line) records what the session
+# ANNOUNCED, so a check built on them would report green for exactly the failure it
+# claims to catch. The honest detector is a human opening `claude-topic urls`.
 # Repo resolution must match bin/claude-topic's exactly (same username-pinned glob,
 # same refuse-not-guess rule on ambiguity) — kept in sync by hand, there is no
 # shared library between this host-level script and the per-agent wrapper.
@@ -191,8 +207,8 @@ ping() { # $1 = url suffix (""|/fail), $2 = body
 if [ ${#problems[@]} -eq 0 ]; then
   : > "$STATE"
   ping "" "ok $(date -Is)"
-elif [ -n "$prev" ]; then
-  ping "/fail" "$detail"                 # confirmed (2nd consecutive cycle) -> alarm
+elif [ -n "$prev" ] || [ "$urgent" = 1 ]; then
+  ping "/fail" "$detail"                 # confirmed (2nd cycle), or urgent -> alarm now
   echo "$detail" > "$STATE"
 else
   ping "" "pending: $detail"             # 1st occurrence -> heartbeat only, mark pending
