@@ -81,7 +81,7 @@ fi
 # INDEX (so a `git add`ed but uncommitted wrapper passed) and, worse, exits 0 for a path git does
 # not track at all — an UNTRACKED bin/claude-topic sailed straight through. `status --porcelain`
 # reports modified, staged and untracked in one shot. Scoped to what this script installs.
-DIRT="$(git -C "$INFRA" status --porcelain -- bin/claude-topic systemd/claude-topic@.service fleet-agents 2>/dev/null)"
+DIRT="$(git -C "$INFRA" status --porcelain -- bin/claude-topic systemd/claude-topic@.service systemd/claude-topic-rotate-on-boot.service fleet-agents 2>/dev/null)"
 if [ -n "$DIRT" ]; then
   echo "$DIRT" | sed 's/^/         /'
   echo "  [FAIL] $INFRA has uncommitted or untracked changes in the files this script installs"
@@ -217,6 +217,8 @@ fi
 asU "mkdir -p '$H/.config/systemd/user'"
 install -m0644 -o "$U" -g "$U" "$INFRA/systemd/claude-topic@.service" "$H/.config/systemd/user/claude-topic@.service"
 echo "  [ok] ~/.config/systemd/user/claude-topic@.service"
+install -m0644 -o "$U" -g "$U" "$INFRA/systemd/claude-topic-rotate-on-boot.service" "$H/.config/systemd/user/claude-topic-rotate-on-boot.service"
+echo "  [ok] ~/.config/systemd/user/claude-topic-rotate-on-boot.service"
 
 # 6) Linger (survive reboot without login) + WAIT for the user bus.
 #    `loginctl enable-linger` returns as soon as the linger flag is set — it does NOT wait for
@@ -247,6 +249,16 @@ asU '
   set -u
   export XDG_RUNTIME_DIR=/run/user/$(id -u); export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
   systemctl --user daemon-reload || { echo "  [FAIL] systemctl --user daemon-reload"; exit 1; }
+  # Rotate-on-boot: `enable`, deliberately NOT `--now`. Running it here would rotate the
+  # conversations of an agent being RE-provisioned — this unit is only ever meant to fire at
+  # boot, where nothing is mid-task. Not fatal if it fails: topics still come back, they just
+  # need their bridges tested by hand, which is where the fleet was before this existed.
+  if systemctl --user enable claude-topic-rotate-on-boot.service >/dev/null 2>&1; then
+    echo "  [ok] claude-topic-rotate-on-boot.service enabled (fires at boot, not now)"
+  else
+    echo "  [warn] could not enable claude-topic-rotate-on-boot.service — after any reboot this"
+    echo "         agent needs 'claude-topic urls' and a manual rotate of whatever is unreachable"
+  fi
   REG="'"$BASE/$BRAIN"'/deploy/topics.tsv"
   if [ ! -f "$REG" ]; then echo "  [warn] no deploy/topics.tsv — no topics enabled"; exit 0; fi
   rc=0

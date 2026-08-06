@@ -6,6 +6,54 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.5] — 2026-08-06 — Stop checking, start rotating
+
+`0.6.4` gave operators the tools to recover from a dead Remote Control bridge — `rotate` to fix
+one, `urls` to find which. It left the recovery itself manual: after every reboot a human had to
+open twelve URLs and judge each one. That is a chore nobody will keep doing, which makes it a
+fix with a shelf life.
+
+The obvious automation is forbidden by `0.6.4`'s own finding. A dead bridge is **not observable
+from the host** — every local signal records what the session *announced*, not what the server
+honours — so "detect the broken ones and heal them" reports green for exactly the failure it
+exists to catch. Any check built here is a liability.
+
+The way out is to stop trying to observe. A new conversation always mints a live bridge, so
+rotating *everything* at boot is correct by construction: no check, therefore no false green.
+
+### Added
+- **`claude-topic rotate-all [--dry-run]`** — rotate every *enabled* topic in one pass. Only
+  enabled units are touched: `stop` disables deliberately, and a topic someone stopped on purpose
+  must not be resurrected by a reboot. Each rotate runs in a subshell so one failure cannot
+  abandon the remaining topics half-done, and the command writes
+  `~/.config/agent/last-boot-rotation.tsv` — key, display name, abandoned sessionId, new URL —
+  refusing to rotate at all if it cannot create that digest first.
+- **`claude-topic-rotate-on-boot.service`** — a `oneshot` user unit, `WantedBy`/`After=default.target`,
+  that runs `rotate-all` once per boot. `TimeoutStartSec=600`, stated explicitly because
+  `Type=oneshot` inherits `TimeoutStartUSec=infinity` — the same default that wedged the monitor's
+  timer through the outage in `0.6.4`.
+- **`provision-agent` installs and enables it** — `enable`, deliberately **not** `--now`:
+  running it during provisioning would rotate the live conversations of an agent being
+  *re*-provisioned. The new unit joins the dirty-worktree guard alongside the wrapper.
+
+### The trade, stated plainly
+Every topic returns from a reboot with **empty context**. History is not lost: each abandoned
+sessionId is appended to `topics.rotated` before anything is discarded, transcripts are never
+deleted, and the per-boot digest says where each one went. Durable knowledge belongs in the
+agent's brain repo and `memory/`, not in a topic's scroll-back — and a reboot that hurts is a
+signal the knowledge was in the wrong place.
+
+Failure is bounded by design: the topic units are independent and start regardless, so a broken
+`rotate-all` leaves a fleet exactly where `0.6.4` left it — up, with bridges to test by hand.
+It cannot prevent topics from coming back.
+
+### Verified
+The boot path was proven before shipping, not assumed: restarting a lingering user's manager —
+what actually happens at boot — activated the unit and ran it to `Result=success`,
+`ExecMainStatus=0`, with start/output/finish all captured in the journal. Tested on a dormant
+agent so no live conversation was spent on the experiment; the dormant agent also confirmed the
+enabled-only guard, reporting `no enabled topics to rotate` and changing nothing.
+
 ## [0.6.4] — 2026-08-06 — Three green checks and a total outage
 
 A host ran out of memory and thrashed until it was rebooted. Every topic session came back

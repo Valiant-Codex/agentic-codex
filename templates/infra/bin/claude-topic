@@ -252,6 +252,10 @@ Usage (systemd-managed topics — no tmux):
                                            active but the app says "session can't be
                                            found". The abandoned sessionId is appended to
                                            topics.rotated first, so it stays addressable.
+  $PROG rotate-all [--dry-run]      rotate EVERY enabled topic — what the boot unit runs, so
+                                           reachability after a reboot never depends on a
+                                           check that cannot see the failure. Writes a
+                                           digest of what was abandoned + the new URLs.
   $PROG new <key> "<Display Name>"  register + start a new topic under systemd
   $PROG restart <key>               systemctl restart (resumes the same sessionId)
   $PROG stop <key>                  stop + disable the topic's service (survives as state)
@@ -448,6 +452,73 @@ cmd_rotate() {
   else
     err "warning: '$key' is running but announced no bridge within 20s — '$PROG status $key'"
   fi
+}
+
+# Rotate every enabled topic. This is what claude-topic-rotate-on-boot.service runs.
+#
+# WHY UNCONDITIONAL, and not "rotate only the broken ones". A dead bridge is not observable
+# from this host: every local signal — the session file, the transcript's bridge_status line —
+# records what the session ANNOUNCED, not what the server honours. A check built on them
+# reports green for exactly the failure it claims to catch, which is why three monitoring
+# layers stayed green through the 2026-08-06 outage with eleven of twelve topics unreachable.
+# See decisions/2026-08-06-remote-control-bridge-dies-with-the-conversation.md, decision #3.
+#
+# So this does not try to observe. A NEW conversation always mints a live bridge, so rotating
+# everything is correct by construction — no check, therefore no false green. Boot is the one
+# moment it is cheap: nothing is mid-task, the processes have only just started.
+#
+# What it costs: every topic comes back with empty context. What it does NOT cost: history.
+# cmd_rotate records each abandoned sessionId to $ROTATED before discarding anything and
+# refuses to proceed if it cannot, and transcripts are never deleted. This additionally writes
+# a per-boot digest so "what was I working on, and where is it now" is one file to read
+# instead of a grep across an append-only log.
+#
+# Only ENABLED units are touched: `stop` disables deliberately, and a topic someone stopped on
+# purpose must not be resurrected by a reboot.
+cmd_rotate_all() {
+  local dry=0
+  [ "${1:-}" = "--dry-run" ] && dry=1
+  require_systemd; require_registry
+  local digest="${STATE_DIR}/last-boot-rotation.tsv"
+  local k name old new rc total=0 done=0 failed=0
+
+  for k in $(all_keys); do
+    systemctl --user is-enabled --quiet "$(svc "$k")" 2>/dev/null || continue
+    total=$((total + 1))
+  done
+  [ "$total" -gt 0 ] || { err "no enabled topics to rotate"; return 0; }
+
+  if [ "$dry" = 1 ]; then
+    printf '%-18s %-38s %s\n' KEY 'SESSIONID THAT WOULD BE ABANDONED' NAME
+    for k in $(all_keys); do
+      systemctl --user is-enabled --quiet "$(svc "$k")" 2>/dev/null || continue
+      old="$(state_sid "$k")"; [ -n "$old" ] || old='<none — plain fresh start>'
+      printf '%-18s %-38s %s\n' "$k" "$old" "$(reg_name "$k")"
+    done
+    err "dry run: nothing was changed. $total topic(s) would be rotated."
+    return 0
+  fi
+
+  umask 077
+  : > "$digest" || die "could not write $digest — refusing to rotate with nowhere to record it"
+  printf '# rotated at boot: %s\n# key\tname\tabandoned-sessionId\tnew-url\n' "$(date -Is)" >> "$digest"
+
+  for k in $(all_keys); do
+    systemctl --user is-enabled --quiet "$(svc "$k")" 2>/dev/null || continue
+    name="$(reg_name "$k")"; [ -n "$name" ] || name="$k"
+    old="$(state_sid "$k")"; [ -n "$old" ] || old='-'
+    # Subshell: a die() inside cmd_rotate must not abandon the remaining topics half-done.
+    ( cmd_rotate "$k" ) >/dev/null 2>&1; rc=$?
+    if [ "$rc" -eq 0 ]; then done=$((done + 1)); else failed=$((failed + 1)); fi
+    new="$(bridge_id_live "$k")"
+    if [ -n "$new" ]; then new="https://claude.ai/code/$new"
+    else new='<no bridge announced>'; fi
+    printf '%s\t%s\t%s\t%s\n' "$k" "$name" "$old" "$new" >> "$digest"
+  done
+
+  err "rotated $done/$total topic(s), $failed failed. Digest: $digest
+  The new URLs there are what the session ANNOUNCED — opening one is still the only proof."
+  [ "$failed" -eq 0 ]
 }
 
 cmd_new() {
@@ -647,6 +718,7 @@ main() {
     list)             cmd_list ;;
     urls)             cmd_urls ;;
     rotate)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_rotate "$1" ;;
+    rotate-all)       cmd_rotate_all "${1:-}" ;;
     status)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_status "$1" ;;
     new)              [ $# -ge 2 ] || { usage; exit 2; }; cmd_new "$1" "$2" ;;
     restart)          [ $# -ge 1 ] || { usage; exit 2; }; cmd_restart "$@" ;;

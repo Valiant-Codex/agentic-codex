@@ -1,0 +1,49 @@
+# Mint a fresh Remote Control bridge for every topic, once per boot.
+#
+# THE PROBLEM THIS SOLVES (2026-08-06). The Remote Control bridge id is derived from the
+# resumed conversation, not from the process. A reboot invalidates those bridges server-side,
+# so every topic comes back announcing a dead id: `active`, `enabled`, `Restart=always`
+# satisfied, and unreachable from the app. Eleven of twelve topics were lost that way, and all
+# three monitoring layers reported green throughout.
+#
+# WHY THIS IS A ROTATE AND NOT A CHECK. Reachability is not observable from this host — every
+# local signal records what the session ANNOUNCED, not what the server honours, so any
+# "detect the dead ones and heal them" logic reports green for precisely the failure it exists
+# to catch (decisions/2026-08-06-remote-control-bridge-dies-with-the-conversation.md, #3).
+# The escape is to stop observing: a new conversation always mints a live bridge, so rotating
+# unconditionally is correct by construction. Boot is when that is cheap — nothing is mid-task.
+#
+# THE TRADE, STATED PLAINLY. Every topic returns with empty context after a reboot. Transcripts
+# are NOT lost: each abandoned sessionId is appended to ~/.config/agent/topics.rotated before
+# anything is discarded, and ~/.config/agent/last-boot-rotation.tsv holds a per-boot digest of
+# what was abandoned and the URL that replaced it. Durable knowledge belongs in the agent's
+# brain repo and memory/, not in a topic's scroll-back.
+#
+# Failure here is bounded: the topic units are independent and start regardless, so a broken
+# rotate-all leaves the fleet exactly where it was before this unit existed — up, with bridges
+# that must be tested by hand. It cannot prevent topics from coming back.
+#
+# Canonical source: <ORG>/infra (systemd/claude-topic-rotate-on-boot.service).
+# Installed per agent by provision-agent, alongside claude-topic@.service.
+
+[Unit]
+Description=Rotate all Claude Code topics once per boot (mint fresh Remote Control bridges)
+# Ordered after the target that pulls in the claude-topic@ instances, so they exist before
+# we replace their conversations. Not a Requires: if a topic failed to start, rotating the
+# rest is still the right outcome.
+After=default.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=%h
+Environment=PATH=%h/.local/bin:%h/.local/node/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/bin/claude-topic rotate-all
+# Each rotate waits up to 20s for the new bridge to be announced; the busiest agent has
+# seven topics. Bounded so a wedged run dies instead of hanging forever — the mistake that
+# blocked the monitor's timer through the 2026-08-06 outage (Type=oneshot inherits
+# TimeoutStartUSec=infinity unless you say otherwise).
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target
