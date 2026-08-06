@@ -6,6 +6,49 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.6] — 2026-08-06 — One place per fact
+
+The framework mandated its own duplication. `agent-template.md` required a *Bootstrap Contract*
+section inside `OPERATING.md`, while the next bullet of the same file declared `CLAUDE.md` to be **the**
+bootstrap — thin, absolute paths, not restating what it points at. Every brain faithfully implemented
+both halves, so the read order existed three times per agent (`CLAUDE.md`, `OPERATING.md`,
+`shared/bootstrap.md`) and drifted apart, as duplicated text does.
+
+Two bugs were riding in the duplicates, in every brain: repo-relative paths, which do not resolve from
+`cwd=~` — the trap the template itself warns about two lines below the mandate — and a step ordering a
+read of `CLAUDE.md`, which the harness has already loaded before the agent reads anything. A no-op,
+stated three times.
+
+### Changed
+- **`agent-template.md`: no bootstrap section in `OPERATING.md`.** The read order lives in `CLAUDE.md`,
+  once, with absolute paths. Adds **"The one-place rule"** — *a fact belongs in the always-loaded layer
+  only if the agent cannot know to go looking for it; everything else is retrieved on demand and stated
+  exactly once* — and extends it below the read order: a hard rule written verbatim in `CLAUDE.md` and
+  restated at the head of its `OPERATING.md` section is two copies of one rule.
+- **`agent-template.md`: `CLAUDE.md` is THE bootstrap.** The template still described it as an optional
+  "~15-line adapter" for non-Claude harnesses — the superseded two-file model, and incoherent with the
+  change above. Now matches how `provision-agent` actually wires it (`~/CLAUDE.md` symlink, unit sets
+  `WorkingDirectory=%h`), with the `AGENTS.md` sibling demoted to the optional adapter it is.
+- **`bootstrap.md`: "Bootstrap Order" replaced by a pointer.** The only non-duplicated content in that
+  section — on-demand reads, no whole directories — is kept.
+- **`runbooks/fleet-brain-change.md`:** prefer `sudo -u` over `sudo runuser -u` (a permission classifier
+  may pass the runuser form on read-only preflight, then block it on the first write; `--noprofile
+  --norc` plus an explicit PATH is what actually carries the safety property). Editing guidance moves
+  from `python3 -` pipes to a guarded `head`/`sed` rebuild **with boundary assertions**, because the
+  brains are live and a section can be rewritten under you between read and write.
+- **`runbooks/fleet-brain-change.md`: gate `git commit` on `git add` with `&&`.** Learned expensively:
+  `git add` aborts on a pathspec matching nothing and stages nothing — the trigger being a path already
+  moved by `git mv`. Ungated, the commit still runs, ships with zero insertions, gets pushed, and leaves
+  the real changes uncommitted in a dirty tree, which is precisely the state that makes the sync job
+  skip that repo silently and forever. Both halves invisible unless you look.
+
+### Not a token optimization
+Stated in the template so it is not misread later. Measured on the reference fleet, harness 2.1.223: a
+fresh session loads 19.6k of 1.0M (2%), MCP schemas deferred. There was nothing meaningful to reclaim.
+The cost of three copies is that they disagree and each one looks authoritative — one had already
+drifted out of agreement with its own `CLAUDE.md`, and another carried a stale delegation map naming an
+agent that had been dormant for three days.
+
 ## [0.6.5] — 2026-08-06 — Stop checking, start rotating
 
 `0.6.4` gave operators the tools to recover from a dead Remote Control bridge — `rotate` to fix

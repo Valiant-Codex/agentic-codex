@@ -42,13 +42,42 @@ Identity is split so durable "who you are" changes rarely and separately from mu
   *Voice* (a distinct, recognizable register — each agent differs), *Principles* (how it embodies its
   role). Loaded every session.
 - **OPERATING.md** (the operating contract): *Scope / Boundaries* (what it owns, and what it delegates
-  to which agent), *Human-Confirm Gates*, *Autonomous-OK*, *Trust / Threat Model*, *Source Of Truth*,
-  *Bootstrap Contract*.
-- **CLAUDE.md**: a thin (~15-line) adapter that loads SOUL + OPERATING + `shared/owner-profile.md` and
-  states the always-on untrusted-content rule. (It serves
-  non-Claude harnesses; add it only when a second framework is actually in use.)
+  to which agent), *Human-Confirm Gates*, *Autonomous-OK*, *Trust / Threat Model*, *Source Of Truth*.
+  **No bootstrap section** — the read order lives in `CLAUDE.md`, once. See the one-place rule below.
+- **CLAUDE.md**: **the** bootstrap — `provision-agent` symlinks it to `~/CLAUDE.md`, and since the topic
+  unit sets `WorkingDirectory=%h` this is the only bootstrap the running agent loads. Keep it thin: it
+  points at SOUL + OPERATING + `shared/owner-profile.md` and states the always-on untrusted-content
+  rule, without restating their content. **Use absolute `~/github/<org>/<brain>/…` paths** —
+  repo-relative paths do not resolve from cwd=`~`, which is the trap that makes a two-file layout
+  fragile.
+  (An optional `AGENTS.md` sibling adapter serves non-Claude harnesses; add it only when a second
+  framework is actually in use.)
 - Who <OWNER> and the fleet are lives once, fleet-wide, in `shared/owner-profile.md` — never
   duplicated per agent.
+
+### The one-place rule
+
+A fact belongs in the always-loaded layer **only if the agent cannot know to go looking for it.**
+Everything else is retrieved on demand, and is stated exactly once.
+
+Always-on, therefore stated verbatim in `CLAUDE.md`: the rules that must bind *before* the agent knows
+a policy exists — untrusted-content, and any hard domain rule such as data residency — the trigger
+sentence that sends it to `approval-policy.md`, and the delegation map, because an agent cannot lazily
+retrieve the knowledge that a task belongs to someone else.
+
+Retrieved on demand, therefore stated once in its own file and merely pointed at: everything else.
+
+This is a correctness rule, not a budget. Measured on the reference fleet, 2026-08-06, harness
+2.1.223: a fresh session loads 19.6k of 1.0M (2%), with MCP schemas deferred. There was nothing
+meaningful to reclaim, so do not trim to save tokens. What a duplicated read order costs is not tokens
+but truth — copies drift, each one looks authoritative, and that fleet carried two standing bugs from
+exactly this: repo-relative paths that do not resolve from cwd=`~`, and a step ordering a read of
+`CLAUDE.md`, which the harness has already loaded before the agent reads anything.
+
+The same test applies below the read order. A hard rule written verbatim in `CLAUDE.md` and restated
+at the head of its `OPERATING.md` section is two copies of one rule; keep the binding statement in
+`CLAUDE.md` and let the section carry only what `CLAUDE.md` does not — the elaboration, the tables,
+the rationale.
 
 ## Skills
 

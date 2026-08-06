@@ -62,16 +62,18 @@ Give each agent a short, memorable name and one of the shared archetypes:
 - Superseded work-management tooling: see the Agentic Codex docs (`multi-agent-governance.md`). Your current work tracker
   (e.g. Jira/Linear) is the active choice.
 
-## Bootstrap Order
+## Bootstrap
 
-1. Read your agent repo's `SOUL.md` (identity) and `OPERATING.md` (scope, gates), plus `CLAUDE.md`;
-   then `shared/owner-profile.md`.
-2. Read this file (`shared/bootstrap.md`) for ecosystem state and the governance contract.
-3. Read `shared/policies/approval-policy.md` before risky actions.
-4. Read a specific `shared/decisions/*`, `shared/templates/*`, or one of your own skill/tool/memory files only when the task needs it.
-5. Use `shared/index.md` only when navigation is needed.
+Your bootstrap is your own `CLAUDE.md`, and that is the only copy of it. This file deliberately does
+not restate the read order: a second copy is a copy that drifts, and this one had — it carried
+repo-relative paths, which do not resolve from cwd=`~`, and a step 1 telling you to read `CLAUDE.md`,
+which the harness loads before you read anything.
 
-Do not load whole directories, all decisions, or archived documents at startup.
+This file is for ecosystem state and the governance contract. Your `CLAUDE.md` points here; read it
+when the task needs it. Use `shared/index.md` only when navigation is needed, and do not load whole
+directories, all decisions, or archived documents at startup.
+
+See `templates/agent-template.md` — "The one-place rule" — for what belongs always-on versus on demand.
 
 ## Safety
 
