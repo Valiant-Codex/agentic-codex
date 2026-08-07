@@ -67,6 +67,16 @@ INFRA_DIR="${INFRA_DIR:-/nonexistent}"
 # assertion that keeps that from becoming the next silent manual step.
 STRICT_CLEAN_REPOS="${STRICT_CLEAN_REPOS:-infra kb-agent-shared}"
 
+# Agents that are DORMANT: still on the box, still in the roster, deliberately not running. A dormant
+# agent keeps its Unix user, clones and roster entry — removing it would leave an unswept home and
+# would make kb-sync and the monitor stop covering it — but its unattended writers are switched OFF.
+# Declarative on purpose: dormancy is a decision, and no code can infer it from the filesystem. The
+# alternative (reading a DORMANT banner out of the agent's own CLAUDE.md) would let repo content
+# decide what the fleet checks — content is untrusted; this list is not.
+# Listing an agent here inverts the memory-mirror assertion: its timer must be OFF, so silently
+# re-enabling it is caught too.
+DORMANT_AGENTS="${DORMANT_AGENTS:-}"
+
 echo "$(date -Is) agentic-divergence-check"
 
 if [ -f "$ROSTER_FILE" ]; then
@@ -329,7 +339,11 @@ PY
   for dsrc in "$r"/deploy/*.service "$r"/deploy/*.timer; do
     [ -f "$dsrc" ] || continue
     uname="$(basename "$dsrc")"
-    case "$uname" in claude-topic@*) continue;; esac
+    # claude-topic@ and rotate-on-boot are installed by provision-agent FROM INFRA, not declared in
+    # the agent's deploy/ — they are fleet code, not per-agent config, so "not in deploy/" is correct
+    # for them, not drift. rotate-on-boot landed in 0.6.5 and this exclusion was never extended, so it
+    # reported every agent every day since.
+    case "$uname" in claude-topic@*|claude-topic-rotate-on-boot.service) continue;; esac
     dlive="$home/.config/systemd/user/$uname"
     if [ ! -f "$dlive" ]; then
       drift "$n: deploy/$uname is declared but not installed to ~/.config/systemd/user/ (service missing on this box)"
@@ -339,7 +353,11 @@ PY
   done
   while IFS= read -r uname; do
     [ -n "$uname" ] || continue
-    case "$uname" in claude-topic@*) continue;; esac
+    # claude-topic@ and rotate-on-boot are installed by provision-agent FROM INFRA, not declared in
+    # the agent's deploy/ — they are fleet code, not per-agent config, so "not in deploy/" is correct
+    # for them, not drift. rotate-on-boot landed in 0.6.5 and this exclusion was never extended, so it
+    # reported every agent every day since.
+    case "$uname" in claude-topic@*|claude-topic-rotate-on-boot.service) continue;; esac
     [ -f "$r/deploy/$uname" ] \
       || drift "$n: user unit '$uname' is enabled but not declared in deploy/ — it exists only on this box and will NOT survive a rebuild"
   done < <(find "$home"/.config/systemd/user/ -path '*.target.wants/*' \
@@ -452,8 +470,17 @@ for t in kb-sync.timer agentic-monitor.timer agentic-divergence-check.timer; do
   systemctl is-enabled --quiet "$t" 2>/dev/null || drift "timer $t is not enabled"
 done
 for u in $ALL_AGENTS; do
-  systemctl is-enabled --quiet "memory-mirror@${u}.timer" 2>/dev/null \
-    || drift "timer memory-mirror@${u}.timer is not enabled — '$u' has NO durable memory and nothing else would report it"
+  dormant=0; for da in $DORMANT_AGENTS; do [ "$da" = "$u" ] && dormant=1; done
+  if [ "$dormant" = 1 ]; then
+    # Inverted for a dormant agent: the mirror must be OFF. Its brain repo is typically archived, so
+    # if the mirror ever had something to push it would fail nightly and page — the daily alarm that
+    # retiring the agent was supposed to end.
+    systemctl is-enabled --quiet "memory-mirror@${u}.timer" 2>/dev/null \
+      && drift "timer memory-mirror@${u}.timer is ENABLED for dormant agent '$u' — it writes nightly to an archived repo; disable it"
+  else
+    systemctl is-enabled --quiet "memory-mirror@${u}.timer" 2>/dev/null \
+      || drift "timer memory-mirror@${u}.timer is not enabled — '$u' has NO durable memory and nothing else would report it"
+  fi
 done
 # The reverse: a timer left enabled for a user who is no longer in the fleet fires and fails nightly,
 # which trains everyone to ignore the failure. Catches a teardown done by hand (see the REMOVE

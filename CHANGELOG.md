@@ -6,6 +6,31 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.8] — 2026-08-07 — Two checks that were nagging about the wrong thing
+
+Applying 0.6.7's own findings to the reference deployment made the drift checker start reporting
+daily — which is how both of these surfaced. A check that cries wolf is worse than no check, because
+the fleet learns to skim past it.
+
+### Fixed
+- **`agentic-divergence-check` reported `claude-topic-rotate-on-boot.service` as undeclared drift for
+  every agent, every day.** The "user unit enabled but not declared in `deploy/`" rule already
+  excluded `claude-topic@` — provision-agent installs it from infra, so it is *fleet code, not
+  per-agent config*, and its absence from `deploy/` is correct rather than drift. The rotate-on-boot
+  unit is the same class; it landed in 0.6.5 and the exclusion was never extended. Every deployment
+  running 0.6.5+ has been getting this false positive once per agent per day.
+- **The memory-mirror assertion had no concept of a dormant agent.** It required the timer enabled
+  for every agent in the roster — correct for a live agent, wrong for a retired one whose brain repo
+  is archived and can no longer accept a push. Switching that timer off then made the *checker* nag
+  nightly instead, trading one daily alarm for another. New **`DORMANT_AGENTS`** list inverts the
+  assertion for those agents: the mirror must be **off**, so accidentally re-enabling it is caught
+  too. Declarative on purpose — dormancy is a decision no code can infer from the filesystem, and the
+  tempting alternative (reading a `DORMANT` banner out of the agent's own `CLAUDE.md`) would let
+  untrusted repo content decide what the fleet checks.
+
+Both branches were verified against deliberately-broken fixtures rather than a clean run, per this
+file's own standing rule: a check that never fires looks exactly like a check that passes.
+
 ## [0.6.7] — 2026-08-07 — The docs catch up with the code
 
 A fleet-wide audit of the reference deployment read the docs against the running system. The code was
@@ -714,6 +739,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8
 [0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7
 [0.6.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.6
 [0.6.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.5
