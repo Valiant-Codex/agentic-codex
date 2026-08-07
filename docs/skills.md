@@ -29,7 +29,7 @@ status: active            # active | superseded | archived
 
 **Progressive disclosure**: the tiny `name`+`description` is always in context; the body loads only when
 triggered; `references/`/`scripts/` load only when referenced. Keep the body lean and point to
-`shared/runbooks/*` for depth instead of duplicating it.
+its own `references/` for depth instead of duplicating it.
 
 ## Registration (automatic)
 
@@ -46,8 +46,8 @@ proved useful in the reference deployment, not because it seemed like a good ide
 
 - **`skillify`** — the executable companion to `policies/skills-policy.md`: how to author, update, and
   retire a skill in this format, including the naming taxonomy and lifecycle.
-- **`agent-audit`** — an interactive, human-in-the-loop tune-up of one agent's brain (skills, `SOUL.md`,
-  `OPERATING.md`, memory): the periodic sweep where accumulated experience becomes durable change
+- **`agent-audit`** — an interactive, human-in-the-loop tune-up of one agent's brain (its `CLAUDE.md`
+  contract, skills, memory): the periodic sweep where accumulated experience becomes durable change
   (see [`memory.md`](memory.md)).
 - **`advisor-review`** — how to get a genuinely independent second opinion out of a sub-agent: make it
   argue *against* you, constrain it (read-only, no credential hunting — a real incident, described in

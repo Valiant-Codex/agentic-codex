@@ -53,7 +53,7 @@ Read these so your actions match the design (don't skip — they define the boun
 
 - [`docs/architecture.md`](docs/architecture.md) — the whole system.
 - [`docs/config-model.md`](docs/config-model.md) — the three-tier boundary (git / kb-sync / provision).
-- [`docs/portability.md`](docs/portability.md) — `SOUL.md + OPERATING.md` canonical + the single `CLAUDE.md` bootstrap.
+- [`docs/portability.md`](docs/portability.md) — one canonical `CLAUDE.md` per agent, and what is not portable.
 - [`templates/kb-agent-shared/policies/approval-policy.md`](templates/kb-agent-shared/policies/approval-policy.md)
   — the approval gates you operate under.
 
@@ -98,8 +98,9 @@ Now **replace the placeholders** (`<ORG>`, `<AGENT>`, `<ROLE>`, `<VPS_HOST>`, `<
 real values in the copied files, and fill in — these three are what make an agent useful from its first
 turn, so do not skip them:
 
-1. your brain's **`SOUL.md`** (who the agent is: identity, voice, principles) and **`OPERATING.md`**
-   (what it does: scope, boundaries, human-confirm gates), starting from the template's root-agent example;
+1. your brain's **`CLAUDE.md`** — the whole always-on contract: identity and voice, scope and
+   delegation, the untrusted-content rule, the human-confirm gates. It is the only file the runtime
+   loads by itself, so anything that must bind belongs in it and nowhere else;
 2. **`kb-agent-shared/owner-profile.md`** — who *you* are, how you want to be worked with, and what your
    org is. It ships as a skeleton of prompts; every agent loads it every session, so if you leave it
    unfilled your agents read placeholder text as fact about you;
@@ -189,8 +190,8 @@ curl "$HC_URL"                          # clears it
 
 For each additional agent, the model is one Unix user + one GitHub bot account + one brain repo from
 `templates/kb-agent-template`, in its own lane. The full create/manage/decommission lifecycle is the
-[`manage-agents`](templates/kb-agent-shared/runbooks/manage-agents.md) runbook — it uses
-[`provision-agent-github-access`](templates/kb-agent-shared/runbooks/provision-agent-github-access.md)
+[`manage-agents`](templates/root-agent-skills/manage-agents/SKILL.md) skill — it uses
+[`github-access`](templates/root-agent-skills/manage-agents/references/github-access.md)
 for the bot/token and `ORG=<ORG> ./scripts/provision-agent <user> <brain>` for the box. Give
 privileged work to as few agents as possible — see
 [`docs/multi-agent-governance.md`](docs/multi-agent-governance.md).

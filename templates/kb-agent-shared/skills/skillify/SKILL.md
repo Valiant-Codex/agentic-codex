@@ -1,6 +1,6 @@
 ---
 name: skillify
-description: Author, update, or retire a agent skill in the v2 format (folder + SKILL.md, name+description frontmatter, progressive disclosure, lifecycle). Use after you've repeated a procedure worth codifying, when a skill needs updating, or when adding/retiring one.
+description: Author, update, or retire a <ORG> agent skill in the v2 format (folder + SKILL.md, name+description frontmatter, progressive disclosure, lifecycle). Use after you've repeated a procedure worth codifying, when a skill needs updating, or when adding/retiring one.
 type: skill
 title: Skillify — author and maintain skills
 tags:
@@ -46,12 +46,12 @@ description: <what it does AND when to use it — <=1024 chars; the harness matc
 type: skill
 title: <Human Title>
 tags: [ ... ]
-status: active            # active | superseded | archived
+status: active            # active | draft | superseded | archived
 timestamp: <ISO-8601>
 ```
 
 - **Body under ~5k tokens.** Sequence the job and capture the gotchas; push deep detail into
-  `references/` and long/deterministic steps into `scripts/`. Point to `shared/runbooks/*` instead of
+  `references/` and long/deterministic steps into `scripts/`. Point to this skill's own `references/*` instead of
   duplicating them.
 - **`description` is the most important field** — make it trigger-rich: state both *what* it does and
   *when* to reach for it.
@@ -86,7 +86,7 @@ timestamp: <ISO-8601>
 - **Write real, not speculative.**
 - **Scope correctly.** Your own repo for agent-specific skills; `shared/skills/` only for genuinely
   fleet-common ones; privileged/cross-agent procedures belong to the agent that owns them.
-- **Lean, not sprawling.** Point to runbooks; prune and mark superseded; don't accrete.
+- **Lean, not sprawling.** Push depth into `references/`; prune and mark superseded; don't accrete.
 
 ## Validation
 

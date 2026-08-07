@@ -6,7 +6,7 @@ tags:
 - template
 - okf
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-06-30T00:00:00Z
 ---
 # Tool Name
 
@@ -24,7 +24,7 @@ What may the agent do with it?
 
 ## Approval Requirements
 
-What requires `<OWNER>` approval?
+What requires <OWNER> approval?
 
 ## Security Notes
 
@@ -32,4 +32,4 @@ What must never be stored or exposed?
 
 ## Related Runbooks
 
-Link related runbooks.
+Link related skills.

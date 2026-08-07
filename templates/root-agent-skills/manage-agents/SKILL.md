@@ -1,9 +1,10 @@
 ---
-type: runbook
+name: manage-agents
+type: skill
 title: Manage Agents (create / manage / decommission)
 description: The full agent lifecycle on a VPS — GitHub bot + Unix user + runtime + systemd topic sessions, and clean removal. The privileged root-agent's procedure, leaning on provision-agent and the GitHub-access runbook.
 tags:
-- runbook
+- skill
 - agents
 - provisioning
 - lifecycle
@@ -67,7 +68,7 @@ So before step (c), scaffold the brain from `templates/kb-agent-template` and pu
 | `CLAUDE.md` (repo root) | the target of `~/CLAUDE.md`; without it the agent has no bootstrap |
 | `deploy/topics.tsv` | the topic registry; without it no session is ever started |
 | `deploy/claude-settings.json` | else `~/.claude/settings.json` is skipped (`[warn]`), leaving no allowlist |
-| `SOUL.md` + `OPERATING.md` | what the bootstrap points at — a bootstrap naming missing files fails the divergence check |
+| `CLAUDE.md` | the whole always-on contract — the divergence check asserts it carries the gates, the untrusted-content rule and the autonomous-OK list |
 
 Commit and push as the new bot (this is also the first real test that its token has write).
 
@@ -125,7 +126,7 @@ manually** — reference `provision-agent`.
 brain's declared shape, and leaving them untracked keeps the repo dirty from day one (provisioning
 deliberately never commits into an agent's own repo).
 
-The agent is then auto-kept-current by `kb-sync`. Brain **content** (the SOUL.md and OPERATING.md identity,
+The agent is then auto-kept-current by `kb-sync`. Brain **content** (the CLAUDE.md contract,
 tools, skills) is authored by the agent (or its designated maintainer), not by the root-agent.
 
 ### (d) Commit the roster change provision-agent made

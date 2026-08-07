@@ -6,6 +6,91 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.7.0] — 2026-08-07 — One always-on file, because only one file was ever loaded
+
+**Breaking for the brain layout.** `SOUL.md` and `OPERATING.md` are gone. Each agent has one always-on
+file, `CLAUDE.md`, carrying identity and voice, scope and delegation, the untrusted-content directive,
+the human-confirm gates, the autonomous-OK list, the threat model and the safety invariants.
+
+### Why
+
+The v2 split (0.5.0) divided identity by *durability*: `SOUL.md` for who the agent is, `OPERATING.md`
+for what it does, `CLAUDE.md` a thin pointer at both. The reasoning was sound. The behaviour was not
+what anyone assumed.
+
+An audit of the reference deployment traced the loading path and found there is none. No `@`-import, no
+hook, no `~/.claude/CLAUDE.md`, no `--append-system-prompt`, nothing in the topic unit. **`CLAUDE.md` is
+the only file the runtime loads by itself** (plus each skill's `name`/`description`, via the
+`~/.claude/skills` whole-directory symlink). The other two entered context only when the model chose to
+obey an instruction telling it to read them. Measured on that deployment's own transcripts, over
+substantial sessions:
+
+| agent | read `SOUL.md` | read `OPERATING.md` |
+|---|---|---|
+| root agent | 37% | 54% |
+| CoS agent | 16% | 22% |
+| dev agent | 47% | 53% |
+
+Meanwhile **45–70% of each `OPERATING.md` was content that must bind before the agent knows to go
+looking**: the confirm gates, the threat model, the delegation map, the never-commit-secrets invariant,
+and — for the privileged agent — the fact that it is effectively root. The brakes were out of context in
+the majority of sessions. Every `SOUL.md` even asserted `Loaded every session alongside OPERATING.md` in
+its own frontmatter, which was false the day it was written.
+
+**The general lesson, which outlives this framework: a layer that loads only by instruction is not a
+layer, it is a suggestion.** If a rule must hold, it belongs in the file the runtime reads by itself.
+Splitting by durability is a good instinct for authoring and a bad one for loading — git already records
+what changes rarely and what changes often, for free, without a second file to keep in sync.
+
+Size is not the constraint people assume. Verified against Claude Code 2.1.224: a `CLAUDE.md` is skipped
+only above **4 MiB**, with a soft threshold at **40k characters**. A complete single-file contract runs
+8–12 KB. The real ceiling is attention, so 0.7.0 budgets **20 KB** and the drift checker enforces it.
+
+### Migrating from 0.6.x
+
+1. Fold `SOUL.md` and `OPERATING.md` into `CLAUDE.md`. Keep everything that must bind before the agent
+   knows to look; move the rest — link lists, path mechanics, historical asides — into a skill or drop it.
+2. Delete both files. Git holds them.
+3. Update the drift checker (shipped here) — it now asserts the one file exists, carries the gates, the
+   untrusted-content rule and the autonomous-OK list, and stays under 20 KB, and reports a surviving
+   `SOUL.md`/`OPERATING.md` as drift.
+4. If you genuinely need a second file, use `@`-imports (they resolve, to depth 5) rather than an
+   instruction telling the model to go read something.
+
+### Also removed, for the same reason
+
+- **`runbooks/` is abolished.** The runtime discovers skills and discovers nothing else, so a procedure
+  filed anywhere else is reachable only if some already-loaded text happens to name its path — which,
+  measured, one skill in nine ever did. Depth belongs in a skill's own `references/`. The framework's
+  privileged procedures now ship as **`templates/root-agent-skills/`** (manage-agents, patch-management,
+  fleet-brain-change, fleet-monitoring), to be copied into whichever agent you make privileged — not into
+  the shared layer, where every agent would carry a lifecycle procedure only one may run.
+- **`skills-archive/` is abolished.** Retire a skill with a banner or delete it; git holds the reasoning.
+  In the reference deployment the archive directory had accumulated six live references to an archived
+  skill, three with broken paths, while its own registry still listed it as active.
+- **`memory/episodic/` is dropped.** Specified since 0.2.0, instantiated by one agent, abandoned after
+  four weeks, and referenced by five repos including one describing a directory that never existed. The
+  runtime records incidents by itself and the nightly mirror carries them.
+
+### Governance
+
+- **`policies/skills-policy.md` is now the single source of truth for skill format.** It records what
+  the runtime *actually* enforces (verified in the binary): skills must be directories containing
+  `SKILL.md` — a bare `.md` is discarded before it is read; **the invocable name is the directory name**,
+  not frontmatter `name`; `name` and `description` are optional to the runtime and required by us; 128 KB
+  cap. The status enum is settled at four values (`active | draft | superseded | archived`) — it was
+  three in some documents and four in others, while a shipped skill used `draft`.
+- **The OKF `type` vocabulary is closed** at 10 values, down from 21 observed. One deployment had reached
+  seven different types for "README of a folder", and a 16/12 split between `decision` and
+  `decision-record` with no rule distinguishing them.
+- **Two OKF exemptions are finally written down**: `CLAUDE.md` (a runtime artefact — frontmatter there is
+  noise) and `memory/auto/**` (byte-identical machine mirrors whose own writer emits unquoted colons).
+  Without them, 31% of a conformant fleet "violated" a rule never meant to reach it.
+- **`agentic-divergence-check` validates YAML frontmatter**, with those two exemptions, failing closed if
+  PyYAML is absent. The governance had required parseable frontmatter since 0.4.x and nothing checked it.
+- **Dormant agents are held to a dormant contract**: the untrusted-content rule and an unmissable dormancy
+  statement, not gates and an autonomous-OK list describing work they must not do.
+
 ## [0.6.8] — 2026-08-07 — Two checks that were nagging about the wrong thing
 
 Applying 0.6.7's own findings to the reference deployment made the drift checker start reporting
@@ -739,6 +824,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.7.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.0
 [0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8
 [0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7
 [0.6.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.6

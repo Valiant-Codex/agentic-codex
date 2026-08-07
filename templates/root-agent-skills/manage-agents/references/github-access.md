@@ -1,9 +1,9 @@
 ---
-type: runbook
+type: reference
 title: Provision Agent GitHub Access (Bot Account + Token)
 description: Step-by-step to give an agent its own GitHub bot account, least-privilege repo access, and a token wired on the server — including how to choose between a classic and a fine-grained PAT, and why the choice has a security consequence.
 tags:
-- runbook
+- reference
 - github
 - tokens
 - provisioning

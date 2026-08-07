@@ -1,5 +1,5 @@
 ---
-type: distilled-memory
+type: memory
 title: <AGENT> Distilled Memory
 description: Compact, high-signal durable memory for <AGENT>, distilled from the runtime working tier.
 tags: [<AGENT>, memory]

@@ -1,17 +1,17 @@
 ---
 type: repository-index
 title: Repository Index
-description: Root README for the shared governance layer used by all your org's agents.
+description: Root README for the shared governance layer used by all <ORG> agents.
 tags:
 - okf
 - repository
 - shared
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-07-20T00:00:00Z
 ---
-# kb-agent-shared
+# <ORG> — kb-agent-shared
 
-Lean, versioned **shared governance layer** for all of `<ORG>`'s agents.
+Lean, versioned **shared governance layer** for all <ORG> agents.
 
 ## Purpose
 
@@ -21,15 +21,16 @@ agent**: global policies, ecosystem state, conventions, cross-agent decision rec
 It is **not** any single agent's brain. Each agent's identity, memory, skills, and tool notes live in
 that agent's own repository (`kb-agent-<role>-<name>`), which reaches this repo through a `shared`
 symlink to a **sibling clone** at `../kb-agent-shared` (not a git submodule — see
-the Agentic Codex docs (`config-model.md`)). New agents are scaffolded from a `kb-agent-template`.
+`decisions/2026-07-21-shared-as-sibling-clone-not-submodule.md`). New agents are scaffolded from
+`kb-agent-template`.
 
-Business knowledge and operational context belong in your business KB (e.g. Notion) or another explicit
-business source of truth, not in any agent repository.
+Business knowledge, client work, offers, CRM notes, delivery processes, and operating dashboards belong
+in Notion or another explicit business source of truth, not in any agent repository.
 
 ## Operating Model
 
 - `kb-agent-shared` owns what must stay consistent across agents; each agent repo owns its own brain.
-- Runtime memory (LLM runtime / vector stores) is cache/working memory, not the final source of truth.
+- Runtime memory (ChatGPT / Claude Code / vector stores) is cache/working memory, not the final source of truth.
 - Global policies live in `policies/`.
 - Cross-agent / ecosystem decisions live in `decisions/`; agent-specific decisions live in that agent's repo.
 - Folder-level `README.md` files are required navigation maps and must be updated whenever files in that
@@ -46,27 +47,23 @@ business source of truth, not in any agent repository.
 
 ## Agent Repositories
 
-Give each agent a short, memorable name, and pick a small set of archetypes. This template ships with
-three:
-
-| Repo | Archetype | Role |
+| Repo | Agent | Role |
 |---|---|---|
-| `kb-agent-cos-<name>` | **cos-agent** | Broad, unprivileged Chief of Staff / orchestration |
-| `kb-agent-ops-<name>` | **root-agent** | Narrow, privileged infrastructure/operations on `<VPS_HOST>` (sudo) |
-| `kb-agent-dev-<name>` | **dev-agent** | Build/deploy engineering; self-contained token + deploy rights, never root |
+| `kb-agent-<role>-<cos-agent>` | `chief-of-staff_galadriel` | Broad, unprivileged Chief of Staff / orchestration |
+| `kb-agent-<role>-<root-agent>` | `infra-ops_durin` | Narrow, privileged infrastructure/operations on ops-01 |
 | `kb-agent-template` | — | Scaffold for new agents |
 
 ## Agent Naming Convention
 
-- Agent identity: `role_name` — e.g. `chief-of-staff_<name>`.
-- Agent repository: `kb-agent-<role-abbrev>-<name>` — e.g. `kb-agent-cos-<name>`, `kb-agent-ops-<name>`.
+- Agent identity: `role_name` — e.g. `chief-of-staff_galadriel`.
+- Agent repository: `kb-agent-<role-abbrev>-<name>` — e.g. `kb-agent-<role>-<cos-agent>`, `kb-agent-<role>-<root-agent>`.
 
 ## Standard Agent Repository Shape
 
 ```text
 kb-agent-<role>-<name>/
 ├── CLAUDE.md            # bootstrap pointer for the runtime
-├── SOUL.md + OPERATING.md
+├── CLAUDE.md            ← the whole always-on contract
 ├── context/            # (optional)
 ├── memory/
 ├── tools/

@@ -49,7 +49,7 @@ These were the design drivers — if you share them, this repo is for you:
 | Goal | How it's met |
 |---|---|
 | **Own your agents' memory** | Brains are Git repos of Markdown (an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspired structure), not a vendor's memory store. |
-| **Portable brains** | Canonical identity lives in `SOUL.md + OPERATING.md`; the root `CLAUDE.md` is a thin bootstrap pointing to them, so the brain *content* is not tied to one runtime. The wiring is deliberately Claude-Code-only (Remote Control is the reason this stack exists); adopting another runtime means rewriting the wiring, not the brains — see the honest accounting in [`docs/portability.md`](docs/portability.md). |
+| **Portable brains** | The whole contract lives in one `CLAUDE.md` of plain Markdown, so the brain *content* is not tied to one runtime. The wiring is deliberately Claude-Code-only (Remote Control is the reason this stack exists); adopting another runtime means rewriting the wiring, not the brains — see the honest accounting in [`docs/portability.md`](docs/portability.md). |
 | **Talk to agents from anywhere** | Claude Code Remote Control surfaces each session on web/mobile/desktop — the reason this happy path is Claude Code. |
 | **Minimal attack surface** | One privileged agent, unprivileged others; no extra always-on gateway; a root-owned wrapper no agent can rewrite. |
 | **Recover / migrate in minutes** | `clone + provision-agent`. Nothing important lives only on the box. See [`docs/config-model.md`](docs/config-model.md). |
@@ -83,8 +83,8 @@ any model, with the least setup? Use OpenClaw or Hermes. Want a small fleet whos
 and rules you read, diff and review in Git, with a deliberately minimal surface, and you are happy on
 Claude Code? That is this.
 
-**And they compose.** The brain shape here is deliberately runtime-neutral — `SOUL.md +
-OPERATING.md`, with a thin `CLAUDE.md` bootstrap. Nothing stops you from keeping
+**And they compose.** The brain shape here is deliberately runtime-neutral — one `CLAUDE.md` of plain
+Markdown, plus `memory/` and `skills/`. Nothing stops you from keeping
 brains-in-Git and pointing a different runtime at them; that is exactly what
 [`docs/portability.md`](docs/portability.md) is about — including its honest accounting of what has
 and has not been exercised.
@@ -150,7 +150,8 @@ docs/                     ← the write-up: how and why it works
 templates/
   infra/                  ← the host layer (root-owned wrapper, systemd, monitor, provisioning)
   kb-agent-shared/        ← shared governance (policies, templates, runbooks) every agent reads
-  kb-agent-template/      ← one agent brain scaffold (SOUL.md + OPERATING.md + CLAUDE.md bootstrap)
+  kb-agent-template/      ← one agent brain scaffold (a single always-on CLAUDE.md)
+  root-agent-skills/      ← the privileged agent's skills (lifecycle, patching, fleet changes)
 LICENSE                   ← MIT
 ```
 

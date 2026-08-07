@@ -9,6 +9,9 @@ tags:
 - canonical-brain
 status: active
 timestamp: 2026-07-10T00:00:00Z
+supersedes:
+- decisions/2026-07-03-openclaw-first-memory-stack.md
+- decisions/2026-06-28-memory-stack-design.md
 ---
 # Memory Policy
 
@@ -22,7 +25,7 @@ The agent's own `kb-agent-<role>-<name>` repository is its canonical durable bra
 
 Runtime memories and external memory systems are useful working layers, but durable agent knowledge should be distilled into GitHub Markdown/OKF files.
 
-Business knowledge belongs in your explicit business source of truth (e.g. a wiki or Notion), not in any agent repository.
+Business knowledge belongs in Notion or another explicit business source of truth, not in any agent repository.
 
 ## Memory Layers
 
@@ -58,8 +61,8 @@ Do not save:
 
 ## Memory File Types
 
-- `distilled-memory.md` — compact durable memory summary.
-- `episodic/*.md` — important historical events and milestones.
+- `distilled-memory.md` — standing decisions and closed questions only (see the tier model below).
+- `memory/auto/*.md` — machine-owned nightly mirror of the runtime store. **Never hand-edited.**
 - `decisions/*.md` — durable architecture/governance decisions.
 - `skills/*.md` — reusable procedures.
 - `tools/*.md` — tool registry and permissions.
@@ -69,7 +72,7 @@ Do not save:
 
 1. Identify a candidate memory, decision, skill, runbook, or tool note.
 2. Check current files and folder `README.md` maps before creating duplicates.
-3. Classify the target: distilled memory, episodic memory, decision, policy, skill, tool, template, or archive.
+3. Classify the target: a standing decision (distilled memory), a decision record, a policy, a skill, a tool note, or an archive entry. Anything episodic needs no action — the runtime already recorded it and the nightly mirror already carries it.
 4. Draft the smallest coherent update.
 5. Ask <OWNER> if the change is ambiguous, sensitive, external, risky, client-related, or broad.
 6. Update the target file and the folder `README.md` in the same change when the file list/status changes.
@@ -91,17 +94,28 @@ ChatGPT/Claude Code/other runtime memories may help continuity, but they do not 
 
 In practice durable memory has two tiers, and the distinction matters for portability:
 
-- **Working tier — runtime auto-memory** (Claude Code's per-runtime memory store, git-ignored): fast,
-  auto-captured during sessions, a convenient recall cache. It is **not canonical** and does **not**
-  travel with the brain across a re-provision or a framework switch.
-- **Canonical tier — the git brain** (`memory/distilled-memory.md` + `memory/episodic/`): reviewed,
-  portable, and inspectable/editable by <OWNER> in GitHub.
+- **`memory/auto/` — machine-owned, and the tier that carries the weight.** `memory-mirror` rsyncs the
+  runtime's own auto-memory here nightly and commits it, so the fast tier survives a re-provision. It is
+  a **byte-identical copy**: no transformation, which is exactly what makes restoring it trivial. Do not
+  hand-edit it — the next mirror overwrites your edit. To correct something here, correct the runtime
+  memory it is copied from.
+- **`distilled-memory.md` — hand-curated, and deliberately narrow.** It holds **standing decisions and
+  closed questions**: the things a fresh session would otherwise cheerfully re-litigate. It is *not* a
+  summary of `auto/`. If a fact appears in both, delete it from here.
 
-High-signal facts must be **distilled from the working tier into the canonical tier** via the Promotion
-Workflow above, so the durable brain — not a runtime cache — is the source of truth (<OWNER>'s priorities:
-everything editable in GitHub; plug-and-play portability). Run this distillation periodically; the
-`agent-audit` skill drives the cadence with <OWNER> in the loop. When a runtime cache conflicts with git,
-git wins.
+The two answer different questions. `auto/` is *what the runtime happened to record* — complete, unranked,
+and refreshed for free. `distilled-memory.md` is *what was settled* — ranked, and only as fresh as its last
+curation. **Mirroring is automatic; distilling is not**, which is the asymmetry that bites: left alone, the
+curated tier silently falls months behind the one nobody has to maintain. So keep the curated tier small
+enough that reviewing it is cheap, and refresh it in `agent-audit` with <OWNER> in the loop. When a runtime
+cache conflicts with git, git wins.
+
+**On `episodic/`** (dropped 2026-08-07): a third tier of dated incident notes was specified from
+2026-06-27, instantiated by exactly one agent, and abandoned after four weeks — no automation ever wrote
+it, and nothing new was added for the last 17 days it existed, while five repos went on referencing it and
+one described a directory that had never been created. Durable incidents belong in `auto/` (the runtime
+records them by itself) or, when they change how the fleet operates, in `decisions/`. A tier nobody writes
+is not a tier; it is a claim.
 
 ## Future Memory Tools
 

@@ -29,4 +29,4 @@ The things that actually bite — learned the hard way.
 
 ## Related
 
-- Links to `shared/runbooks/*`, policies, or sibling skills (don't duplicate their content here).
+- Links to this skill's own `references/*`, to policies, or to sibling skills (don't duplicate their content here).

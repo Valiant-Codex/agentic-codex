@@ -8,26 +8,29 @@ this page is explicit about where that line falls.
 
 ## Axis 1 — brain portability (across agent frameworks)
 
-The trick is a strict split between the canonical identity and the runtime adapter.
-
-- **`SOUL.md` + `OPERATING.md` are canonical**, split by *durability*. `SOUL.md` holds *who the agent
-  is* (identity, voice, principles) — durable, changed rarely; `OPERATING.md` holds *what it does*
-  (mission/scope, threat model, human-confirm gates, bootstrap) — the operating contract. Both are
-  plain, framework-agnostic Markdown. Splitting durable identity from mutable instructions keeps
-  identity from drifting when operational details change. Shared facts about the owner/org live once in
-  `shared/owner-profile.md`.
-- **One thin bootstrap.** The brain's root `CLAUDE.md` is the **single runtime entry point**: a short
-  pointer to `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`, written with **absolute**
-  `~/github/...` paths so it resolves from any working directory. `provision-agent` symlinks it to
-  `~/CLAUDE.md`; the supervised topic session runs with `WorkingDirectory=%h`, so that symlink is what
-  the running agent loads. Editing the repo edits the live bootstrap — a symlink, never a fork.
+**`CLAUDE.md` is canonical, complete, and the only always-on file.** It holds *who the agent is*
+(identity, voice, principles) and *what it does* (scope, delegation, threat model, human-confirm gates)
+in plain, framework-agnostic Markdown. It is written with **absolute** `~/github/...` paths so it
+resolves from any working directory; `provision-agent` symlinks it to `~/CLAUDE.md`, and the supervised
+topic session runs with `WorkingDirectory=%h`, so that symlink is what the running agent loads. Editing
+the repo edits the live contract — a symlink, never a fork. Shared facts about the owner and org live
+once in `shared/owner-profile.md`.
 
 ```
-      SOUL.md + OPERATING.md      ← canonical identity + contract (the value)
-                ▲
-            CLAUDE.md             ← one thin bootstrap (symlinked to ~/CLAUDE.md)
-           (Claude Code)
+  kb-agent-<role>-<name>/
+    CLAUDE.md      ← the whole always-on contract — identity + scope + gates (the value)
+    memory/        ← distilled-memory.md + auto/ (nightly machine mirror)
+    skills/        ← folder-per-skill; the one retrievable layer the runtime advertises itself
+    shared/        → sibling clone of the governance layer
 ```
+
+> **Why one file and not two.** Through 0.6.x this framework split identity by *durability* —
+> `SOUL.md` for who the agent is, `OPERATING.md` for what it does, `CLAUDE.md` a thin pointer at both.
+> Measurement killed it (0.7.0): nothing but `CLAUDE.md` is auto-loaded, so the other two entered
+> context only when the model chose to obey an instruction to read them — 16–54% of substantial
+> sessions across the reference deployment — while 45–70% of each `OPERATING.md` was gates, threat
+> model and delegation map. **A layer that loads only by instruction is not a layer, it is a
+> suggestion.** Git already distinguishes what changes rarely from what changes often, for free.
 
 > **Why only one file, and why Claude Code.** Earlier versions shipped a three-file arrangement
 > (`deploy/home-CLAUDE.md` as the runtime bootstrap plus repo-root `CLAUDE.md`/`AGENTS.md`
@@ -49,7 +52,7 @@ The trick is a strict split between the canonical identity and the runtime adapt
 Framework-agnosticism here is a property of the **brain content**, not of the whole system. Being
 straight about the split is what makes the claim usable:
 
-**Moves unchanged to another framework** — `SOUL.md`, `OPERATING.md`, `memory/`, `skills/` bodies,
+**Moves unchanged to another framework** — `CLAUDE.md`, `memory/`, `skills/` bodies,
 `tools/`, `context/`, and everything in the shared governance layer. This is plain Markdown, and it is
 where the accumulated value lives.
 

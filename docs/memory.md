@@ -11,7 +11,7 @@ scheduled ever touches identity or capabilities.
   `~/.claude/.../memory`) is fast and auto-captured during sessions, but it is **not canonical** and
   does **not** travel with the brain across a re-provision or a framework switch.
 - **Canonical tier — the Git brain.** `memory/distilled-memory.md` (compact, high-signal) +
-  `memory/episodic/` (dated milestones) + `memory/auto/` (a machine-mirror of the working tier) —
+  `memory/auto/` (a machine-mirror of the working tier) —
   reviewed, portable, and inspectable/editable in GitHub. When the two disagree, Git wins.
 
 High-signal facts are **distilled from the working tier into the canonical tier**, so the durable brain

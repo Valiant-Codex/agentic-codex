@@ -1,14 +1,14 @@
 ---
 type: bundle-index
 title: Shared Governance Layer Index
-description: Top-level navigation map for your org's shared governance layer.
+description: Top-level navigation map for the <ORG> shared governance layer.
 okf_version: "0.1"
 tags:
 - index
 - shared
 - okf
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-07-20T00:00:00Z
 ---
 # Shared Governance Layer Index
 
@@ -22,13 +22,14 @@ Start with [`bootstrap.md`](bootstrap.md). Use this file only when you need to n
 ## Areas
 
 - [`policies/`](policies/) — global policies that apply to every agent.
-- [`runbooks/`](runbooks/) — operational runbooks (e.g. agent operations, portability, and VPS recovery).
-- [`decisions/`](decisions/) — cross-agent / ecosystem decision records (starts empty; add your own).
-- *(No handoff directory: cross-agent handoffs are relayed by the owner in chat — see `docs/multi-agent-governance.md`.)*
+- [`reference/`](reference/) — shared reference notes (e.g. the Claude Code VPS runtime (systemd topic sessions)).
+- [`decisions/`](decisions/) — cross-agent / ecosystem decision records, including superseded history.
+- *(No `handoffs/` — since 2026-07-25 cross-agent handoffs are relayed by <OWNER> in chat, not stored here.)*
 - [`templates/`](templates/) — reusable OKF templates for new documents.
+- [`archive/`](archive/) — historical material that should not be loaded by default.
 
 ## Note
 
-This repository is reached through a `shared` symlink to a sibling clone (`../kb-agent-shared`) in each
-agent's own repository (`kb-agent-<role>-<name>`), not as a git submodule. Agent-specific identity,
-memory, skills, and tools live in that agent's repo, not here.
+This repository is reached through a committed `shared/` symlink (to a sibling clone) in each agent's own repository
+(`kb-agent-<role>-<name>`). Agent-specific identity, memory, skills, and tools live in that agent's
+repo, not here.

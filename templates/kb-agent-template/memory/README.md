@@ -15,9 +15,8 @@ high-signal facts are distilled from it into here. See `shared/policies/memory-p
 
 | File | Purpose |
 |---|---|
-| `distilled-memory.md` | Compact durable memory — the file loaded every session. Keep it lean and high-signal. Hand-curated. |
+| `distilled-memory.md` | **Standing decisions and closed questions** — what `auto/` structurally cannot hold: the things a fresh session would otherwise re-litigate. Hand-curated. Not loaded automatically; nothing but `CLAUDE.md` is. |
 | `auto/` | **Machine-owned.** A nightly `memory-mirror` rsyncs the runtime's own auto-memory here and commits it, so the fast tier survives a re-provision. **Do not hand-edit** — your edits are overwritten by the next mirror. Edit the runtime's memory instead. |
-| `episodic/` | Time-bounded incident/milestone notes (`YYYY-MM-DD-slug.md`), added as real history accumulates. |
 
 The two tiers answer different questions: `auto/` is *what the runtime happened to record*, complete
 but unranked; `distilled-memory.md` is *what you decided is worth carrying*, ranked but only as fresh

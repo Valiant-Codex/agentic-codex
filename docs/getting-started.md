@@ -137,7 +137,7 @@ Your agent stores its brain and config in GitHub. Two things to create in a brow
 
 The token wiring has a few specifics (accepting invites, `hosts.yml`, git identity) — follow the
 detailed runbook:
-[`provision-agent-github-access.md`](../templates/kb-agent-shared/runbooks/provision-agent-github-access.md).
+[`github-access.md`](../templates/root-agent-skills/manage-agents/references/github-access.md).
 When you're done, `gh auth status` should succeed as the agent user.
 
 ## 8. Hand the rest to the agent

@@ -1,9 +1,10 @@
 ---
-type: runbook
+name: fleet-monitoring
+type: skill
 title: Monitoring & Alerting (agentic-monitor + healthchecks.io)
 description: Operational runbook for the fleet's single monitoring component — the host-level agentic-monitor check and its external dead-man's switch — how to read an alert, test it, tune noise, and reinstall on a new box.
 tags:
-- runbook
+- skill
 - monitoring
 - alerting
 - infra

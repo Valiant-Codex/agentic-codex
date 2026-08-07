@@ -13,7 +13,10 @@ It **reports, it never fixes.** Fixes go through a human (or the `agent-audit` s
 
 Per agent brain:
 
-- **Declared shape** — `SOUL.md`, `OPERATING.md`, `CLAUDE.md` exist, and the adapter actually loads
+- **Declared shape** — `CLAUDE.md` exists and carries the sections whose absence is silent (the
+  confirm gates, the untrusted-content rule, the autonomous-OK list); it stays inside a 20 KB working
+  budget; no `SOUL.md`/`OPERATING.md` survives from the pre-0.7.0 split; frontmatter parses as YAML
+  everywhere except the two documented exemptions. And the adapter actually loads
   SOUL + OPERATING + `shared/owner-profile.md`.
 - **Skills are discoverable** — folder-per-skill with a `SKILL.md`, frontmatter `name` matching the
   folder, non-empty `description`, and no flat `skills/*.md` left behind.

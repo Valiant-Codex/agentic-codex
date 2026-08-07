@@ -13,7 +13,7 @@ timestamp: 2026-01-01T00:00:00Z
 
 > One shared source of truth for *who the owner is* and *how to work with them*, loaded by every agent.
 > This exists so the fleet does not drift multiple versions of "who <OWNER> is." Each agent's own
-> identity lives in its `SOUL.md`; the owner lives here. Fill in the placeholders below.
+> identity lives in its `CLAUDE.md`; the owner lives here. Fill in the placeholders below.
 
 ## <OWNER>
 

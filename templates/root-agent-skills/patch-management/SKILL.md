@@ -1,9 +1,10 @@
 ---
-type: runbook
+name: patch-management
+type: skill
 title: Patch Management (OS / Dokploy / container images)
 description: Operating procedure for keeping the VPS patched — automatic OS security (unattended-upgrades, optional ESM + Livepatch), deliberate Dokploy + container-image updates (backup + review + deploy), surfaced daily by agentic-divergence-check.
 tags:
-- runbook
+- skill
 - updates
 - patch-management
 - dokploy

@@ -31,11 +31,10 @@ the worked example, entirely with placeholders. Fill them in and the same shape 
 
 ## The portability pattern
 
-The **canonical identity + operating contract lives in `SOUL.md`** (who the agent *is* — durable
-identity, voice, principles) **and `OPERATING.md`** (what it *does* — scope, threat model, gates,
+The **whole always-on contract lives in `CLAUDE.md`** — identity and voice, scope, threat model, gates,
 bootstrap) — framework-agnostic Markdown. `CLAUDE.md` at the repo root is the **single runtime
 bootstrap**: a thin pointer back to them, symlinked to `~/CLAUDE.md`, written with absolute
-`~/github/...` paths so it resolves from any cwd. Edit identity/contract in `SOUL.md`/`OPERATING.md`;
+`~/github/...` paths so it resolves from any cwd. Edit the contract in `CLAUDE.md`;
 never let the bootstrap drift into a second source of truth. Splitting durable *who-you-are* from
 mutable *what-you-do* is deliberate: it keeps identity from drifting when operational instructions
 change. The brain *content* (identity, memory, skills, tools) is plain Markdown and portable to
@@ -45,9 +44,7 @@ another runtime; the wiring is Claude-Code-specific. See docs/portability.md in 
 
 | Path | Purpose |
 |---|---|
-| `SOUL.md` | **Canonical** durable identity: who the agent is, voice, principles (loaded every session). |
-| `OPERATING.md` | **Canonical** operating contract: mission/scope, threat model, human-confirm gates, bootstrap. |
-| `CLAUDE.md` | The single runtime bootstrap (symlinked to `~/CLAUDE.md`) → `SOUL.md` + `OPERATING.md` + `shared/owner-profile.md`. |
+| `CLAUDE.md` | **The whole always-on contract** — identity, voice, scope, gates, threat model. Symlinked to `~/CLAUDE.md`; the only file the runtime loads. |
 | `deploy/topics.tsv` | Remote-Control topic sessions (`key<TAB>Display Name`). |
 | `deploy/claude-settings.json` | Curated, portable runtime settings (permissions, notifications). |
 | `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. |

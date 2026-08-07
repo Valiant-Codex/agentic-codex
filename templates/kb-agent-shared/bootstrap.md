@@ -16,7 +16,7 @@ global policies, ecosystem state, conventions, cross-agent decisions, and templa
 its own repository (`kb-agent-<role>-<name>`) that reaches this repo through a `shared` symlink to a
 **sibling clone** at `../kb-agent-shared` (not a git submodule — see the Agentic Codex docs (`config-model.md`)).
 
-Read your **own** agent repo first (its `SOUL.md`, `OPERATING.md` and `CLAUDE.md`), then read from `shared/`
+Your own `CLAUDE.md` is already loaded — it is the one always-on file. Read from `shared/`
 only what the task needs. Keep the initial context small.
 
 ## Human

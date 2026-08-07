@@ -115,17 +115,100 @@ done
 # One set, used everywhere: a roster problem then drifts once, loudly, without disarming the checker.
 ALL_AGENTS="$(printf '%s\n%s\n' "$AGENTS" "$DISCOVERED" | grep . | sort -u)"
 
+# Frontmatter must be parseable YAML — the governance says so and nothing checked it, which is how a
+# decision record sat for four days with an unquoted `description:` containing ": " (invalid YAML, and
+# invisible because every consumer so far has been a human eye).
+#
+# Two directories are exempt BY DESIGN, not by oversight (see skills/knowledge-governance-workflow):
+#   CLAUDE.md      — a runtime artefact injected verbatim; frontmatter there is noise, not metadata.
+#   memory/auto/** — machine-owned, byte-identical mirrors of the runtime's own store. The runtime
+#                    itself emits unquoted descriptions containing colons; validating them would be a
+#                    permanent false alarm about a file we must not edit.
+# Fails CLOSED: if PyYAML is unavailable the check reports that it could not run, rather than passing.
+check_frontmatter(){ # <repo> <label>
+  local r="$1" n="$2"
+  python3 - "$r" "$n" <<'PY' || drift "$n: frontmatter validation could not run"
+import os,sys
+try:
+    import yaml
+except ImportError:
+    print(f"  [DRIFT] {sys.argv[2]}: PyYAML missing — frontmatter is NOT being validated"); sys.exit(0)
+R,N=sys.argv[1],sys.argv[2]; bad=0
+for root,dirs,files in os.walk(R):
+    dirs[:]=[d for d in dirs if d not in ('.git','auto')]
+    for fn in files:
+        if not fn.endswith('.md') or fn=='CLAUDE.md': continue
+        p=os.path.join(root,fn)
+        try: s=open(p,encoding='utf-8').read()
+        except Exception: continue
+        if not s.startswith('---'): continue
+        try: yaml.safe_load(s.split('---',2)[1])
+        except Exception as e:
+            bad+=1
+            print(f"  [DRIFT] {N}: {os.path.relpath(p,R)} frontmatter is not valid YAML ({type(e).__name__}) — quote any value containing ': '")
+sys.exit(0)
+PY
+  local c; c=$(python3 - "$r" <<'PY'
+import os,sys
+try: import yaml
+except ImportError: print(0); sys.exit(0)
+R=sys.argv[1]; b=0
+for root,dirs,files in os.walk(R):
+    dirs[:]=[d for d in dirs if d not in ('.git','auto')]
+    for fn in files:
+        if not fn.endswith('.md') or fn=='CLAUDE.md': continue
+        p=os.path.join(root,fn)
+        try: s=open(p,encoding='utf-8').read()
+        except Exception: continue
+        if not s.startswith('---'): continue
+        try: yaml.safe_load(s.split('---',2)[1])
+        except Exception: b+=1
+print(b)
+PY
+)
+  [ "${c:-0}" -gt 0 ] && { FAILS=$((FAILS+c)); DRIFT_LOG="${DRIFT_LOG}${DRIFT_LOG:+; }$n: $c file(s) with invalid frontmatter"; }
+  return 0
+}
+
 check_brain(){ # <user> <repo>
   local u="$1" r="$2" n; n="$(basename "$r")"
   echo "== $n =="
   local asu; asu(){ as_agent "$u" "$1"; }
+  check_frontmatter "$r" "$n"
 
-  # 1) Declared brain shape (v2 identity split) + adapter wiring.
-  for f in SOUL.md OPERATING.md CLAUDE.md; do [ -f "$r/$f" ] || drift "$n: missing $f"; done
+  # 1) Declared brain shape (v3: one always-on file) + the assertions that keep it honest.
+  #
+  # v2 split identity across SOUL.md + OPERATING.md and had CLAUDE.md point at them. The 2026-08-07
+  # audit measured what that actually loaded: nothing but CLAUDE.md is auto-loaded, and on the fleet's
+  # own transcripts the agents read their OPERATING.md in 22–54% of substantial sessions. The gates and
+  # the threat model were therefore absent from context most of the time. v3 folds them into CLAUDE.md.
+  # So this no longer checks that three files exist — it checks that the ONE file carries the content
+  # that must never be merely retrievable.
+  [ -f "$r/CLAUDE.md" ] || drift "$n: missing CLAUDE.md — the agent has NO always-on contract"
+  for f in SOUL.md OPERATING.md; do
+    [ -f "$r/$f" ] && drift "$n: $f still exists — v3 folds it into CLAUDE.md; content here is not loaded by anything"
+  done
   if [ -f "$r/CLAUDE.md" ]; then
-    for tok in SOUL.md OPERATING.md owner-profile; do
-      grep -q "$tok" "$r/CLAUDE.md" || drift "$n: CLAUDE.md does not load $tok"
-    done
+    # Vocabulary-bearing on purpose (a class-2 assertion): these are the sections whose absence is
+    # silent. A missing gate list does not fail anything — it just quietly stops binding.
+    #
+    # A DORMANT agent is held to a different bar: it has no scope, so gates and an autonomous-OK list
+    # would be describing work it must not do. What it must still carry is the untrusted-content rule
+    # (it applies to anything that wakes and reads) and an unmissable statement that it is dormant.
+    local dorm=0; for da in $DORMANT_AGENTS; do [ "$da" = "$u" ] && dorm=1; done
+    if [ "$dorm" = 1 ]; then
+      grep -qi 'untrusted' "$r/CLAUDE.md" || drift "$n: CLAUDE.md does not carry the untrusted-content rule"
+      grep -qi 'dormant'   "$r/CLAUDE.md" || drift "$n: CLAUDE.md does not say the agent is DORMANT — a woken agent would read a live contract"
+    else
+      for tok in 'Human-confirm gates:gates' 'untrusted:the untrusted-content prime directive' 'Autonomous-OK:the autonomous-OK list'; do
+        grep -qi "${tok%%:*}" "$r/CLAUDE.md" || drift "$n: CLAUDE.md does not carry ${tok##*:} — it binds only if it is in the file the runtime loads"
+      done
+    fi
+    # Size: 4 MiB is the runtime's hard skip and 40k chars its soft threshold (verified in the 2.1.224
+    # binary). Warn far earlier — a bloated always-on file is a different failure: it still loads, and
+    # everything in it competes for attention with everything else.
+    local cmsz; cmsz=$(wc -c < "$r/CLAUDE.md")
+    [ "$cmsz" -gt 20000 ] && drift "$n: CLAUDE.md is ${cmsz} bytes — over the 20k working budget; push reference material out to skills/ or shared/"
   fi
 
   # 2) Skills: folders with SKILL.md, frontmatter name == dirname, non-empty description.
@@ -525,6 +608,7 @@ for u in $ALL_AGENTS; do
     # Dirty worktree, for the repos where dirty is never work-in-progress (see STRICT_CLEAN_REPOS).
     # This is the assertion that stops provision-agent's "COMMIT AND PUSH the roster" from becoming
     # the next unenforced manual step — the exact class this tooling exists to remove.
+    [ "$rname" = "kb-agent-shared" ] && [ "$u" = "$(head -1 "$ROSTER_FILE" 2>/dev/null)" ] && check_frontmatter "$r" "$rname"
     strict=0; for scr in $STRICT_CLEAN_REPOS; do [ "$scr" = "$rname" ] && strict=1; done
     # exact-token match, not `grep -w`: with -w a repo named "shared" would match inside
     # "kb-agent-shared" (hyphen is a non-word char) and be wrongly held to the strict rule.

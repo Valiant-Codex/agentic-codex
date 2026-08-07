@@ -1,6 +1,6 @@
 ---
 name: agent-audit
-description: Run an interactive, human-in-the-loop tune-up of one agent's brain with <OWNER> — reviewing and refining its skills, SOUL, OPERATING contract, and memory together. Use when the owner asks to audit/review/refine an agent, or periodically to sweep accumulated suggestions.
+description: Run an interactive, human-in-the-loop tune-up of one agent's brain with <OWNER> — reviewing and refining its skills, its CLAUDE.md contract, and memory together. Use when the owner asks to audit/review/refine an agent, or periodically to sweep accumulated suggestions.
 type: skill
 title: Agent Audit — interactive brain tune-up
 tags:
@@ -22,15 +22,15 @@ the owner triggers it (there is no autonomous trigger) when he wants a periodic 
 
 ## What it reviews (four passes)
 
-1. **Skills** — what's missing (a procedure done repeatedly but not codified?), what's stale (steps changed?), what's obsolete (retire?). Pull candidates from `memory/auto/` (the mirrored working tier), recent episodic memory, and what actually happened since the last audit.
+1. **Skills** — what's missing (a procedure done repeatedly but not codified?), what's stale (steps changed?), what's obsolete (retire?). Pull candidates from `memory/auto/` (the mirrored working tier) and what actually happened since the last audit.
 2. **SOUL** — is the identity/voice/principles still accurate and useful? Small refinements only; big identity changes are rare and deliberate.
 3. **OPERATING** — is the scope/boundaries/gates still right? Has the agent's lane shifted? Are the human-confirm gates still the correct set?
-4. **Memory** — is `distilled-memory.md` current and lean? Anything in episodic worth promoting, or stale worth archiving? (The nightly job keeps this mostly current; the audit is the human check.)
+4. **Memory** — is `distilled-memory.md` still only standing decisions and closed questions, and is any of it now duplicated in `memory/auto/` (delete it here if so)? What has been settled since the last audit that a fresh session would otherwise re-litigate? **This is the only pass that refreshes the curated tier** — mirroring is automatic, distilling is not, so a skipped audit is how that tier silently falls months behind.
 
 ## Procedure
 
 0. **Refresh `shared/` first** (`git -C shared pull --ff-only`, or wait for the sync timer). Fleet-common skills — including this one — propagate on the sync schedule, so a freshly-edited skill can otherwise execute with its previous body. Observed on the first real run, 2026-07-25.
-1. **Load inputs:** the agent's `SOUL.md`, `OPERATING.md`, `skills/`, `memory/distilled-memory.md`, `memory/auto/` (the nightly mirror of the runtime working tier) and `memory/episodic/`.
+1. **Load inputs:** the agent's `CLAUDE.md` (its whole always-on contract), `skills/`, `memory/distilled-memory.md` and `memory/auto/` (the nightly mirror of the runtime working tier).
 2. **Work pass by pass; collect findings, then ask once.** Present each pass's findings compactly as facts + a recommendation, and gather approvals in **one** decision at the end (a multi-select beats five sequential questions — five findings would otherwise mean five interruptions). Separate facts / assumptions / recommendations, and be explicit when a pass yields *no* change: a stable SOUL is a good signal, not a failed audit.
 3. **Draft each change as a diff** and get the owner's explicit approval before applying — especially for SOUL/OPERATING (identity is the highest-drift surface).
 4. **Apply approved changes:** use the `skillify` skill for skill create/update/retire; edit SOUL/OPERATING/memory directly. One reviewed git commit per coherent change (prefix `[audit]`).

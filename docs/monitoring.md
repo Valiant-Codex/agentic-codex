@@ -51,7 +51,7 @@ every topic at boot rather than by checking. See [`runtime.md`](runtime.md), "`a
    (or email/Slack/etc.).
 3. Put its ping URL into `/etc/agentic-monitor.env` (mode 600, **not in Git**) as `HC_URL`.
    Optionally add a second check as `UPDATE_HC_URL` for the daily divergence + update report — it feeds the
-   [patch-management runbook](../templates/kb-agent-shared/runbooks/patch-management.md) (security auto,
+   [patch-management skill](../templates/root-agent-skills/patch-management/SKILL.md) (security auto,
    feature bumps deliberate).
 
 ```ini
