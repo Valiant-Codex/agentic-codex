@@ -138,6 +138,6 @@ migration run.
 
 ## Related
 
-- `runbooks/monitoring.md` — `agentic-monitor` + healthchecks.io dead-man's switch, the observability
+- the `fleet-monitoring` skill — `agentic-monitor` + healthchecks.io dead-man's switch, the observability
   sibling.
 - `docs/config-model.md` — the versioned-vs-secret config model.

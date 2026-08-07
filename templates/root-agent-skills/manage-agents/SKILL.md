@@ -17,7 +17,7 @@ timestamp: 2026-07-24T00:00:00Z
 
 The privileged **root-agent** owns the full agent lifecycle on `<VPS_HOST>` (it has sudo; the other
 agents do not). This is the actionable procedure; the deep model lives in
-`runbooks/agent-ops-and-portability.md`, `runbooks/provision-agent-github-access.md`, and
+`references/agent-ops-and-portability.md`, `references/github-access.md`, and
 `policies/github-access-policy.md`. Read those for detail; this runbook sequences the whole job and
 captures the gotchas that actually bite.
 
@@ -41,7 +41,7 @@ radius? — see `docs/multi-agent-governance.md`) and record a decision if it's 
 Naming: role `<ROLE>`, short name `<AGENT>` (the Unix user), brain repo
 `<BRAIN>` = `kb-agent-<ROLE>-<AGENT>`, GitHub bot `<bot-username>`.
 
-### (a) Owner-side GitHub steps — see `runbooks/provision-agent-github-access.md`
+### (a) Owner-side GitHub steps — see `references/github-access.md`
 
 The bot account, its email (Google Group `<AGENT>-agent@<your-domain>`), least-privilege repo access,
 and the token all come from that runbook. Do it first: **do not duplicate those steps here.** Its

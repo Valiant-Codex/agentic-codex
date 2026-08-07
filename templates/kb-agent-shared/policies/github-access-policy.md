@@ -117,8 +117,8 @@ Three example archetype agents: **root-agent** (privileged infra/ops, has sudo),
 | `kb-agent-ops-<root-agent>` | RW | — | — | root-agent's brain |
 | `kb-agent-cos-<cos-agent>` | — | RW | — | cos-agent's brain |
 | `kb-agent-dev-<dev-agent>` | — | — | RW | dev-agent's brain |
-| `kb-agent-shared` | R † | RW | R | governance; the cos-agent is the sole direct writer. †root-agent edits shared on-box **as the cos-agent's Unix user** (fleet mechanism, no direct grant); dev-agent consumes. |
-| `kb-agent-template` | RW | RW | — | the cos-agent maintains the template content; the root-agent provisions new agents from it (`manage-agents`). |
+| `kb-agent-shared` | **RW** | R | R | governance **and `shared/skills/`**. The **root agent is the sole direct writer**: this layer carries instructions every agent auto-loads through the unreviewed auto-sync channel, so write here is effectively write into the privileged agent's context, and belongs to the **least**-injection-exposed principal. The cos-agent — which ingests web, email and tickets — reads only, and requests changes. |
+| `kb-agent-template` | RW | — | — | the seed brain; the root-agent provisions new agents from it (`manage-agents`). Same argument as the row above: a template is instructions a future agent will load. |
 | `infra` | RW | — | — | infra / ops (host layer, root-agent only) |
 | `kb-business` | — | RW | — | business KB |
 | `web-main` | — | — | RW | website; the dev-agent owns the app layer |
@@ -126,7 +126,7 @@ Three example archetype agents: **root-agent** (privileged infra/ops, has sudo),
 
 Read is **org-wide** (base permission `read`); the RW/R/— entries above therefore encode **write** intent — `—` still means "no write", not "no read".
 
-**Applying a change to another agent's brain never requires granting cross-repo write.** The root-agent does it on-box as that agent's Unix user, committing with that agent's **own** bot token; fleet-common content belongs in `kb-agent-shared` (written once, read by all). Broad cross-brain write is therefore kept **off** the injection-exposed agents by design — see the Agentic Codex docs (`multi-agent-governance.md`).
+**Applying a change to another agent's brain never requires granting cross-repo write.** The root-agent does it on-box as that agent's Unix user, committing with that agent's **own** bot token; fleet-common content belongs in `kb-agent-shared` (written once, read by all). Broad write on anything an agent auto-loads — the shared layer, the template — is therefore kept **off** the injection-exposed agents by design — see the Agentic Codex docs (`multi-agent-governance.md`).
 
 > The dev-agent also holds a **hosting-platform deploy token** (e.g. Dokploy) scoped to the website project only, and may build automation workflows via an n8n MCP/API. Those are outside this GitHub-only matrix. The dev-agent never has root, never touches Dokploy/Cloudflare/backups (the root-agent's host layer).
 

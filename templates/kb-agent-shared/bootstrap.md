@@ -1,5 +1,5 @@
 ---
-type: bootstrap-capsule
+type: reference
 title: Shared Bootstrap Capsule
 description: Minimal vendor-agnostic bootstrap, ecosystem state, and governance contract shared by all of your org's agents.
 tags:

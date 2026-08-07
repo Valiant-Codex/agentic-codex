@@ -176,7 +176,7 @@ done
 
 # --- Per-agent memory-mirror timers. GATED, deliberately.
 # These are unattended WRITERS: each one commits and pushes to that agent's brain repo every night.
-# The fleet's own rule (OPERATING.md, human-confirm gates) requires a human to confirm before
+# The fleet's own rule (CLAUDE.md, human-confirm gates) requires a human to confirm before
 # enabling any job that will commit, push or mutate state on its own — "show what it will write,
 # where, and how to turn it off, then wait". Enabling them here for every name in a text file would
 # cross that gate silently, and on someone else's machine the person running this bootstrap may have

@@ -1,5 +1,5 @@
 ---
-type: memory-registry
+type: directory-readme
 title: <AGENT> Memory
 description: Durable memory for <AGENT> — the canonical (git) tier of a two-tier model.
 tags: [<AGENT>, memory]

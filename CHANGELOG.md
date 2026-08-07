@@ -80,7 +80,7 @@ only above **4 MiB**, with a soft threshold at **40k characters**. A complete si
   not frontmatter `name`; `name` and `description` are optional to the runtime and required by us; 128 KB
   cap. The status enum is settled at four values (`active | draft | superseded | archived`) — it was
   three in some documents and four in others, while a shipped skill used `draft`.
-- **The OKF `type` vocabulary is closed** at 10 values, down from 21 observed. One deployment had reached
+- **The OKF `type` vocabulary is closed** at 9 values, down from 21 observed — and, unlike a rule that is merely written down, it is now asserted by the drift checker. One deployment had reached
   seven different types for "README of a folder", and a 16/12 split between `decision` and
   `decision-record` with no rule distinguishing them.
 - **Two OKF exemptions are finally written down**: `CLAUDE.md` (a runtime artefact — frontmatter there is
@@ -90,6 +90,42 @@ only above **4 MiB**, with a soft threshold at **40k characters**. A complete si
   PyYAML is absent. The governance had required parseable frontmatter since 0.4.x and nothing checked it.
 - **Dormant agents are held to a dormant contract**: the untrusted-content rule and an unmissable dormancy
   statement, not gates and an autonomous-OK list describing work they must not do.
+
+
+### Fixed after release (same day)
+
+An adversarial audit of the 0.7.0 migration found the same defect **25 times**, always the same shape:
+**a concept abolished in the file that defines it, and left standing in every file that references
+it.** Root cause of the misses: in that environment `grep` was a shell function wrapping `ugrep` with
+`--ignore-files`, under-reporting by ~5×. Worth knowing if you audit your own migration.
+
+The corrections, all shipped under this version:
+- `bootstrap.md` still instructed every agent to read `SOUL.md` and `OPERATING.md` — item 4 in every
+  read list, so the most-read stale instruction in the fleet.
+- `skillify` and `docs/skills.md` still taught `skills-archive/`, contradicting the policy the same
+  release declared authoritative — in the skill an agent invokes to retire a skill.
+- `agent-audit` was half-migrated: step 1 loaded `CLAUDE.md` while passes 2 and 3 were still titled
+  *SOUL* and *OPERATING*. That skill is the mechanism that would otherwise catch the rest of this list.
+- The closed `type` vocabulary was **declared and not applied**: 36 files still carried retired values,
+  including every `decision-record` the doc claimed had been consolidated. Now applied — and asserted
+  by the drift checker, because a vocabulary nothing checks is a preference.
+- `templates/kb-agent-shared/policies/github-access-policy.md` gave **write on the shared governance
+  layer to the most injection-exposed agent**, then two paragraphs later asserted the opposite. The
+  matrix now matches its own reasoning: the least-exposed principal holds that write.
+- The public checker's frontmatter assertion on the governance layer was **dead code** — it gated on
+  the roster's first line, which is a comment, so it never ran and reported clean.
+- The public checker was missing the CHANGELOG-vs-tag and `@`-import-budget assertions.
+- The seed template told a new agent three false things, including that its distilled memory is
+  "loaded every session" while the README beside it said the opposite.
+- Internal deployment names had survived under `templates/`, against `CONTRIBUTING.md`'s own rule.
+
+### Added after release
+- **`@`-imports count toward the always-on budget**, and an import resolving *outside* the project root
+  is reported as drift: it hits Claude Code's external-includes approval gate, which a non-interactive
+  supervised session cannot answer — so it would silently fail to load, with no error anywhere.
+  Verified empirically: an in-tree `@memory/distilled-memory.md` inlines (839 tokens measured, and the
+  model can quote the file with all tools denied); resolution is relative to the **resolved** path of
+  `CLAUDE.md`, i.e. the repo root, not `~`.
 
 ## [0.6.8] — 2026-08-07 — Two checks that were nagging about the wrong thing
 

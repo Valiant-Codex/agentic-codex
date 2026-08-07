@@ -1,5 +1,5 @@
 ---
-type: bundle-index
+type: directory-readme
 title: Shared Governance Layer Index
 description: Top-level navigation map for the <ORG> shared governance layer.
 okf_version: "0.1"

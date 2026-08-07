@@ -1,5 +1,5 @@
 ---
-type: directory-index
+type: directory-readme
 title: Templates Index
 description: Index of template documents.
 tags:

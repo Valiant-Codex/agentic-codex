@@ -1,7 +1,7 @@
 ---
 type: template
 title: Agent Template
-description: How to scaffold a new <ORG> agent and what a good agent brain contains (v2 — SOUL/OPERATING split, folder-per-skill, shared owner-profile).
+description: How to scaffold a new <ORG> agent and what a good agent brain contains (v3 — one always-on CLAUDE.md per agent).
 tags:
 - template
 - agent
@@ -22,7 +22,6 @@ decision in `decisions/` first (a dated `add-<agent>-<role>-agent.md` record is 
 ```
 CLAUDE.md            ← THE contract: identity, voice, scope, gates, threat model. Symlinked to
                        ~/CLAUDE.md. The only file the runtime loads — nothing else is automatic.
-context/             ← stable background specific to this agent (optional; owner facts live in shared)
 memory/              ← durable memory (distilled-memory.md + auto/); see policies/memory-policy.md
 tools/               ← tool/MCP registry (README.md); secrets are ${ENV} placeholders, never committed
 skills/              ← folder-per-skill (<name>/SKILL.md); fleet-common ones symlink shared/skills/*

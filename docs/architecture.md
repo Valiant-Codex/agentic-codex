@@ -37,7 +37,7 @@ Markdown ([OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspir
 - `CLAUDE.md` — the whole always-on contract: identity, scope, gates, threat model. The one file the
   runtime loads by itself, and therefore the only place a binding rule can live.
 - `CLAUDE.md` — the single runtime bootstrap (symlinked to `~/CLAUDE.md`) that points to them.
-- `memory/`, `skills/`, `tools/`, `context/` — durable memory, self-authored procedures, tool notes.
+- `memory/`, `skills/`, `tools/` — durable memory, self-authored procedures, tool notes.
 - `deploy/` — the runtime wiring (`topics.tsv`, `claude-settings.json`, per-agent systemd user units).
 - `shared/` — a symlink to the sibling clone of `kb-agent-shared`.
 

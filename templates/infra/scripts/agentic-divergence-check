@@ -133,6 +133,7 @@ try:
     import yaml
 except ImportError:
     print(f"  [DRIFT] {sys.argv[2]}: PyYAML missing — frontmatter is NOT being validated"); sys.exit(0)
+ALLOWED={'skill','decision','policy','memory','tool-registry','template','reference','directory-readme','working-doc'}
 R,N=sys.argv[1],sys.argv[2]; bad=0
 for root,dirs,files in os.walk(R):
     dirs[:]=[d for d in dirs if d not in ('.git','auto')]
@@ -142,16 +143,27 @@ for root,dirs,files in os.walk(R):
         try: s=open(p,encoding='utf-8').read()
         except Exception: continue
         if not s.startswith('---'): continue
-        try: yaml.safe_load(s.split('---',2)[1])
+        try: fm=yaml.safe_load(s.split('---',2)[1])
         except Exception as e:
             bad+=1
             print(f"  [DRIFT] {N}: {os.path.relpath(p,R)} frontmatter is not valid YAML ({type(e).__name__}) — quote any value containing ': '")
+            continue
+        # Closed `type` vocabulary. Declared 2026-08-07 and, for one day, declared and not applied:
+        # 36 files still carried retired values because nothing asserted it. A vocabulary nothing
+        # checks is a preference.
+        if isinstance(fm,dict):
+            t=fm.get('type')
+            if t is None:
+                bad+=1; print(f"  [DRIFT] {N}: {os.path.relpath(p,R)} has frontmatter but no `type`")
+            elif t not in ALLOWED:
+                bad+=1; print(f"  [DRIFT] {N}: {os.path.relpath(p,R)} has type '{t}', outside the closed vocabulary ({', '.join(sorted(ALLOWED))})")
 sys.exit(0)
 PY
   local c; c=$(python3 - "$r" <<'PY'
 import os,sys
 try: import yaml
 except ImportError: print(0); sys.exit(0)
+ALLOWED={'skill','decision','policy','memory','tool-registry','template','reference','directory-readme','working-doc'}
 R=sys.argv[1]; b=0
 for root,dirs,files in os.walk(R):
     dirs[:]=[d for d in dirs if d not in ('.git','auto')]
@@ -161,8 +173,9 @@ for root,dirs,files in os.walk(R):
         try: s=open(p,encoding='utf-8').read()
         except Exception: continue
         if not s.startswith('---'): continue
-        try: yaml.safe_load(s.split('---',2)[1])
-        except Exception: b+=1
+        try: fm=yaml.safe_load(s.split('---',2)[1])
+        except Exception: b+=1; continue
+        if isinstance(fm,dict) and fm.get('type') not in ALLOWED: b+=1
 print(b)
 PY
 )
@@ -207,8 +220,24 @@ check_brain(){ # <user> <repo>
     # Size: 4 MiB is the runtime's hard skip and 40k chars its soft threshold (verified in the 2.1.224
     # binary). Warn far earlier — a bloated always-on file is a different failure: it still loads, and
     # everything in it competes for attention with everything else.
+    #
+    # Count @-imports too. An `@path` in CLAUDE.md is INLINED by the runtime, so the always-on cost is
+    # the sum, not the file. Measuring CLAUDE.md alone would let the budget be defeated by moving text
+    # one hop away — which is exactly what an import is for, and exactly why it must be counted.
     local cmsz; cmsz=$(wc -c < "$r/CLAUDE.md")
-    [ "$cmsz" -gt 20000 ] && drift "$n: CLAUDE.md is ${cmsz} bytes — over the 20k working budget; push reference material out to skills/ or shared/"
+    local imp impsz=0
+    while IFS= read -r imp; do
+      [ -n "$imp" ] || continue
+      # An import that resolves OUTSIDE the project root hits Claude Code's external-includes approval
+      # gate (hasClaudeMdExternalIncludesApproved). A systemd topic session cannot answer a prompt, so
+      # the import would silently not load and the agent would run without it, with no error anywhere.
+      case "$imp" in
+        /*|'~'*|../*|*/../*) drift "$n: CLAUDE.md imports '$imp', which resolves outside the repo — the external-includes gate cannot be answered by a non-interactive session, so it would silently fail to load"; continue;;
+      esac
+      [ -f "$r/$imp" ] && impsz=$((impsz + $(wc -c < "$r/$imp")))
+    done < <(grep -oE '(^|[[:space:]])@[A-Za-z0-9._/-]+\.md' "$r/CLAUDE.md" 2>/dev/null | sed 's/^[[:space:]]*@//' | sort -u)
+    local total=$((cmsz + impsz))
+    [ "$total" -gt 20000 ] && drift "$n: always-on context is ${total} bytes (CLAUDE.md ${cmsz} + imports ${impsz}) — over the 20k working budget; trim the imported file or push reference material into skills/"
   fi
 
   # 2) Skills: folders with SKILL.md, frontmatter name == dirname, non-empty description.
@@ -567,7 +596,7 @@ for u in $ALL_AGENTS; do
 done
 # The reverse: a timer left enabled for a user who is no longer in the fleet fires and fails nightly,
 # which trains everyone to ignore the failure. Catches a teardown done by hand (see the REMOVE
-# checklist in runbooks/manage-agents.md — the step everyone forgets).
+# checklist in the manage-agents skill — the step everyone forgets).
 #
 # Enumerate with `list-units`, NOT `list-unit-files`. list-unit-files lists unit FILES, and a template
 # instance has none: `list-unit-files 'memory-mirror@*.timer'` returns only the TEMPLATE, whose state
@@ -608,7 +637,26 @@ for u in $ALL_AGENTS; do
     # Dirty worktree, for the repos where dirty is never work-in-progress (see STRICT_CLEAN_REPOS).
     # This is the assertion that stops provision-agent's "COMMIT AND PUSH the roster" from becoming
     # the next unenforced manual step — the exact class this tooling exists to remove.
-    [ "$rname" = "kb-agent-shared" ] && [ "$u" = "$(head -1 "$ROSTER_FILE" 2>/dev/null)" ] && check_frontmatter "$r" "$rname"
+    # Check the shared clone once, not once per agent — they are the same commit. Gate on a flag, NOT
+    # on "is this the first roster line": the roster's first line is a comment, so that test could
+    # never be true and this assertion silently never ran (found 2026-08-07 — a clean run again looked
+    # exactly like a passing one).
+    if [ "$rname" = "kb-agent-shared" ] && [ -z "${_shared_fm_checked:-}" ]; then
+      _shared_fm_checked=1; check_frontmatter "$r" "$rname"
+    fi
+    # Released in prose, never tagged. A CHANGELOG head with no matching tag means the version
+    # exists only as text: `git describe` and the GitHub releases page both still say the old one,
+    # so adopters pinning a tag silently never receive the release. Nothing else surfaces this —
+    # the tree is clean and in sync, which is exactly why it went unnoticed until the 2026-08-06
+    # audit found three untagged releases. Only repos that already tag are held to it.
+    if [ -f "$r/CHANGELOG.md" ]; then
+      chv="$(runuser -u "$u" -- sed -n 's/^## \[\([0-9][0-9.]*\)\].*/\1/p' "$r/CHANGELOG.md" 2>/dev/null | head -1)"
+      tagv="$(runuser -u "$u" -- git -C "$r" tag -l 'v*' --sort=-v:refname 2>/dev/null | head -1)"
+      tagv="${tagv#v}"
+      if [ -n "$chv" ] && [ -n "$tagv" ] && [ "$chv" != "$tagv" ]; then
+        drift "$rname [$u]: CHANGELOG head $chv but latest tag v$tagv — release(s) untagged"
+      fi
+    fi
     strict=0; for scr in $STRICT_CLEAN_REPOS; do [ "$scr" = "$rname" ] && strict=1; done
     # exact-token match, not `grep -w`: with -w a repo named "shared" would match inside
     # "kb-agent-shared" (hyphen is a non-word char) and be wrongly held to the strict rule.

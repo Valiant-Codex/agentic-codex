@@ -1,5 +1,5 @@
 ---
-type: approval-policy
+type: policy
 title: Approval Policy
 description: Policy defining autonomous actions, approval requirements, and forbidden actions.
 tags:

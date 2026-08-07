@@ -1,5 +1,5 @@
 ---
-type: skill-registry
+type: directory-readme
 title: Shared (Fleet-Common) Skills
 description: Skills used by every agent, kept once here and symlinked into each agent's skills/ so there is a single canonical copy.
 tags:

@@ -32,15 +32,16 @@ once in `shared/owner-profile.md`.
 > model and delegation map. **A layer that loads only by instruction is not a layer, it is a
 > suggestion.** Git already distinguishes what changes rarely from what changes often, for free.
 
-> **Why only one file, and why Claude Code.** Earlier versions shipped a three-file arrangement
-> (`deploy/home-CLAUDE.md` as the runtime bootstrap plus repo-root `CLAUDE.md`/`AGENTS.md`
-> per-runtime adapters). It was dropped (v0.6.0): only one file was ever loaded in normal operation,
-> the others restated it, nothing caught them drifting apart — and they drifted. This framework's
-> *wiring* is deliberately built around Claude Code, because **Remote Control** (sessions reachable
-> from phone/web/desktop) is the reason the whole stack works the way it does; no other runtime
-> currently offers an equivalent. What stays portable is the part with accumulated value: the brain
-> content below. Adopting another runtime means writing its entry file and rewriting the wiring —
-> not migrating your memory, skills or identity.
+> That was the second time this framework learned the same lesson. v0.6.0 had already collapsed a
+> three-file *bootstrap* arrangement (`deploy/home-CLAUDE.md` plus repo-root `CLAUDE.md`/`AGENTS.md`
+> adapters) for exactly the same reason: only one file was ever loaded, the others restated it, nothing
+> caught them drifting — and they drifted. 0.7.0 finished the job on the *identity* layer.
+>
+> **And why Claude Code.** The *wiring* here is deliberately built around it, because **Remote Control**
+> (sessions reachable from phone, web and desktop) is the reason the whole stack works the way it does;
+> no other runtime currently offers an equivalent. What stays portable is the part with accumulated
+> value: the brain content. Adopting another runtime means writing its entry file and rewriting the
+> wiring — not migrating your memory, skills or identity.
 
 ### Why this matters beyond convenience
 - **No lock-in.** Your agents' accumulated knowledge isn't trapped in one vendor's memory store.
@@ -53,7 +54,7 @@ Framework-agnosticism here is a property of the **brain content**, not of the wh
 straight about the split is what makes the claim usable:
 
 **Moves unchanged to another framework** — `CLAUDE.md`, `memory/`, `skills/` bodies,
-`tools/`, `context/`, and everything in the shared governance layer. This is plain Markdown, and it is
+`tools/`, and everything in the shared governance layer. This is plain Markdown, and it is
 where the accumulated value lives.
 
 **Would have to be rewritten** — the runtime wiring:

@@ -159,7 +159,7 @@ if asU "[ -f '$BASE/$BRAIN/CLAUDE.md' ]"; then
   asU "ln -sfn '$BASE/$BRAIN/CLAUDE.md' '$H/CLAUDE.md'"; BOOTSTRAP="CLAUDE.md"
 else
   echo "  [FAIL] $BRAIN has no root CLAUDE.md — refusing to create a dangling ~/CLAUDE.md."
-  echo "         Seed the brain repo first (see runbooks/manage-agents.md)."
+  echo "         Seed the brain repo first (see the manage-agents skill)."
   exit 1
 fi
 asU "mkdir -p '$H/.local/bin' && ln -sfn /usr/local/bin/claude-topic '$H/.local/bin/claude-topic'"
@@ -324,7 +324,7 @@ fi
 #    secret scan and no model in the loop — the reason it was safe to run unattended in the first
 #    place. Disable deliberately with: systemctl disable --now memory-mirror@$U.timer
 #    This is an UNATTENDED WRITER (it commits and pushes to the brain repo nightly), so say plainly
-#    what it will write and how to switch it off — that disclosure is what OPERATING.md's gate asks
+#    what it will write and how to switch it off — that disclosure is what CLAUDE.md's gate asks
 #    for, and provisioning is the explicit, human-invoked moment where it belongs.
 MIRROR_FAIL=0
 if [ -f /etc/systemd/system/memory-mirror@.timer ]; then

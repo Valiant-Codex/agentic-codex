@@ -24,7 +24,7 @@ name: <lowercase-hyphens, <=64 chars>      # harness discovery
 description: <what it does AND when to use it>   # the harness matches on this — make it trigger-rich
 type: skill
 title: <Human Title>
-status: active            # active | superseded | archived
+status: active            # active | draft | superseded | archived
 ```
 
 **Progressive disclosure**: the tiny `name`+`description` is always in context; the body loads only when
@@ -35,7 +35,8 @@ its own `references/` for depth instead of duplicating it.
 
 The runtime's skills directory (`~/.claude/skills` for Claude Code) is a **whole-directory symlink** to
 the agent's repo `skills/`, so any new `skills/<name>/SKILL.md` is discovered with **zero per-skill
-setup**. Retired skills move to `skills-archive/` (outside `skills/`) so the harness stops loading them.
+setup**. Retire a skill with a `status: superseded` banner pointing at its replacement, or delete it — git
+holds the body. There is no archive directory: a parallel tree is a second place to keep current.
 
 ## Fleet-common skills (single source, no duplication)
 

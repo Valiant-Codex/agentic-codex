@@ -1,5 +1,5 @@
 ---
-type: repository-index
+type: directory-readme
 title: Repository Index
 description: Root README for the shared governance layer used by all <ORG> agents.
 tags:
@@ -49,13 +49,13 @@ in Notion or another explicit business source of truth, not in any agent reposit
 
 | Repo | Agent | Role |
 |---|---|---|
-| `kb-agent-<role>-<cos-agent>` | `chief-of-staff_galadriel` | Broad, unprivileged Chief of Staff / orchestration |
-| `kb-agent-<role>-<root-agent>` | `infra-ops_durin` | Narrow, privileged infrastructure/operations on ops-01 |
+| `kb-agent-<role>-<cos-agent>` | `chief-of-staff_<name>` | Broad, unprivileged Chief of Staff / orchestration |
+| `kb-agent-<role>-<root-agent>` | `infra-ops_<name>` | Narrow, privileged infrastructure/operations on the host |
 | `kb-agent-template` | — | Scaffold for new agents |
 
 ## Agent Naming Convention
 
-- Agent identity: `role_name` — e.g. `chief-of-staff_galadriel`.
+- Agent identity: `role_name` — e.g. `chief-of-staff_<name>`.
 - Agent repository: `kb-agent-<role-abbrev>-<name>` — e.g. `kb-agent-<role>-<cos-agent>`, `kb-agent-<role>-<root-agent>`.
 
 ## Standard Agent Repository Shape
@@ -64,7 +64,6 @@ in Notion or another explicit business source of truth, not in any agent reposit
 kb-agent-<role>-<name>/
 ├── CLAUDE.md            # bootstrap pointer for the runtime
 ├── CLAUDE.md            ← the whole always-on contract
-├── context/            # (optional)
 ├── memory/
 ├── tools/
 ├── skills/

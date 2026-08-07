@@ -10,5 +10,5 @@
 #
 # You normally never edit this by hand: `provision-agent` appends the agent it provisions and
 # refreshes the installed copy, then asks you to commit the change. Remove a line only when you
-# decommission an agent (see runbooks/manage-agents.md) — the divergence check reports a stale
+# decommission an agent (see the manage-agents skill) — the divergence check reports a stale
 # entry either way.

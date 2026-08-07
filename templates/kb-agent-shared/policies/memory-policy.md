@@ -1,5 +1,5 @@
 ---
-type: memory-policy
+type: policy
 title: Memory Policy
 description: Defines canonical durable memory, runtime memory, promotion rules, and archive/superseded behavior for the agent.
 tags:

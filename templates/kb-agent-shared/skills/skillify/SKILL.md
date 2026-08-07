@@ -76,8 +76,9 @@ timestamp: <ISO-8601>
   commit **is** the review gate; <OWNER> can veto or roll back via git history.
 - **Update:** edit in place and commit. If behavior changed materially, say so in the commit.
 - **Retire:** mark `status: superseded` with a top banner pointing to the replacement (keep it in place
-  while anything still references it), or move the folder to `skills-archive/` (outside `skills/`) so
-  the harness stops loading it. Never delete silently.
+  while anything still references it), or **delete it** — git holds the body and the reasoning. Do not
+  park it in a parallel `skills-archive/` tree: it becomes a second place to keep current, and the
+  reference deployment's archive grew six live references to a skill its own registry still called active.
 
 ## Guardrails
 

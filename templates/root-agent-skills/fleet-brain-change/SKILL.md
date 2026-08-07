@@ -102,7 +102,7 @@ For each target agent `<AGENT>` with brain repo `<BRAIN>`:
    ```
    **Why this is not pedantry.** `git add` aborts on a pathspec that matches nothing and stages
    *nothing*. The classic trigger is a path you already moved: after `git mv skills/x
-   skills-archive/x`, the rename is staged but `git add skills/x` is now fatal. Ungated, the commit
+   skills/y`, the rename is staged but `git add skills/x` is now fatal. Ungated, the commit
    still runs, goes out carrying only whatever was already staged, gets pushed — and leaves your real
    content changes **uncommitted in a dirty tree**, which is the condition that makes the sync job
    skip that repo silently and forever (see Gotchas). Both halves of the damage are invisible unless
@@ -124,5 +124,5 @@ For each target agent `<AGENT>` with brain repo `<BRAIN>`:
 - `docs/multi-agent-governance.md` — the fleet model and why broad cross-write is avoided.
 - `docs/config-model.md` — the versioned-vs-secret config model these edits live within.
 - `policies/github-access-policy.md` — the access matrix (write intent) this procedure upholds.
-- `runbooks/manage-agents.md` — full agent lifecycle (create / decommission), the root-agent's other
+- the `manage-agents` skill — full agent lifecycle (create / decommission), the root-agent's other
   privileged procedure.

@@ -31,14 +31,13 @@ the worked example, entirely with placeholders. Fill them in and the same shape 
 
 ## The portability pattern
 
-The **whole always-on contract lives in `CLAUDE.md`** — identity and voice, scope, threat model, gates,
-bootstrap) — framework-agnostic Markdown. `CLAUDE.md` at the repo root is the **single runtime
-bootstrap**: a thin pointer back to them, symlinked to `~/CLAUDE.md`, written with absolute
-`~/github/...` paths so it resolves from any cwd. Edit the contract in `CLAUDE.md`;
-never let the bootstrap drift into a second source of truth. Splitting durable *who-you-are* from
-mutable *what-you-do* is deliberate: it keeps identity from drifting when operational instructions
-change. The brain *content* (identity, memory, skills, tools) is plain Markdown and portable to
-another runtime; the wiring is Claude-Code-specific. See docs/portability.md in the agentic-codex repo.
+The **whole always-on contract lives in `CLAUDE.md`** — identity and voice, scope, threat model, gates —
+in framework-agnostic Markdown. It is symlinked to `~/CLAUDE.md` and written with absolute
+`~/github/...` paths so it resolves from any cwd, and it is **the only file the runtime loads by
+itself**. That is why there is no second identity file: a layer that loads only when the model chooses
+to obey an instruction is a suggestion, not a layer. The brain *content* (contract, memory, skills,
+tools) is plain Markdown and portable to another runtime; the wiring is Claude-Code-specific. See
+docs/portability.md in the agentic-codex repo.
 
 ## Repo shape
 
@@ -50,8 +49,7 @@ another runtime; the wiring is Claude-Code-specific. See docs/portability.md in 
 | `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. |
 | `tools/` | This agent's tool notes. |
 | `skills/` | This agent's skills, **folder-per-skill** (`<name>/SKILL.md`); fleet-common ones symlink `shared/skills/*`. See docs/skills.md in the agentic-codex repo. |
-| `memory/` | This agent's durable memory — two-tier (`distilled-memory.md` + `episodic/` + machine-mirrored `auto/`). See docs/memory.md in the agentic-codex repo. |
-| `context/` | Working context and scratch notes. |
+| `memory/` | This agent's durable memory — two tiers: `distilled-memory.md` (hand-curated standing decisions) and machine-mirrored `auto/`. See docs/memory.md in the agentic-codex repo. |
 | `shared/` | Symlink → sibling clone `../kb-agent-shared` (global policies, decisions, runtime reference). |
 
 ## The `shared` symlink (sibling clone, not a submodule)

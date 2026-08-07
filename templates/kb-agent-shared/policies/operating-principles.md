@@ -1,5 +1,5 @@
 ---
-type: operating-principles
+type: policy
 title: Operating Principles
 description: Operating principles for the agent's work.
 tags:

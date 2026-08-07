@@ -48,7 +48,9 @@ Every Markdown document must include a parseable YAML frontmatter block with at 
 | `directory-readme` | the README that indexes a directory. Every one of them. |
 | `working-doc` | scratch reasoning in `staging/`, until it closes and becomes a decision. |
 
-Consolidated 2026-08-07 from **21** observed values. `runbook` was retired in the same pass: the
+Nine values, consolidated 2026-08-07 from **21** observed. **The drift checker asserts this list** — a
+vocabulary nothing checks is a preference, and this one spent its first day declared-but-unapplied
+across 36 files. `runbook` was retired in the same pass: the
 directory it named is gone, because only skills are discovered by the runtime — a procedure filed
 anywhere else is reachable only by luck. The fleet had reached seven different types for the
 one artefact "README of a folder" (`directory-readme`, `directory-index`, `repository-index`,
