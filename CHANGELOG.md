@@ -6,6 +6,57 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.6.7] — 2026-08-07 — The docs catch up with the code
+
+A fleet-wide audit of the reference deployment read the docs against the running system. The code was
+fine; the prose had fallen behind it in ways that would mislead an adopter, and one template shipped a
+violation of a rule the framework had just introduced.
+
+### Fixed
+- **`templates/kb-agent-template/OPERATING.md` shipped the duplication 0.6.6 abolished.** Its
+  *Source of Truth & Bootstrap* section still carried a full numbered read order — with repo-relative
+  paths, and a step 2 pointing at itself — so every newly instantiated agent started life in violation
+  of the one-place rule. 0.6.6 fixed `agent-template.md` and `bootstrap.md` and missed this file, which
+  is the one adopters actually copy. Now it states where the read order lives and why, and the
+  frontmatter no longer claims to contain it.
+- **`templates/infra/scripts/provision-agent`: restored `'\''` escaping** in the rotate-on-boot warning.
+  The bare quotes closed the surrounding single-quoted block; they happened to re-balance, so the script
+  ran — but a security-sensitive root-run region was left open to the outer shell's word splitting.
+- **`templates/kb-agent-shared/runbooks/fleet-brain-change.md` contradicted itself**: the shared-repo
+  paragraph still prescribed `runuser` + piping scripts to `python3 -`, while the procedure below it
+  prescribed the opposite. It now uses one form throughout, and states the shared-write choice
+  explicitly instead of assuming one.
+
+### Documentation
+- **`docs/runtime.md` — the whole rotate/bridge arc was missing.** The command list omitted `rotate`,
+  `rotate-all`, `urls` and `remember`; nothing mentioned `claude-topic-rotate-on-boot.service`; and the
+  narrative still promised the wrapper's job was to *never lose conversation history*, which 0.6.5
+  deliberately traded away. New section **"`active` is not `reachable`"** states the failure mode
+  plainly: the bridge is server-side state, no local probe can see it, `restart` re-announces the dead
+  bridge, only `rotate` mints a new one — and the reboot cost (every topic starts fresh) is named
+  rather than buried.
+- **`docs/monitoring.md`** — hysteresis is no longer described as unconditional: memory exhaustion
+  alarms on first detection (0.6.4), because the second cycle may never run on a box deep into swap.
+  Adds the limit the monitor cannot cover: topics `active` ≠ bridges reachable.
+- **`docs/reference-architecture.md`** — the fourth agent has been dormant since 2026-08-03; the table
+  said it was active and gave its scope to the wrong agent. Now records **how** an agent is retired
+  (archive the brain, keep the user and the roster entry, switch off its unattended writers) as a
+  reusable lesson. Also corrects "no public inbound ports": that is a property of the services you put
+  behind a tunnel, not of the box — the reference deployment's own control plane listened on `0.0.0.0`,
+  and a host firewall would not have helped, because Docker publishes past it.
+- **`docs/portability.md`** — `topics.rotated` and `last-boot-rotation.tsv` added to the not-carried table.
+- **`templates/kb-agent-shared/runbooks/agent-ops-and-portability.md`** — same rotate/bridge gap as
+  `runtime.md`, in the runbook agents actually load.
+- **`templates/kb-agent-template/memory/README.md`** — documents the machine-owned `auto/` tier and
+  that it must not be hand-edited, plus the asymmetry that bites: mirroring is automatic, distilling
+  is not.
+
+### Added
+- **`agentic-divergence-check` reports a CHANGELOG head that no tag matches.** This release exists
+  because the audit found three releases (0.6.4–0.6.6) that were documented, committed and pushed but
+  never tagged — invisible to `git describe`, to the releases page, and to anyone pinning a tag. The
+  tree was clean and in sync, which is exactly why nothing caught it. Now the daily drift report does.
+
 ## [0.6.6] — 2026-08-06 — One place per fact
 
 The framework mandated its own duplication. `agent-template.md` required a *Bootstrap Contract*
@@ -663,6 +714,10 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7
+[0.6.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.6
+[0.6.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.5
+[0.6.4]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.4
 [0.6.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.3
 [0.6.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.2
 [0.6.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.1

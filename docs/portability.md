@@ -88,6 +88,8 @@ fresh conversations.
 | Secrets (tokens, keys) | Never in Git | Your secret store ([`secrets.md`](secrets.md)) |
 | `~/.claude.json` account/session state | Per-machine, account-bound | The box |
 | `~/.config/agent/topics.state` (session IDs) | Per-machine runtime state | The box |
+| `~/.config/agent/topics.rotated` | Per-machine log of abandoned session IDs | The box |
+| `~/.config/agent/last-boot-rotation.tsv` | Per-boot digest written by rotate-on-boot | The box |
 | `~/.claude/settings.local.json` | Auto-accumulated per-session approvals | The box, git-ignored |
 
 Everything else is a `git clone` away.

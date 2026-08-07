@@ -257,7 +257,7 @@ asU '
     echo "  [ok] claude-topic-rotate-on-boot.service enabled (fires at boot, not now)"
   else
     echo "  [warn] could not enable claude-topic-rotate-on-boot.service — after any reboot this"
-    echo "         agent needs 'claude-topic urls' and a manual rotate of whatever is unreachable"
+    echo "         agent needs '\''claude-topic urls'\'' and a manual rotate of whatever is unreachable"
   fi
   REG="'"$BASE/$BRAIN"'/deploy/topics.tsv"
   if [ ! -f "$REG" ]; then echo "  [warn] no deploy/topics.tsv — no topics enabled"; exit 0; fi

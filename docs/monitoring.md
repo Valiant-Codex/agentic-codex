@@ -15,6 +15,7 @@ alert.
 - all ok → ping `<HC_URL>` (heartbeat)
 - problem, 1st cycle → ping `<HC_URL>` with a "pending" body (no alarm yet — hysteresis)
 - problem, 2nd consecutive cycle → ping `<HC_URL>/fail` with the detail → healthchecks alerts you
+- **urgent** problem → `/fail` on **first** detection, no hysteresis (see below)
 - script/timer/box/network dead → no ping at all → healthchecks alerts on the missed heartbeat
 
 Checks include: Docker daemon up and no unhealthy/restarting containers; **critical containers present**
@@ -29,9 +30,18 @@ a production service, remove it when you tear one down** (a stale entry alarms f
 you to ignore the monitor).
 
 Two properties keep it trustworthy:
-- **Hysteresis** — a problem must persist **2 cycles** before a `/fail`, so a single blip doesn't page you.
+- **Hysteresis** — most problems must persist **2 cycles** before a `/fail`, so a single blip doesn't
+  page you. The exception is **memory exhaustion**, which alarms on **first** detection
+  (`MONITOR_MEM_MIN_PCT`): hysteresis assumes the second cycle will still run, and a box deep into
+  swap may not get there — the check that waits politely is the one that never fires.
 - **Fail-safe** — the alert path lives *off* the box (healthchecks.io → Telegram/your channel), so it
   works precisely when the box doesn't.
+
+And one property it does **not** have. "Every agent's topic sessions active" means the systemd units
+are running — it does **not** mean the Remote Control bridges are reachable. That failure is
+server-side and invisible from the box, so no monitor can catch it; the fleet handles it by rotating
+every topic at boot rather than by checking. See [`runtime.md`](runtime.md), "`active` is not
+`reachable`".
 
 ## Setup (done during bring-up)
 

@@ -40,20 +40,54 @@ no agent can rewrite what another agent executes, and it's installed only by the
 
 ```
 claude-topic list                 # all topics: key, service state, sessionId, display name
+claude-topic urls                 # every topic's Remote Control URL (test them by hand)
 claude-topic new <key> "<Name>"   # register + start under systemd, capture the new sessionId
 claude-topic restart <key>        # systemctl restart — resumes the SAME conversation
 claude-topic restart --new <key>  # explicit opt-in: start a FRESH conversation
+claude-topic rotate <key>         # abandon the conversation, mint a NEW bridge id
+claude-topic rotate-all           # rotate every enabled topic (what the boot unit runs)
 claude-topic stop <key>           # stop + disable the service (sessionId is kept)
 claude-topic remove <key>         # unregister for good (registry + state + unit)
-claude-topic status <key>         # service state + stored/live sessionId
+claude-topic status <key>         # service state + stored/live sessionId + bridge URL
+claude-topic remember <key>       # persist the running topic's live sessionId to state
 ```
 
-The wrapper's whole job is to **never lose conversation history**. It maps `key -> sessionId` in
-`~/.config/agent/topics.state`, so a restart does `claude --resume <id> --remote-control '<Name>'` and
-comes back as the same conversation. It fails fast rather than letting systemd fail-loop a topic:
-unknown keys are rejected before `systemctl` is called, and a restart is refused when there's nothing
-to resume (no stored session ID, or one whose transcript is missing) — both point you at `--new`, the
-only way to deliberately start blank. These guards encode real incidents; keep them.
+The wrapper maps `key -> sessionId` in `~/.config/agent/topics.state`, so a restart does
+`claude --resume <id> --remote-control '<Name>'` and comes back as the same conversation. It fails
+fast rather than letting systemd fail-loop a topic: unknown keys are rejected before `systemctl` is
+called, and a restart is refused when there's nothing to resume (no stored session ID, or one whose
+transcript is missing) — both point you at `--new`, the only way to deliberately start blank. These
+guards encode real incidents; keep them.
+
+## `active` is not `reachable`
+
+Preserving history was the wrapper's original whole job. One incident forced a second, competing
+goal on it.
+
+**The Remote Control bridge dies with the conversation, and nothing local can see it.** A topic can
+be `active`, `enabled`, running under `Restart=always`, with a valid stored sessionId and a healthy
+process — and its URL still answers *"session can't be found"* in the apps. The bridge id is
+server-side state; `--resume` re-announces the id the session had, it does not re-establish a bridge
+the server has already dropped. On 2026-08-06 the reference deployment came back from a reboot with
+**11 of 12 topics `active` and unreachable**, and every check on the box was green.
+
+So the honest statement of the limitation:
+
+- `claude-topic urls` and `status` print what the session **announced**, not what the server still
+  serves. There is no local probe that can tell the difference. **Opening the URL is the only proof.**
+- `restart` is the wrong reflex here: it resumes the same conversation and therefore re-announces the
+  same dead bridge. Only **`rotate`** abandons the conversation and mints a new bridge id. The
+  abandoned sessionId is appended to `topics.rotated` first, so the history stays addressable.
+
+Because the failure is invisible locally, the fix is not a check — it's an unconditional action:
+**`claude-topic-rotate-on-boot.service` runs `rotate-all` once per boot**, so reachability after a
+reboot never depends on a check that cannot see the failure. It writes a digest of what it abandoned
+and the new URLs to `~/.config/agent/last-boot-rotation.tsv`.
+
+The trade is deliberate and worth stating plainly: **every topic loses its conversation context on
+every reboot.** Reboots are rare; a silently unreachable fleet is worse than a fresh one. Anything
+that must survive a reboot belongs in the brain repo or in memory, not in a conversation — which is
+the same rule the [memory model](memory.md) already asks you to follow.
 
 ## Multi-device access = Remote Control
 
@@ -69,5 +103,9 @@ on the go and your laptop at the desk, with no extra gateway service to run, sec
 ## Bring-up recap
 
 `provision-agent` reads the brain's `deploy/topics.tsv` and `enable --now`s each topic, so a freshly
-provisioned agent comes up with its sessions live. Verify with `claude-topic list`; each key should be
-`active` with a session ID and open in the Claude apps.
+provisioned agent comes up with its sessions live. It also `enable`s (not `--now`) the
+rotate-on-boot unit, so the next reboot mints fresh bridges by itself.
+
+Verify with `claude-topic list`; each key should be `active` with a session ID. Then verify the part
+the box cannot verify for you: run `claude-topic urls` and **open one** in the apps. `active` is not
+`reachable` — see above.

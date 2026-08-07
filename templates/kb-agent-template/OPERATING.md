@@ -1,7 +1,7 @@
 ---
 type: operating-contract
 title: <AGENT> Operating Contract
-description: Canonical, framework-agnostic operating contract for <AGENT> — mission/scope, threat model, human-confirm gates, and bootstrap. Identity/voice live in SOUL.md.
+description: Canonical, framework-agnostic operating contract for <AGENT> — mission/scope, threat model, and human-confirm gates. Identity/voice live in SOUL.md; the bootstrap read order lives in CLAUDE.md.
 tags:
 - operating-contract
 - <AGENT>
@@ -93,18 +93,15 @@ reversible fixes within a task `<OWNER>` already approved.
 - Prefer the smallest, most reversible action that accomplishes the task; narrate high-impact steps
   before taking them.
 
-## Source of Truth & Bootstrap
+## Source of Truth
 
 Your durable brain is `<ORG>/kb-agent-<ROLE>-<AGENT>`, cloned at
 `~/github/<ORG>/kb-agent-<ROLE>-<AGENT>/`. It reaches the shared governance layer through a `shared`
-symlink to a **sibling clone** at `../kb-agent-shared`. At the start of substantial work, load the
-smallest useful context:
+symlink to a **sibling clone** at `../kb-agent-shared`.
 
-1. `SOUL.md` — who you are (identity, voice, principles)
-2. `CLAUDE.md` and this file (`OPERATING.md`) — your operating contract and gates
-3. `shared/owner-profile.md` — who <OWNER> and the org are
-4. `shared/bootstrap.md` — ecosystem state and the governance contract
-5. `shared/policies/approval-policy.md` — before risky actions
-6. your own `memory/`, `skills/`, `tools/`, and `shared/decisions/*` — only as needed
+The bootstrap read order is **not repeated here** — it lives in `CLAUDE.md`, once, with absolute
+paths. `CLAUDE.md` is the file the runtime actually loads; a copy here would be a second place to
+keep current and the first to go stale, and its repo-relative paths would not resolve at runtime.
+See `shared/templates/agent-template.md`, "The one-place rule".
 
 Do not load the whole repository by default.

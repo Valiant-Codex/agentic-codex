@@ -42,9 +42,17 @@ procedure only for genuinely **per-brain** content.
 `kb-agent-shared` by choice — a single designated maintainer is the sole direct writer, for a clean
 single-maintainer collaborator list. So when the root-agent authors shared content (decisions, runbooks,
 policies), it commits **as the designated maintainer of `kb-agent-shared`** in that maintainer's shared
-clone: `pull --ff-only` first, edit via `runuser -u <maintainer>` (pipe scripts to `python3 -`), then
-commit + push as the maintainer — noting the root-agent's authorship in the commit body. The root-agent's
-own shared clone is read-only (its token 403s on push).
+clone: `pull --ff-only` first, edit as that maintainer with the same hardened `asA` form used
+throughout the Procedure below (`sudo -u`, `--noprofile --norc`, explicit PATH, guarded `head`/`sed`
+rebuild), then commit + push as the maintainer — noting the root-agent's authorship in the commit
+body. The root-agent's own shared clone is read-only (its token 403s on push).
+
+> If instead your deployment makes the **root-agent** the sole direct writer on `kb-agent-shared` —
+> a defensible choice, since `shared/skills/` is *instructions every agent loads* and reaches every
+> brain through an unreviewed auto-sync, which argues for the least-injection-exposed principal
+> holding that write — then this paragraph does not apply: author in your own clone and push with
+> your own token. Pick one and write it down; the failure mode is an agent that assumes the other
+> arrangement and silently 403s.
 
 ## Procedure
 

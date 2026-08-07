@@ -70,16 +70,32 @@ bare `topic` (the compatibility symlink was later removed). It is systemd-native
 
 ```
 claude-topic list                     # all topics: key, service state, sessionId, display name
+claude-topic urls                     # every topic's Remote Control URL (test them BY HAND)
 claude-topic new <key> "<Name>"       # register + enable--now the service, capture the new sessionId
 claude-topic restart <key>            # systemctl restart (resumes the same sessionId)
 claude-topic restart --new <key>      # explicit opt-in: start a FRESH conversation
+claude-topic rotate <key>             # abandon the conversation, mint a NEW bridge id — the fix when a
+                                     #   topic is active but the app says "session can't be found"
+claude-topic rotate-all [--dry-run]   # rotate every enabled topic (what the boot unit runs)
 claude-topic stop <key>               # stop + disable the service (sessionId is kept)
 claude-topic remove <key>             # unregister for good: topics.tsv + state + unit (use this, not just `stop`,
                                      #   when a topic is deleted — else agentic-monitor keeps reporting it)
-claude-topic status <key>             # service state + stored/live sessionId
+claude-topic status <key>             # service state + stored/live sessionId + bridge URL
 claude-topic remember <key>           # record a running topic's live sessionId to state
 claude-topic run <key>                # foreground launch (invoked by the systemd unit)
 ```
+
+**`active` does not mean reachable.** The Remote Control bridge is server-side state that dies with
+the conversation, and nothing on the box can observe it: a topic can be `active`, `enabled`, under
+`Restart=always`, with a valid sessionId — and still answer "session can't be found" in the apps.
+`restart` does not help, because resuming re-announces the same dead bridge; only `rotate` mints a
+new one. `urls` prints what the session *announced*, so opening one is the only proof.
+
+Because the failure is invisible locally, reachability after a reboot is not checked but *acted on*:
+`claude-topic-rotate-on-boot.service` runs `rotate-all` once per boot and writes a digest of the
+abandoned sessions and new URLs to `~/.config/agent/last-boot-rotation.tsv`. The cost is deliberate —
+**every topic starts a fresh conversation after a reboot**, so nothing that matters should live only
+in a conversation.
 
 The wrapper fails fast rather than letting systemd fail-loop a topic: unknown keys are
 rejected before `systemctl` is called (`claude-topic@<typo>` is a valid template instance

@@ -8,16 +8,23 @@ other secrets appear here — those never leave the private side.)
 
 ## The fleet
 
-Four agents run as Claude Code sessions on one Debian-based VPS, each a distinct Unix user with its
-own GitHub bot account and brain repo. They're named after Tolkien's smiths, delvers and keepers — a
-small, memorable convention, not a requirement.
+Three active agents run as Claude Code sessions on one Debian-based VPS, each a distinct Unix user
+with its own GitHub bot account and brain repo, plus one **dormant** fourth. They're named after
+Tolkien's smiths, delvers and keepers — a small, memorable convention, not a requirement.
 
 | Agent | Archetype | Privilege | What it owns |
 |---|---|---|---|
 | **Durin** | root-agent | `sudo` — owns the host | Infra/ops: users, packages, Docker & Dokploy, Cloudflare zone (Tunnel + Access), backups, provisioning new agents, and the `agentic-monitor` heartbeat. The only privileged principal. |
-| **Galadriel** | cos-agent | none | Chief of Staff: research, business reasoning, orchestration, content, intel briefings. Broad tools, no root. |
+| **Galadriel** | cos-agent | none | Chief of Staff: research, business reasoning, orchestration, content, intel briefings — **and** finance, fiscal compliance, the legal entity and the unified agenda, folded back in 2026-08-03. Broad tools, no root. |
 | **Celebrimbor** | dev-agent | none (own deploy token) | Build/deploy: the marketing website and n8n automation workflows, using its own scoped deploy rights — never routed through root. |
-| **Elrond** | cfo-agent | none | Finance & admin: bookkeeping, fiscal-compliance prep, the unified agenda. Isolated by data-residency rules (its brain holds procedures, never financial data). |
+| **Elrond** | cfo-agent | none | **Dormant since 2026-08-03.** Ran finance & admin as a separate agent for five weeks; the split cost more coordination than the separation bought, so the scope went back to Galadriel. |
+
+**Splitting an agent out is reversible, and retiring one is not deleting it.** Elrond's brain repo is
+archived, its Unix user and token are preserved, and it stays in the fleet roster — because the
+roster drives `kb-sync` and the monitor, and removing a live-on-disk agent from it would alarm every
+day. A dormant agent costs almost nothing; an orphaned home directory nobody sweeps costs a lot. The
+one thing worth switching off is its share of the unattended writers (the nightly memory mirror),
+which otherwise runs forever against a repo that can no longer accept pushes.
 
 Named for delvers and smiths on purpose: the privileged one, *Durin*, "works beneath everything, where
 the foundations are" — a reminder that the privilege is a liability to handle, not a power to enjoy.
@@ -38,9 +45,19 @@ the foundations are" — a reminder that the privilege is a liability to handle,
 
 ## The application layer, as used
 
-- **Durin** runs **Dokploy** on the VPS and owns the **Cloudflare** zone: services are exposed via
-  **Tunnel** (no public inbound ports) with **Access** in front of admin UIs (Dokploy, a Cockpit
-  console). Durin also runs the daily VPS backups.
+- **Durin** runs **Dokploy** on the VPS and owns the **Cloudflare** zone: application services are
+  exposed via **Tunnel**, bound to `127.0.0.1`, with **Access** in front of admin UIs. Durin also
+  runs the daily VPS backups.
+
+  > **Bind the admin plane too, or firewall it.** "Exposed via Tunnel" is a property of the services
+  > you deliberately put behind it — it is not a property of the box. In the reference deployment the
+  > application containers bind `127.0.0.1`, but the *control plane* did not: Dokploy's own UI, the
+  > Cockpit console and the Docker Swarm manager API all listened on `0.0.0.0`, leaving ingress
+  > resting entirely on a provider-level cloud firewall that had never been verified. Assume nothing
+  > about the layers you did not configure yourself: enumerate what actually listens
+  > (`ss -tlnp`), and remember that **a host firewall is not enough** — Docker publishes ports
+  > through its own nftables chains and walks straight past UFW's INPUT rules. The layer that can
+  > carry the policy is the provider firewall, or a bind address.
 - **Celebrimbor** deploys the website and builds **n8n** workflows with its own deploy token.
 - **Vaultwarden** runs as a Dokploy app as the owner's secret store (reachable only over the
   tailnet). Being honest about the current state: the agents' own tokens live in per-user files on
@@ -65,7 +82,7 @@ The private side keeps decision records; the load-bearing ones are baked into th
 
 ## What this shows
 
-The reference deployment is proof the shape holds up in daily use: four agents with different
-privileges and lanes, driven from phone and laptop, recoverable from Git + a restored secret, and loud
-when something breaks. Your deployment can be a single agent or a larger fleet — the templates and the
+The reference deployment is proof the shape holds up in daily use: agents with different privileges
+and lanes, driven from phone and laptop, recoverable from Git + a restored secret, loud when
+something breaks — and able to retire one of its own without deleting it. Your deployment can be a single agent or a larger fleet — the templates and the
 config model are the same either way.
