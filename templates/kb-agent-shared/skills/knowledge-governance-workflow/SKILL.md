@@ -10,7 +10,7 @@ tags:
 - lean
 - fleet
 status: active
-timestamp: 2026-08-07T00:00:00Z
+timestamp: 2026-08-11T00:00:00Z
 ---
 # Knowledge Governance Workflow — OKF Hygiene
 
@@ -28,6 +28,12 @@ Every Markdown document in an agent repo adheres to the [Open Knowledge Format v
 
 ## OKF Frontmatter Standard
 
+**This section is the only copy of the frontmatter contract. Do not restate it anywhere** — not in a
+`README.md`, not in `templates/`. The reference implementation shipped three copies for a while, and
+the two that no tooling asserted both drifted back to a stale required set with no closed
+vocabulary, while sitting in exactly the two files a new document gets scaffolded against. If you
+need the contract somewhere else, link to this file.
+
 Every Markdown document must include a parseable YAML frontmatter block with at minimum:
 
 **Required (OKF spec §4.1):**
@@ -44,7 +50,7 @@ Every Markdown document must include a parseable YAML frontmatter block with at 
 | `memory` | any memory document, including `distilled-memory.md`. |
 | `tool-registry` | a tool/MCP note in `tools/`. |
 | `template` | a blank skeleton in `templates/`. |
-| `reference` | stable background material (`owner-profile.md`, context docs). |
+| `reference` | stable background material (`owner-profile.md`, context docs) **and a skill's own `references/*.md`** — only the `SKILL.md` itself is `skill`. |
 | `directory-readme` | the README that indexes a directory. Every one of them. |
 | `working-doc` | scratch reasoning in `staging/`, until it closes and becomes a decision. |
 
@@ -97,8 +103,15 @@ that was never intended to reach it. Excluding them, conformance is near-total.
 Before committing a KB change, verify that:
 
 - frontmatter is valid YAML;
-- `type` is present, non-empty, and correct for the file's location (`skill` under any `skills/`
-  folder, per `skills-policy.md`);
+- `type` is present, non-empty, and correct for the file's location — `skill` for any `SKILL.md`,
+  per `skills-policy.md`. **Scoped to the file, not the folder:** a skill's own `references/*.md`
+  are `reference`, not `skill`. This line used to say "`skill` under any `skills/` folder", which
+  contradicted the vocabulary table above ("anything at `skills/<name>/SKILL.md`") and made every
+  conformance judgement ambiguous in the one direction that matters — progressive disclosure exists
+  precisely to put the bulk of a skill in sibling files;
+- `type` is drawn from the closed vocabulary above. `agentic-divergence-check` asserts this, and
+  only this — it does **not** check `type` against location, so the two rules in this section have
+  different teeth: the vocabulary fails a run, the location rule is honour-system;
 - `timestamp` is ISO 8601;
 - local links resolve;
 - no secrets or raw sensitive data are included;
@@ -120,6 +133,7 @@ canonical statement of "commit and push are one atomic unit," not repeated here.
 - `shared/policies/memory-policy.md` — the Promotion Workflow (deciding *whether* and *where*
   something becomes durable knowledge); this skill only governs the document's shape once that
   decision is made.
-- `shared/policies/skills-policy.md` — why `type: skill` is fixed for anything under `skills/`.
+- `shared/policies/skills-policy.md` — why `type: skill` is fixed for a `SKILL.md` (the file, not
+  everything under `skills/` — see Validation).
 - `agent-audit` — the human-gated periodic sweep that curates memory/skills using these same
   hygiene rules.

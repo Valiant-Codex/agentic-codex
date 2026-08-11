@@ -6,6 +6,74 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.7.1] — 2026-08-11 — One contract, one index, and a shipped broken link
+
+0.7.0 consolidated the *always-on* layer and left the *governance* layer alone. An independent
+fresh-context audit of the reference implementation found what that omission cost, and every finding
+had already propagated here. Nothing in this release is behavioural: it is duplication removed,
+indexes made honest, and one contract that contradicted itself.
+
+**The frontmatter contract shipped in three places.** `skills/knowledge-governance-workflow/SKILL.md`,
+`kb-agent-shared/README.md`, and `kb-agent-shared/templates/README.md` each carried a copy. Only the
+first is asserted by `agentic-divergence-check`; both others had drifted back to the pre-consolidation
+required set (`type` + `title` + `status` + `timestamp`) and asked for a `type` that was "concept kind,
+lowercase" with **no vocabulary at all** — the precise drift 0.7.0's closed nine-value list exists to
+prevent. They are also the two files a new document is scaffolded against, so they were the copies
+that reproduced. Both now point at the skill, which states outright that it is the only copy and that
+anything else must link rather than restate.
+
+**`knowledge-governance-workflow` contradicted itself on `type: skill`.** The vocabulary table scoped
+it to `skills/<name>/SKILL.md`; the Validation checklist said "`skill` under any `skills/` folder";
+the Related section said "anything under `skills/`". Under the broader reading, every skill's own
+`references/*.md` is a violation — which would make progressive disclosure, the thing that keeps a
+`SKILL.md` small, non-conformant by construction. Now scoped to the file in all three places, with
+the `reference` row saying so explicitly. Recorded alongside it: the checker asserts the vocabulary
+and **not** location, so the two rules in that checklist have different teeth — one fails a run, the
+other is honour-system. A contract that does not say which of its rules are enforced invites you to
+trust the wrong half.
+
+**A broken index shipped to anyone who cloned this.** `kb-agent-shared/reference/README.md` indexed
+exactly one file, `claude-code-runtime.md`, which was never shipped here at all — so `reference/`
+arrived as a directory whose only content was a README pointing at nothing. The folder is removed.
+Stable background material belongs at the root (`owner-profile.md`); the `reference` type keeps its
+place in the vocabulary.
+
+**Removed:**
+- `kb-agent-shared/policies/operating-principles.md` — 15 principles with no mechanism, referenced by
+  nothing, each already binding in a policy, a decision record, a skill, or each README's own
+  Maintenance Rule. Its own principle 14 ("keep folder READMEs current") was being broken by three
+  READMEs at once, which is the clearest statement available of what an unmechanised principle is
+  worth. The one principle with no other home — weigh licensing, maintainability, portability and fit
+  before adopting a tool — survives as `decision-loop` step 8, where a real decision passes through it.
+- `kb-agent-shared/templates/index.md` — a second index of an already-indexed directory, described by
+  its own sibling README as "historical/secondary" and typed with a value outside the vocabulary.
+- `kb-agent-shared/reference/` — see above.
+
+**Indexes that were lying:**
+- `kb-agent-shared/README.md` and `index.md` both omitted `skills/`. That is the one directory whose
+  contents reach every agent's context — including the privileged agent's — through kb-sync, without
+  review. Of everything a navigation map can forget, it is the worst choice. Added to both, labelled
+  with why it matters.
+- `kb-agent-shared/README.md` listed `CLAUDE.md` **twice** in the agent-repo shape, one line still
+  calling it a "bootstrap pointer" — a half-applied 0.7.0 edit shipped as the canonical diagram of the
+  layout 0.7.0 introduced. It also omitted `deploy/`, the Tier-3 payload. Both fixed, with per-line
+  comments so the diagram now explains itself.
+- `kb-agent-shared/skills/README.md` still described `agent-audit` as auditing "SOUL, OPERATING,
+  memory" — concepts 0.7.0 abolished, in the description of the skill whose job is catching exactly
+  this.
+- `kb-agent-shared/policies/README.md` typed three rows with invented values (`approval-policy`,
+  `memory-policy`, `operating-principles`). Invisible to the checker, which parses frontmatter and not
+  prose tables — a reminder that a closed vocabulary only closes where something reads.
+- `docs/divergence-check.md` claimed the check verifies "the adapter actually loads SOUL + OPERATING +
+  `shared/owner-profile.md`" — inside the same bullet that says no `SOUL.md`/`OPERATING.md` may
+  survive. It named a mechanism 0.7.0 dropped and a check that never existed in any version. Replaced
+  with what the check actually asserts about frontmatter, including that it fails closed when PyYAML
+  is missing and that it never checks `type` against location.
+
+**Upgrading:** delete the three paths above from your `kb-agent-shared`, and if you have restated the
+frontmatter contract in a README of your own, replace it with a link. No script, unit file, or brain
+layout changes.
+
 ## [0.7.0] — 2026-08-07 — One always-on file, because only one file was ever loaded
 
 **Breaking for the brain layout.** `SOUL.md` and `OPERATING.md` are gone. Each agent has one always-on
@@ -860,6 +928,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.0
 [0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8
 [0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7

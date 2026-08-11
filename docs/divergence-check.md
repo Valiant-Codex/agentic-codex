@@ -15,9 +15,12 @@ Per agent brain:
 
 - **Declared shape** — `CLAUDE.md` exists and carries the sections whose absence is silent (the
   confirm gates, the untrusted-content rule, the autonomous-OK list); it stays inside a 20 KB working
-  budget; no `SOUL.md`/`OPERATING.md` survives from the pre-0.7.0 split; frontmatter parses as YAML
-  everywhere except the two documented exemptions. And the adapter actually loads
-  SOUL + OPERATING + `shared/owner-profile.md`.
+  budget; no `SOUL.md`/`OPERATING.md` survives from the pre-0.7.0 split.
+- **Frontmatter is real metadata** — it parses as YAML, and every `type` is drawn from the closed
+  nine-value vocabulary in `knowledge-governance-workflow`, everywhere except the two documented
+  exemptions (`CLAUDE.md`, `memory/auto/**`). Fails *closed*: with PyYAML missing it reports that it
+  could not validate rather than passing. Note what it does **not** do — it never checks `type`
+  against a file's location, so "a `SKILL.md` is `type: skill`" is honour-system, not enforced.
 - **Skills are discoverable** — folder-per-skill with a `SKILL.md`, frontmatter `name` matching the
   folder, non-empty `description`, and no flat `skills/*.md` left behind.
 - **Runtime registration** — `~/.claude/skills` *is* a symlink, resolves, and points at this brain's

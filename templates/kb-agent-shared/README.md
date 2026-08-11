@@ -7,7 +7,7 @@ tags:
 - repository
 - shared
 status: active
-timestamp: 2026-07-20T00:00:00Z
+timestamp: 2026-08-11T00:00:00Z
 ---
 # <ORG> — kb-agent-shared
 
@@ -41,6 +41,9 @@ in Notion or another explicit business source of truth, not in any agent reposit
 - `bootstrap.md` — minimal shared startup contract + ecosystem state.
 - `index.md` — top-level navigation map.
 - `policies/` — global policies.
+- `skills/` — fleet-common skills, symlinked into every agent's `skills/`. **The
+  highest-consequence directory here:** a `SKILL.md` is instructions that reach every agent's
+  context — including your privileged agent's — through kb-sync, unreviewed.
 - `decisions/` — cross-agent / ecosystem decision records, including superseded history.
 - `templates/` — reusable OKF document templates.
 - `archive/` — historical material not loaded operationally.
@@ -62,11 +65,11 @@ in Notion or another explicit business source of truth, not in any agent reposit
 
 ```text
 kb-agent-<role>-<name>/
-├── CLAUDE.md            # bootstrap pointer for the runtime
-├── CLAUDE.md            ← the whole always-on contract
-├── memory/
+├── CLAUDE.md           # the whole always-on contract; symlinked to ~/CLAUDE.md
+├── memory/             # distilled-memory.md (human-curated) + auto/ (machine-mirrored)
 ├── tools/
-├── skills/
+├── skills/             # <name>/SKILL.md per skill; shared ones are symlinks into shared/skills/
+├── deploy/             # Tier-3 payload applied by provision-agent (topics.tsv, settings)
 ├── .mcp.json           # MCP structure only — secrets via ${ENV}, never committed
 └── shared/             # symlink → ../kb-agent-shared (sibling clone)
 ```
@@ -82,9 +85,10 @@ Keep the knowledge base small, clear, and easy to rewrite.
 
 ## OKF Frontmatter
 
-Every Markdown document uses OKF-inspired frontmatter. **Required:** `type`, `title`, `status`
-(`active` / `draft` / `superseded` / `archived`), `timestamp` (ISO 8601). **Recommended:** `description`,
-`tags`, `supersedes` / `superseded_by`, `resource`. Do not use `updated`; use `timestamp`.
+Defined once, in `skills/knowledge-governance-workflow/SKILL.md`, and asserted by
+`agentic-divergence-check`. Not restated here — this section used to hold a third copy of the
+contract (after the skill and `templates/README.md`), all three disagreeing on which fields are
+required and only one of them checked by anything.
 
 ## Safety Boundary
 

@@ -2,13 +2,12 @@
 type: directory-readme
 title: Shared Governance Layer Index
 description: Top-level navigation map for the <ORG> shared governance layer.
-okf_version: "0.1"
 tags:
 - index
 - shared
 - okf
 status: active
-timestamp: 2026-07-20T00:00:00Z
+timestamp: 2026-08-11T00:00:00Z
 ---
 # Shared Governance Layer Index
 
@@ -22,7 +21,7 @@ Start with [`bootstrap.md`](bootstrap.md). Use this file only when you need to n
 ## Areas
 
 - [`policies/`](policies/) — global policies that apply to every agent.
-- [`reference/`](reference/) — shared reference notes (e.g. the Claude Code VPS runtime (systemd topic sessions)).
+- [`skills/`](skills/) — fleet-common skills, symlinked into every agent's `skills/`.
 - [`decisions/`](decisions/) — cross-agent / ecosystem decision records, including superseded history.
 - *(No `handoffs/` — since 2026-07-25 cross-agent handoffs are relayed by <OWNER> in chat, not stored here.)*
 - [`templates/`](templates/) — reusable OKF templates for new documents.

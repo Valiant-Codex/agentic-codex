@@ -10,7 +10,7 @@ tags:
 - sparring
 - fleet
 status: active
-timestamp: 2026-07-25T00:00:00Z
+timestamp: 2026-08-11T00:00:00Z
 ---
 # Decision Loop
 
@@ -44,12 +44,15 @@ fleet; each agent that uses it keeps a thin local addendum for where its artefac
    governance/architecture calls, Notion for business calls, etc.). Never let decisions live only
    in chat. Each agent's own addendum states the exact path its artefacts take.
 7. **Falsify load-bearing assumptions early** and cheaply, before building plans on them.
-8. **Timebox perfectionism**: every refinement phase gets a hard end date agreed with <OWNER>; scope
+8. **When the call is adopting a tool**, weigh licensing, maintainability, portability, and fit for
+   a small client alongside features — the recurring failure is adopting on capability and paying in
+   lock-in and operational fragility.
+9. **Timebox perfectionism**: every refinement phase gets a hard end date agreed with <OWNER>; scope
    adapts to the date, not vice versa. <OWNER> decides pace; the agent's job is to name the
    trade-off once and propose the guardrail.
-9. **Anti-premature-polish rule**: build artifacts (schemas, templates, tooling) only after the
+10. **Anti-premature-polish rule**: build artifacts (schemas, templates, tooling) only after the
    content they hold has converged; sell-first / build-on-first-use where possible.
-10. **Close blocks explicitly**: mark decisions with date, keep a decisions-summary per block,
+11. **Close blocks explicitly**: mark decisions with date, keep a decisions-summary per block,
     reopen without drama if new facts arrive.
 
 ## Communication learnings (generic)

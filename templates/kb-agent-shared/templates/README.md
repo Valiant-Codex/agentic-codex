@@ -6,7 +6,7 @@ tags:
 - template
 - okf
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-08-11T00:00:00Z
 ---
 # Templates
 
@@ -27,26 +27,19 @@ Use the closest template only when an existing document cannot be expanded clean
 | `process-template.md` | template | active | Process/runbook-style template. |
 | `skill-template.md` | template | active | Reusable skill template. |
 | `tool-registry-template.md` | template | active | Tool registry entry template. |
-| `index.md` | template-index | active | Historical/secondary template index. |
 | `README.md` | directory-readme | active | Local map for templates. |
 
 ## OKF Frontmatter Standard
 
-Every Markdown document should include:
+**The contract lives in exactly one place: `skills/knowledge-governance-workflow/SKILL.md`.**
+Read it there — required and recommended fields, the closed `type` vocabulary, and the two
+directories exempt by design.
 
-**Required:**
-- `type` — concept kind, lowercase.
-- `title` — human-readable display name.
-- `status` — `active`, `draft`, `superseded`, or `archived`.
-- `timestamp` — ISO 8601 datetime of last meaningful change.
-
-**Recommended:**
-- `description` — one-line summary.
-- `tags` — YAML list of short strings.
-- `resource` — canonical URI for the underlying asset when useful.
-- `supersedes` / `superseded_by` for transitions.
-
-Do not use `updated`; use `timestamp`.
+It is deliberately not restated here. This section used to carry its own copy, and being the copy
+new documents are scaffolded against, it was the copy that propagated: it listed a different
+required set and asked for a "concept kind, lowercase" with **no vocabulary at all** — the exact
+drift the closed list exists to stop. A second copy of a contract is not redundancy, it is a
+slower-moving contradiction, and the one your tooling does not assert always wins in practice.
 
 ## Maintenance Rule
 
