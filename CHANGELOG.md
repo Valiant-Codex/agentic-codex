@@ -6,7 +6,7 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
-## [0.8.0] — 2026-08-16 — Measure the context before you optimize it
+## [0.7.2] — 2026-08-16 — Measure the context before you optimize it
 
 0.7.0 fixed a layer that was never loaded. This release is about the opposite mistake: **spending
 effort on the layer that loads but barely weighs anything**, while the real cost sits somewhere nobody
@@ -977,7 +977,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   dead-man's switch); and the docs write-up.
 
 [0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
-[0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0
+[0.7.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.2
 [0.7.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.0
 [0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8
 [0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7
