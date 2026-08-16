@@ -42,7 +42,7 @@ holds the body. There is no archive directory: a parallel tree is a second place
 
 Skills every agent needs live **once** in `kb-agent-shared/skills/<name>/` and are symlinked into each
 agent (`ln -s ../shared/skills/<name> skills/<name>`): one canonical copy, propagated by the sync timer,
-discovered through the whole-dir symlink. Five ship with the framework — each one kept because it
+discovered through the whole-dir symlink. Six ship with the framework — each one kept because it
 proved useful in the reference deployment, not because it seemed like a good idea:
 
 - **`skillify`** — the executable companion to `policies/skills-policy.md`: how to author, update, and
@@ -58,6 +58,13 @@ proved useful in the reference deployment, not because it seemed like a good ide
   it belongs instead of leaving it in a chat.
 - **`knowledge-governance-workflow`** — the frontmatter and hygiene rules that keep a brain
   machine-readable and lean.
+- **`topic-management`** — how an agent manages *its own* Remote Control sessions through the
+  root-owned `claude-topic` wrapper, which scopes itself to the caller's brain repo by Unix username.
+  The capability exists the moment the wrapper is installed; what this skill adds is the knowledge that
+  it does, and the judgement around it — that the wrapper has **no self-guard** (stopping the topic you
+  are running in kills the process executing the command, so check `/proc/self/cgroup` first), that
+  `remove` is a human-confirm gate while `stop` is usually what was meant, and that every new topic is
+  a permanently-on session someone pays for continuously.
 
 ## The guardrail
 

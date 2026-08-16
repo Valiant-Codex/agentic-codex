@@ -6,6 +6,51 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.0] — 2026-08-16 — The capability was already there; nobody had told the agents
+
+A framework can ship a capability and still not deliver it. The `claude-topic` wrapper has been
+root-owned, installed for every agent, and scoped to the caller's own brain repo since long before this
+release — any agent could always manage its own sessions. But only the privileged agent's
+`manage-agents` documented it, so in the reference deployment the unprivileged agents never reached for
+it, and every "create me a topic" went through root. **The gap was not permission. It was knowing.**
+
+### Added
+- **[`topic-management`](templates/kb-agent-shared/skills/topic-management/SKILL.md)** — the sixth
+  fleet-common skill. Each agent manages **its own** topic sessions; cross-agent work goes to the
+  privileged agent. That split is enforced by the wrapper itself, not by convention: it resolves
+  `kb-agent-*-$(id -un)`, so an agent cannot address another's topics even by accident.
+
+  The skill exists for the judgement around the commands, not the commands:
+
+  - **The wrapper has no self-guard**, and this is the finding that motivated writing it down. Nothing
+    stops an agent from stopping or removing the very topic its session runs in — and the process
+    executing the command is the one being killed. For `remove` it can die *after* disabling the unit
+    and *before* committing the registry. The check is one line, and it belongs in the reader's head
+    before any mutating verb: `sed -n 's|.*/claude-topic@\([^/]*\)\.service.*|\1|p' /proc/self/cgroup`.
+  - **`remove` is a human-confirm gate; `stop` is usually what was meant.** Removal leaves the
+    transcript on disk but nothing resumes it — practically, the conversation is gone.
+  - **A new topic is a permanently-on session**, reachable from the web and mobile apps and restarted
+    on boot, costing context and money continuously rather than per use. Say that out loud before
+    creating one.
+
+  Note what this release does **not** do: it adds no code, no privilege, and no new surface. An
+  injection into an unprivileged agent's session could already have run the wrapper — the binary was
+  always there and always executable. Documentation that only the root agent holds is not a security
+  boundary; it is just a bottleneck that looks like one.
+
+### Fixed
+- **`manage-agents` carried a second, drifted description of the same wrapper.** Its command list had
+  fallen behind the tool it documents — missing `remove`, `urls`, `rotate` and `rotate-all`. Two
+  descriptions of one mechanism drift; there is now one, in the shared skill, and the root-agent skill
+  keeps only what is genuinely privileged: reaching *another* agent's topics by becoming that agent.
+- **Two silent-emptiness traps recorded** in `manage-agents`, both of which returned success while
+  showing nothing on the reference deployment. Running the wrapper as another agent needs **both** `-H`
+  (or `$HOME` resolves to the caller's, finding the wrong brain repo or none) **and**
+  `XDG_RUNTIME_DIR` (or the target's systemd user manager is unreachable). And a shell glob under
+  `sudo` — `sudo ls /home/<AGENT>/.config/systemd/user/*.target.wants/` — is expanded by *your* shell
+  before sudo runs, so an unreadable directory yields no match at all, which reads as "nothing is
+  enabled" when in fact everything is.
+
 ## [0.7.2] — 2026-08-16 — Measure the context before you optimize it
 
 0.7.0 fixed a layer that was never loaded. This release is about the opposite mistake: **spending
@@ -977,6 +1022,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   dead-man's switch); and the docs write-up.
 
 [0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
+[0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0
 [0.7.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.2
 [0.7.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.0
 [0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8

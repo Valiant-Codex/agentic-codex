@@ -137,14 +137,36 @@ repo (the daily divergence check reports a dirty infra clone until you do).
 
 ## MANAGE sessions
 
-Topic sessions are systemd user services fronted by the `claude-topic` wrapper. Run as the agent (the
-provisioner already set PATH + `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` for its units):
+The wrapper itself — every subcommand, the self-kill guard, rename, rotate, the restart/`--new`
+history trap — lives in the shared `topic-management` skill, which every agent loads. Do not restate
+it here: two descriptions of one wrapper drift, and this section already had (its command list was
+missing `remove`, `urls`, `rotate` and `rotate-all`).
 
-`claude-topic list` · `claude-topic new <key> "<Name>"` · `claude-topic restart <key>` (resumes the same
-sessionId) · `claude-topic stop <key>` · `claude-topic status <key>`.
+What is **privileged-agent-only** is reaching *another* agent's topics. `claude-topic` scopes itself to
+the caller's own repo via `kb-agent-*-$(id -un)`, so cross-agent work means becoming that agent:
 
-**Any MCP or config change needs a `claude-topic restart`** — MCP loads at process start, so a running
-session won't pick it up otherwise.
+```bash
+# Read-only across the fleet — what the owner usually means by "list them all".
+for a in $(grep -v '^#' /usr/local/share/agentic/fleet-agents | grep .); do
+  echo "=== $a ==="
+  sudo -u "$a" -H bash -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); claude-topic list'
+done
+```
+
+Mutations (`new`/`remove`/`restart`) run the same way, one agent at a time. Two constraints:
+
+- **`-H` and `XDG_RUNTIME_DIR` are both load-bearing.** Without `-H` the wrapper resolves `$HOME` to
+  the privileged agent's and finds the wrong repo — or none; without the runtime dir it cannot reach
+  that user's systemd manager. Root without both gets success-shaped emptiness, not an error. The same
+  trap catches shell globs: `sudo ls /home/<AGENT>/.config/systemd/user/*.target.wants/` expands the
+  glob as *you*, before sudo, so an unreadable directory silently yields no match — which reads as
+  "nothing is enabled" when everything is.
+- **The wrapper commits `topics.tsv` as that agent**, using that agent's own token — which is exactly
+  the `fleet-brain-change` principle, already satisfied. Do not commit into their repo as yourself.
+
+**Never restart, stop or remove your own currently-running topic from inside itself** — the process
+executing the command is the one being killed. Check with
+`sed -n 's|.*/claude-topic@\([^/]*\)\.service.*|\1|p' /proc/self/cgroup` first.
 
 ## REMOVE / decommission an agent  ⚠️ DESTRUCTIVE — human-confirm with the owner first
 

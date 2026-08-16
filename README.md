@@ -14,8 +14,9 @@ Portable brains, Claude Code runtime. Minimal attack surface. Reachable from web
 > fleet-common skill, a change to the brain shape) plus **every safety or correctness fix**. Day-to-day
 > fleet-specific divergence is expected and is not a defect.
 
-> **About the skills that ship in `kb-agent-shared/skills/`.** Five of them are included — `skillify`,
-> `agent-audit`, `advisor-review`, `decision-loop`, `knowledge-governance-workflow`. They are not a
+> **About the skills that ship in `kb-agent-shared/skills/`.** Six of them are included — `skillify`,
+> `agent-audit`, `advisor-review`, `decision-loop`, `knowledge-governance-workflow`,
+> `topic-management`. They are not a
 > starter pack of ideas: each one was written for, and repeatedly used by, the fleet in
 > [`docs/reference-architecture.md`](docs/reference-architecture.md) — the deployment this framework was
 > distilled from, which runs in production. They earned inclusion by proving useful there. Adopt the ones

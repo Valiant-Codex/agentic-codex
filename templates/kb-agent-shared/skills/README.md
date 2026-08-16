@@ -11,7 +11,7 @@ timestamp: 2026-08-11T00:00:00Z
 ---
 # Shared (Fleet-Common) Skills
 
-Skills that every agent uses. All five earned their place in the reference deployment before being
+Skills that every agent uses. All six earned their place in the reference deployment before being
 published here — none is speculative. Each lives here once (canonical) and is symlinked into each agent's repo
 (`ln -s ../shared/skills/<name> skills/<name>`), so it is harness-discoverable via each agent's whole-dir
 `~/.claude/skills` symlink without duplication. Propagated to all clones by kb-sync.
@@ -23,6 +23,7 @@ published here — none is speculative. Each lives here once (canonical) and is 
 | `advisor-review/` | Get an independent, adversarial second opinion before acting: how to scope a sub-agent so it challenges rather than agrees, the constraints it must always be given, and the rule that you re-verify its load-bearing claims yourself. |
 | `decision-loop/` | Sparring procedure for strategic or tactical calls — strawman, attack, converge, record — with dependency-ordered blocks and early falsification of load-bearing assumptions. |
 | `knowledge-governance-workflow/` | OKF frontmatter and hygiene rules for any brain: required fields, a pre-commit checklist, and post-write verification. |
+| `topic-management/` | Manage your **own** Remote Control topic sessions with the root-owned `claude-topic` wrapper — list, create, restart, rename, remove, and recover an unreachable one. Self-only by construction; cross-agent work goes to the privileged agent's `manage-agents`. |
 
 See `policies/skills-policy.md` for the authoring rules and lifecycle.
 
