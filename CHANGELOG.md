@@ -74,6 +74,54 @@ place in the vocabulary.
 frontmatter contract in a README of your own, replace it with a link. No script, unit file, or brain
 layout changes.
 
+## [0.8.0] — 2026-08-16 — Measure the context before you optimize it
+
+0.7.0 fixed a layer that was never loaded. This release is about the opposite mistake: **spending
+effort on the layer that loads but barely weighs anything**, while the real cost sits somewhere nobody
+was looking.
+
+### Added
+- **[`docs/context-budget.md`](docs/context-budget.md)** — what a session actually loads, measured on
+  the reference deployment rather than estimated, with the method to re-measure it yourself.
+
+  The headline: **your own content is 11–20% of the budget.** The agent contract, the memory index and
+  the skill listings together came to ~4,200 tokens of a ~38,000-token session. An aggressive rewrite
+  of every contract would have recovered ~1,000 tokens; two configuration changes recovered ~15,000.
+
+  The surprise that pays for the page: **MCP tool *schemas* are deferred, tool *names* are not.** Every
+  configured server's full tool list is always-on at ~16 tokens per tool, paid every session whether or
+  not the server is touched. One ~546-tool infrastructure MCP measured **8,824 tokens — 23% of an
+  entire session**. A single built-in tool (`Workflow`) measured ~4,900 on its own, more than that
+  agent's contract and memory index combined.
+
+  Also documented: a *failed* MCP server costs no context but still attempts a connection every
+  session; two servers exposing identically-named tools is a selection problem (one agent here ran an
+  Atlassian MCP whose 31 tools were a strict subset of a connector's 40); and `claude doctor` reports
+  installation health only — nothing about context, so do not go looking there.
+
+- **`mcp-park`** ([`templates/root-agent-skills/manage-agents/scripts/mcp-park`](templates/root-agent-skills/manage-agents/scripts/mcp-park))
+  — attach or park an MCP server on demand. Moves the definition between the live config and a parked
+  file, both `0600` and outside git, atomically, without printing the credentials it carries; verified
+  byte-identical across a round trip. A session reads MCP config at startup, so it offers `--restart`
+  and prints the reachability warning a restart now always deserves.
+
+### Fixed
+- **The `.mcp.json` in a brain repo is decorative, and the docs said otherwise.** Where the supervised
+  session runs with `WorkingDirectory=%h` — cwd is the agent's *home*, not its brain repo — that file
+  is out of project scope and **is never read**. It is not installed by `provision-agent` and not passed
+  by the session wrapper. On the reference deployment it had drifted from reality in all three brains
+  (one listed a parked server, another was missing two running ones) and nothing noticed, because
+  nothing read it.
+
+  Corrected in `docs/secrets.md`, `docs/portability.md`, both repo-shape templates and the
+  `manage-agents` reference. MCP configuration now appears in portability's **not carried** table,
+  where it belongs: it lives in the runtime's user-scoped config, alongside credentials, outside git.
+  If you want it portable, pass it explicitly with `--mcp-config` from the supervising unit — and then
+  check it, rather than assuming a file in a repo is doing something.
+
+- `skills-policy.md` extends its shadowing guardrail to MCP tools, which suffer it worse: unlike a
+  skill, every tool name is always-on.
+
 ## [0.7.0] — 2026-08-07 — One always-on file, because only one file was ever loaded
 
 **Breaking for the brain layout.** `SOUL.md` and `OPERATING.md` are gone. Each agent has one always-on
@@ -929,6 +977,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   dead-man's switch); and the docs write-up.
 
 [0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
+[0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0
 [0.7.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.0
 [0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8
 [0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7

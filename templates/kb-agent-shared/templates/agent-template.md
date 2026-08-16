@@ -26,7 +26,8 @@ memory/              ← durable memory (distilled-memory.md + auto/); see polic
 tools/               ← tool/MCP registry (README.md); secrets are ${ENV} placeholders, never committed
 skills/              ← folder-per-skill (<name>/SKILL.md); fleet-common ones symlink shared/skills/*
 deploy/              ← topics.tsv, claude-settings.json (runtime wiring)
-.mcp.json            ← MCP servers with ${ENV} placeholders — no secrets
+.mcp.json            ← MCP servers with ${ENV} placeholders — no secrets. NOT read when the session
+                       runs with cwd=~ unless passed via --mcp-config (see docs/context-budget.md)
 shared -> ../kb-agent-shared   ← committed symlink to the sibling clone (global governance)
 ```
 

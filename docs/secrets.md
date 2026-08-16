@@ -8,7 +8,10 @@ secrets are the deliberate exception, and this doc is how you handle them withou
 ## What counts as a secret
 
 - Each agent's **GitHub token** (its bot PAT), wired at `~/.config/gh/hosts.yml` (mode 600).
-- **MCP server secrets** (API keys) — referenced by `${ENV}` placeholders in `.mcp.json`, with the real
+- **MCP server secrets** (API keys) — held in the runtime's own user-scoped config (see the caveat in
+  [`context-budget.md`](context-budget.md): a `.mcp.json` in the brain repo is **not** read when the
+  session's cwd is the agent's home). If you wire MCP config explicitly with `--mcp-config`, use
+  `${ENV}` placeholders there, with the real
   values in `~/.claude.json` (mode 600) and/or a `~/.config/<agent>/secrets.env` sourced by the unit.
 - The monitoring **`HC_URL`** (a capability URL) in `/etc/agentic-monitor.env` (mode 600).
 - Any provider tokens (VPS API, Cloudflare, deploy tokens, etc.).

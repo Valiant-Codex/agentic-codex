@@ -91,6 +91,7 @@ fresh conversations.
 |---|---|---|
 | Secrets (tokens, keys) | Never in Git | Your secret store ([`secrets.md`](secrets.md)) |
 | `~/.claude.json` account/session state | Per-machine, account-bound | The box |
+| **MCP server configuration** | Lives in the runtime's user-scoped config, which also holds credentials — a `.mcp.json` in the brain repo is decorative unless you pass it explicitly with `--mcp-config`. See [`context-budget.md`](context-budget.md). | The box |
 | `~/.config/agent/topics.state` (session IDs) | Per-machine runtime state | The box |
 | `~/.config/agent/topics.rotated` | Per-machine log of abandoned session IDs | The box |
 | `~/.config/agent/last-boot-rotation.tsv` | Per-boot digest written by rotate-on-boot | The box |

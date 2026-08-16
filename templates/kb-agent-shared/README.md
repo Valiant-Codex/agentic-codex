@@ -70,7 +70,8 @@ kb-agent-<role>-<name>/
 ├── tools/
 ├── skills/             # <name>/SKILL.md per skill; shared ones are symlinks into shared/skills/
 ├── deploy/             # Tier-3 payload applied by provision-agent (topics.tsv, settings)
-├── .mcp.json           # MCP structure only — secrets via ${ENV}, never committed
+├── .mcp.json           # MCP structure only — secrets via ${ENV}. Decorative unless passed
+│                       #   explicitly with --mcp-config; see docs/context-budget.md
 └── shared/             # symlink → ../kb-agent-shared (sibling clone)
 ```
 

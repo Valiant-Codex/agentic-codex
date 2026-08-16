@@ -46,7 +46,7 @@ docs/portability.md in the agentic-codex repo.
 | `CLAUDE.md` | **The whole always-on contract** — identity, voice, scope, gates, threat model. Symlinked to `~/CLAUDE.md`; the only file the runtime loads. |
 | `deploy/topics.tsv` | Remote-Control topic sessions (`key<TAB>Display Name`). |
 | `deploy/claude-settings.json` | Curated, portable runtime settings (permissions, notifications). |
-| `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. |
+| `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. Documentation of intent: it is only *read* if the session's cwd is this repo, or if it is passed explicitly with `--mcp-config`. See docs/context-budget.md. |
 | `tools/` | This agent's tool notes. |
 | `skills/` | This agent's skills, **folder-per-skill** (`<name>/SKILL.md`); fleet-common ones symlink `shared/skills/*`. See docs/skills.md in the agentic-codex repo. |
 | `memory/` | This agent's durable memory — two tiers: `distilled-memory.md` (hand-curated standing decisions) and machine-mirrored `auto/`. See docs/memory.md in the agentic-codex repo. |

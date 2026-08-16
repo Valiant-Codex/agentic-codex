@@ -29,7 +29,7 @@ live config; cloning the repo restores it.
 | Identity / behavior | `CLAUDE.md` | — (read from the repo) |
 | Runtime bootstrap | `CLAUDE.md` (repo root — the single bootstrap; absolute `~/github/...` paths so it resolves from cwd=`~`) | `~/CLAUDE.md` |
 | Claude Code settings | `deploy/claude-settings.json` (curated prefs + allowlist; portable) | `~/.claude/settings.json` — **real copy** installed by `provision-agent`, not a symlink |
-| MCP servers | `.mcp.json` (server defs with `${ENV}` placeholders — no secrets) | project-scope for the agent's cwd |
+| MCP servers | the runtime's user-scoped config (holds credentials, not in git). A repo `.mcp.json` is project-scope for the agent's **cwd** — so it is not read when the session runs with `WorkingDirectory=%h`. | the box |
 | Skills / tools / memory | `skills/`, `tools/`, `memory/` | — |
 | Session supervision (infra) | `infra`: `bin/claude-topic`, `systemd/claude-topic@.service` → root-owned `/usr/local/bin/claude-topic` + per-user unit copies | `~/.local/bin/claude-topic` (→ `/usr/local/bin/claude-topic`), `~/.config/systemd/user/claude-topic@.service` (real copy) |
 | Topic registry (per-agent) | agent repo `deploy/topics.tsv` (`key -> Display Name`) | — |

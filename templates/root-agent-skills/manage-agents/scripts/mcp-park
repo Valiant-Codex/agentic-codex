@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# mcp-park — attach or park an MCP server for this agent's sessions.
+#
+# WHY THIS EXISTS. Claude Code lists every MCP tool NAME in the always-on context — schemas are
+# deferred to ToolSearch, names are not — at roughly 16 tokens per tool. On the reference deployment
+# one ~546-tool infrastructure server measured **8,824 tokens, 23% of the whole session**, paid on
+# every session whether or not that server was touched. Park what you do not use continuously.
+# See docs/context-budget.md.
+#
+# HOW. The server definition lives in ~/.claude.json (user scope) when attached, and in
+# ~/.config/agent/mcp-parked.json when detached. Both are mode 0600 and outside git: the definition
+# typically carries an API key, so this script moves it without ever printing it.
+#
+# A session reads MCP config at startup, so a change needs the topic restarted to take effect.
+# `claude-topic restart` resumes the same conversation — nothing is lost — but see the WARNING below.
+#
+# Usage:  mcp-park on|off|status <server> [--restart <topic-key>]
+set -euo pipefail
+
+LIVE="$HOME/.claude.json"
+PARK="$HOME/.config/agent/mcp-parked.json"
+ACTION="${1:?usage: mcp-park on|off|status <server> [--restart <topic-key>]}"
+SERVER="${2:?usage: mcp-park on|off|status <server> [--restart <topic-key>]}"
+RESTART=""
+[ "${3:-}" = "--restart" ] && RESTART="${4:?--restart needs a topic key}"
+
+[ -f "$LIVE" ] || { echo "FATAL: $LIVE not found"; exit 1; }
+mkdir -p "$(dirname "$PARK")"; [ -f "$PARK" ] || { echo '{}' > "$PARK"; chmod 600 "$PARK"; }
+
+# Every mutation is atomic (temp + mv) and preserves the original mode: ~/.claude.json holds live
+# credentials and account state, and a half-written one costs the agent its whole runtime config.
+python3 - "$ACTION" "$SERVER" "$LIVE" "$PARK" <<'PY'
+import json, os, sys, tempfile, shutil
+action, server, live_p, park_p = sys.argv[1:5]
+
+def load(p):
+    with open(p) as f: return json.load(f)
+
+def save(p, d):
+    mode = os.stat(p).st_mode & 0o777
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p))
+    with os.fdopen(fd, 'w') as f: json.dump(d, f, indent=2)
+    os.chmod(tmp, mode); shutil.move(tmp, p)
+
+live, park = load(live_p), load(park_p)
+in_live = server in live.get('mcpServers', {})
+in_park = server in park
+
+if action == 'status':
+    print(f"  {server}: {'ATTACHED (loads every session)' if in_live else 'parked' if in_park else 'NOT CONFIGURED'}")
+    sys.exit(0)
+
+if action == 'on':
+    if in_live: print(f"  {server} already attached — nothing to do"); sys.exit(0)
+    if not in_park: print(f"  FATAL: {server} is neither attached nor parked; nothing to restore"); sys.exit(1)
+    live.setdefault('mcpServers', {})[server] = park.pop(server)
+    save(live_p, live); save(park_p, park)
+    print(f"  {server} ATTACHED — restart the topic for it to load")
+elif action == 'off':
+    if not in_live:
+        print(f"  {server} already parked — nothing to do"); sys.exit(0)
+    park[server] = live['mcpServers'].pop(server)
+    save(park_p, park); save(live_p, live)
+    print(f"  {server} parked — restart the topic to reclaim its tool-name cost")
+else:
+    print(f"  FATAL: unknown action '{action}' (use on|off|status)"); sys.exit(1)
+PY
+
+if [ -n "$RESTART" ]; then
+  echo "  restarting topic '$RESTART'…"
+  claude-topic restart "$RESTART"
+  cat <<'WARN'
+
+  WARNING — verify reachability. A restart resumes the same conversation, so nothing is lost, but
+  the Remote Control bridge is server-side state this box cannot observe. Run `claude-topic urls`
+  and OPEN the topic's URL. If it answers "session can't be found", the bridge is dead and the fix
+  is `claude-topic rotate <key>` — not another restart, which would re-announce the same dead id.
+WARN
+fi
