@@ -6,7 +6,7 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
-## [0.9.0] — 2026-08-18 — Take the ladder, not the plugin
+## [0.8.1] — 2026-08-18 — Take the ladder, not the plugin
 
 Coding agents over-build. That is not a controversial claim, and a viral MIT-licensed plugin —
 [ponytail](https://github.com/DietrichGebert/ponytail), 104k stars in two months — packages a good
@@ -1054,7 +1054,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
-[0.9.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.9.0
+[0.8.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.1
 [0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0
 [0.7.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.2
 [0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
