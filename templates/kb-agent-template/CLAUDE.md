@@ -73,6 +73,30 @@ Proceed without asking on routine, reversible, in-scope work:
 
 See `shared/policies/approval-policy.md` for the full policy; these gates are its explicit form.
 
+## Build discipline <if this agent writes application code>
+
+Before writing code, stop at the first rung that holds:
+
+1. **Does this need to exist at all?** Speculative need → skip it, and say so in one line.
+2. **Already in these repos?** A helper, component, type or pattern that already lives here → reuse it.
+   Re-implementing what sits a few files over is the most common form of slop.
+3. **Stdlib or the framework already does it?** Use it.
+4. **A native platform feature covers it?** `<input type="date">` over a picker library, CSS over JS, a
+   DB constraint over app code.
+5. **An already-installed dependency solves it?** Use it — never add a new one for what a few lines do.
+6. **Can it be one line?** One line.
+7. **Only then:** the minimum that works.
+
+The ladder runs **after** you understand the problem, never instead of it: read the code the change
+touches and trace the real flow first. The smallest diff in the wrong place is not lazy, it is a second
+bug. Never simplify away input validation at trust boundaries, error handling that prevents data loss,
+security, accessibility, or anything <OWNER> explicitly asked for.
+
+<Delete this whole section for agents that do not build — it earns its ~350 tokens only where the agent
+writes code. Adapted from [ponytail](https://github.com/DietrichGebert/ponytail) (MIT); see
+[the application layer](../../docs/app-layer.md) for why this is copied as prose rather than installed
+as a plugin.>
+
 ## Safety invariants
 
 - **Never** store secrets, credentials, private keys or raw private data in any agent repository, in

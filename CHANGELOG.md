@@ -6,6 +6,39 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.9.0] — 2026-08-18 — Take the ladder, not the plugin
+
+Coding agents over-build. That is not a controversial claim, and a viral MIT-licensed plugin —
+[ponytail](https://github.com/DietrichGebert/ponytail), 104k stars in two months — packages a good
+correction for it: a seven-rung ladder you climb before writing code, stopping at the first rung that
+holds. The correction is worth having. The **packaging** is not, and that gap is the whole point of this
+release: **an agent brain takes on prose, not dependencies.**
+
+### Added
+- **A `Build discipline` section in the agent template**
+  ([`templates/kb-agent-template/CLAUDE.md`](templates/kb-agent-template/CLAUDE.md)), marked for
+  deletion on agents that do not build — it earns its ~350 tokens only where the agent writes code.
+  Seven rungs: does this need to exist at all, is it already in these repos, stdlib, native platform
+  feature, already-installed dependency, one line, and only then the minimum that works. Plus the two
+  rules that keep it from becoming a licence to be careless — the ladder runs **after** you understand
+  the problem, never instead of it, and it never simplifies away trust-boundary validation, error
+  handling that prevents data loss, security or accessibility.
+- **[`app-layer.md`](docs/app-layer.md) records why the ladder is copied and the plugin is not.** Three
+  reasons, each of which generalizes well past this one plugin:
+  - its hooks execute `node` at `SessionStart`, `SubagentStart` and `UserPromptSubmit`, with the
+    agent's own privileges, updated through a plugin marketplace nobody on your side reviews — on a box
+    where one agent holds sudo, that is a standing code-execution channel into the privileged context;
+  - its `SubagentStart` hook ships with **no matcher**, so "at most three short lines, no essays" lands
+    in code-review, audit and security subagents too, and a reviewer told to be brief reports fewer
+    findings;
+  - the advertised token saving does not survive independent measurement — roughly −10% with an
+    interval that touches zero, against −20% advertised — which matters precisely because the saving is
+    the reason most people install it.
+
+The mechanism for this was already here: one always-on contract file, per agent, since 0.7.0. What was
+missing was the worked example of using it to absorb a third-party idea **without** taking on the third
+party. That is the shape worth repeating: read the plugin, keep the judgement, leave the hooks.
+
 ## [0.8.0] — 2026-08-16 — The capability was already there; nobody had told the agents
 
 A framework can ship a capability and still not deliver it. The `claude-topic` wrapper has been
@@ -1021,9 +1054,10 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
-[0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
+[0.9.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0
 [0.7.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.2
+[0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.0
 [0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8
 [0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7

@@ -41,6 +41,33 @@ works well with the rest of the system, and how the reference deployment uses it
 
 This keeps the blast radius small: deploying an app doesn't require, and can't reach, host privileges.
 
+## Build discipline for the dev-agent
+
+The dev-agent is the one agent in a fleet that writes application code, so it is the one whose contract
+carries a **build-discipline ladder** — YAGNI, reuse before rewrite, stdlib and native platform features
+before dependencies, one line before fifty (the `Build discipline` section of
+`templates/kb-agent-template/CLAUDE.md`). Coding agents over-build by default, and the ladder is the
+cheapest correction available: a page of prose in the file the runtime already loads.
+
+**Copy the ladder as prose; do not install a plugin for it.** The idea is
+[ponytail](https://github.com/DietrichGebert/ponytail) (MIT), which packages the same ladder for 20+
+agent hosts. Three reasons the packaged form does not fit an agent fleet:
+
+- **It executes code in every session.** Its hooks run `node` at `SessionStart`, `SubagentStart` and
+  `UserPromptSubmit`, with the agent's own privileges, updated through a plugin marketplace nobody on
+  your side reviews. On a box where one agent holds sudo, that is a standing code-execution channel into
+  the privileged context — the exact surface this governance model exists to close.
+- **It biases your reviewers.** The `SubagentStart` hook ships with no matcher, so "at most three short
+  lines, no essays" reaches code-review, audit and security subagents too. A reviewer told to be brief
+  reports fewer findings.
+- **The token saving is not the point, and is smaller than advertised.** The injected ruleset is ~2.8k
+  tokens resident in context; independent measurement puts the real cost saving near −10% with an
+  interval that touches zero, against −20% advertised, and concentrated on tasks where the agent would
+  have over-built. Take the ladder for the code it stops you writing, not for the tokens.
+
+The general rule this illustrates: **an agent brain takes on prose, not dependencies.** A good idea from
+a third-party plugin is worth adopting; its update channel and its hooks are not.
+
 ## How the reference deployment uses it
 
 In the reference deployment (see [`reference-architecture.md`](reference-architecture.md)):
