@@ -58,7 +58,11 @@ the foundations are" — a reminder that the privilege is a liability to handle,
   > (`ss -tlnp`), and remember that **a host firewall is not enough** — Docker publishes ports
   > through its own nftables chains and walks straight past UFW's INPUT rules. The layer that can
   > carry the policy is the provider firewall, or a bind address.
-- **Celebrimbor** deploys the website and builds **n8n** workflows with its own deploy token.
+- **The root-agent** deploys the website and builds **n8n** workflows — but never as itself: the
+  npm/wrangler toolchain runs as an unprivileged `builder` Unix user, from a clone of an
+  already-pushed commit, with the deploy token readable only by that user. Until 2026-08-22 this
+  was the dev-agent's lane, held with its own token; the fold traded that separation for the
+  removal of a coordination seam, and `builder` is what contains the cost.
 - **Vaultwarden** runs as a Dokploy app as the owner's secret store (reachable only over the
   tailnet). Being honest about the current state: the agents' own tokens live in per-user files on
   the box (`~/.config/gh/hosts.yml`, `~/.claude.json`, `~/.config/<agent>/secrets.env`) and are

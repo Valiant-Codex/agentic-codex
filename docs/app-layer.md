@@ -78,9 +78,12 @@ In the reference deployment (see [`reference-architecture.md`](reference-archite
 - the **root-agent** owns the application layer since 2026-08-22, but never builds or deploys as
   itself: `npm`, `npx` and `wrangler` run as an unprivileged `builder` Unix user, from a clone of an
   already-pushed commit, with the deploy credentials readable only by that user;
-- **Vaultwarden** runs as a Dokploy app and holds every agent's secret, so a box rebuild restores
-  secrets from one place — and is itself **backed up off the box, regularly** (a VPS incident would
-  otherwise take the secret store down with everything else; see [`secrets.md`](secrets.md)).
+- **Vaultwarden** runs as a Dokploy app as the owner's secret store. Stated honestly, because the
+  optimistic version of this line is what an adopter reads while planning recovery: consolidating
+  *every* agent secret into it, with an off-box export, is the documented open item — **not yet the
+  achieved state**. Today the agents' own tokens still live in per-user files on the box and are
+  restored by hand on a rebuild. See [`secrets.md`](secrets.md) and the same note in
+  [`reference-architecture.md`](reference-architecture.md).
 
 ## Why this is docs-only
 
