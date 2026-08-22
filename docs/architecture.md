@@ -36,7 +36,6 @@ Markdown ([OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspir
 
 - `CLAUDE.md` — the whole always-on contract: identity, scope, gates, threat model. The one file the
   runtime loads by itself, and therefore the only place a binding rule can live.
-- `CLAUDE.md` — the single runtime bootstrap (symlinked to `~/CLAUDE.md`) that points to them.
 - `memory/`, `skills/`, `tools/` — durable memory, self-authored procedures, tool notes.
 - `deploy/` — the runtime wiring (`topics.tsv`, `claude-settings.json`, per-agent systemd user units).
 - `shared/` — a symlink to the sibling clone of `kb-agent-shared`.
@@ -47,7 +46,7 @@ back, and move it to another box or another framework. See [`portability.md`](po
 ### 2. Governance — one shared repo
 
 `kb-agent-shared` holds what must be **identical across every agent**: global policies (approval,
-memory, source-of-truth, access), OKF templates, cross-agent decision records, runbooks, and a
+memory, source-of-truth, access), OKF templates, cross-agent decision records, fleet-common skills, and a
 shared governance layer every brain reads. Every brain reaches it through a committed symlink
 `shared -> ../kb-agent-shared` to a **sibling clone** (not a git submodule — no pinning, no
 detached-HEAD, always-latest via `kb-sync`).

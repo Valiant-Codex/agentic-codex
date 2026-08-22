@@ -75,8 +75,9 @@ In the reference deployment (see [`reference-architecture.md`](reference-archite
 - the **root-agent (Durin)** runs Dokploy on the VPS, owns the Cloudflare zone (Tunnel + Access in front
   of admin UIs like Dokploy and a Cockpit console), runs the daily backups, and operates the
   `agentic-monitor` heartbeat;
-- the **dev-agent (Celebrimbor)** deploys the marketing website and builds n8n automation workflows
-  with its own deploy rights — routed through *its* token, not through root;
+- the **root-agent** owns the application layer since 2026-08-22, but never builds or deploys as
+  itself: `npm`, `npx` and `wrangler` run as an unprivileged `builder` Unix user, from a clone of an
+  already-pushed commit, with the deploy credentials readable only by that user;
 - **Vaultwarden** runs as a Dokploy app and holds every agent's secret, so a box rebuild restores
   secrets from one place — and is itself **backed up off the box, regularly** (a VPS incident would
   otherwise take the secret store down with everything else; see [`secrets.md`](secrets.md)).

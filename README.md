@@ -150,7 +150,7 @@ README_AGENT.md           ← the bring-up procedure (for the root agent, or a h
 docs/                     ← the write-up: how and why it works
 templates/
   infra/                  ← the host layer (root-owned wrapper, systemd, monitor, provisioning)
-  kb-agent-shared/        ← shared governance (policies, templates, runbooks) every agent reads
+  kb-agent-shared/        ← shared governance (policies, templates, skills) every agent reads
   kb-agent-template/      ← one agent brain scaffold (a single always-on CLAUDE.md)
   root-agent-skills/      ← the privileged agent's skills (lifecycle, patching, fleet changes)
 LICENSE                   ← MIT

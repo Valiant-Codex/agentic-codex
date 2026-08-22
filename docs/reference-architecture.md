@@ -8,15 +8,15 @@ other secrets appear here — those never leave the private side.)
 
 ## The fleet
 
-Three active agents run as Claude Code sessions on one Debian-based VPS, each a distinct Unix user
-with its own GitHub bot account and brain repo, plus one **dormant** fourth. They're named after
+Two active agents run as Claude Code sessions on one Debian-based VPS, each a distinct Unix user
+with its own GitHub bot account and brain repo, plus two **dormant**. They're named after
 Tolkien's smiths, delvers and keepers — a small, memorable convention, not a requirement.
 
 | Agent | Archetype | Privilege | What it owns |
 |---|---|---|---|
-| **Durin** | root-agent | `sudo` — owns the host | Infra/ops: users, packages, Docker & Dokploy, Cloudflare zone (Tunnel + Access), backups, provisioning new agents, and the `agentic-monitor` heartbeat. The only privileged principal. |
+| **Durin** | root-agent | `sudo` — owns the host | Infra/ops: users, packages, Docker & Dokploy, Cloudflare zone (Tunnel + Access), backups, provisioning new agents, and the `agentic-monitor` heartbeat. The only privileged principal. **Since 2026-08-22 it also owns the application layer** — website, web apps, n8n — building and deploying through an unprivileged `builder` Unix user, never as itself. |
 | **Galadriel** | cos-agent | none | Chief of Staff: research, business reasoning, orchestration, content, intel briefings — **and** finance, fiscal compliance, the legal entity and the unified agenda, folded back in 2026-08-03. Broad tools, no root. |
-| **Celebrimbor** | dev-agent | none (own deploy token) | Build/deploy: the marketing website and n8n automation workflows, using its own scoped deploy rights — never routed through root. |
+| **Celebrimbor** | dev-agent | none (own deploy token) | **Dormant since 2026-08-22.** Ran build/deploy for the marketing website and n8n workflows with its own scoped deploy rights. The seam that ended it was Cloudflare, touched by both it and the root-agent: every deploy needing a DNS record or an Access policy became a human relay. |
 | **Elrond** | cfo-agent | none | **Dormant since 2026-08-03.** Ran finance & admin as a separate agent for five weeks; the split cost more coordination than the separation bought, so the scope went back to Galadriel. |
 
 **Splitting an agent out is reversible, and retiring one is not deleting it.** Elrond's brain repo is
@@ -35,7 +35,7 @@ the foundations are" — a reminder that the privilege is a liability to handle,
   `kb-agent-cfo-elrond`: each a Git
   repo of OKF-style Markdown (identity, memory, skills, tools), reaching shared governance through a
   `shared -> ../kb-agent-shared` sibling-clone symlink.
-- **Governance** — `kb-agent-shared`: the policies, templates, decisions, runbooks, and cross-agent
+- **Governance** — `kb-agent-shared`: the policies, templates, decisions, fleet-common skills, and cross-agent
   governance layer every agent reads. New agents are scaffolded from `kb-agent-template`.
 - **Host** — `infra`: the `claude-topic` wrapper, systemd units, `kb-sync`, `agentic-monitor`,
   `provision-agent`. Installed by Durin.

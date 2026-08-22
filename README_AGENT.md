@@ -102,8 +102,9 @@ turn, so do not skip them:
    delegation, the untrusted-content rule, the human-confirm gates. It is the only file the runtime
    loads by itself, so anything that must bind belongs in it and nowhere else;
 2. **`kb-agent-shared/owner-profile.md`** — who *you* are, how you want to be worked with, and what your
-   org is. It ships as a skeleton of prompts; every agent loads it every session, so if you leave it
-   unfilled your agents read placeholder text as fact about you;
+   org is. It ships as a skeleton of prompts. It is **not** auto-loaded — only `CLAUDE.md` is — but every
+   agent reads it when a task needs context about you, so if you leave it unfilled your agents read
+   placeholder text as fact about you;
 3. `deploy/topics.tsv` — the session(s) you want.
 
 **Review the diffs**, then create the private remotes and push:
