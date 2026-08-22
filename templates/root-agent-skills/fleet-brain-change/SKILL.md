@@ -50,8 +50,8 @@ body. The root-agent's own shared clone is read-only (its token 403s on push).
 
 > If instead your deployment makes the **root-agent** the sole direct writer on `kb-agent-shared` —
 > a defensible choice, since `shared/skills/` is *instructions every agent loads* and reaches every
-> brain through an unreviewed auto-sync, which argues for the least-injection-exposed principal
-> holding that write — then this paragraph does not apply: author in your own clone and push with
+> brain through an unreviewed auto-sync, so a single reviewable writer beats several — then this
+> paragraph does not apply: author in your own clone and push with
 > your own token. Pick one and write it down; the failure mode is an agent that assumes the other
 > arrangement and silently 403s.
 
