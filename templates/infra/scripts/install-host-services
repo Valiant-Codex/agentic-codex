@@ -137,6 +137,7 @@ echo "  [ok] /usr/local/bin/claude-topic (root-owned)"
 # fleet roster — single source of truth for kb-sync / agentic-monitor / divergence-check.
 # The shrink guard that protects this ran at step 0, before anything was mutated.
 inst 0644 fleet-agents /usr/local/share/agentic/fleet-agents
+inst 0644 fleet-dormant /usr/local/share/agentic/fleet-dormant
 echo "  [ok] fleet roster (/usr/local/share/agentic/fleet-agents)"
 
 # agentic-divergence-check (daily drift detector + update-availability report).
@@ -186,6 +187,25 @@ done
 # per-agent, human-invoked step, and it prints the disclosure the gate asks for. This flag exists for
 # the other case — an existing fleet being re-installed, or a rebuilt box — where re-running
 # provisioning per agent would be busywork.
+# DORMANT agents are skipped here. Without this, `--enable-writers` on a rebuilt box turns the nightly
+# writer back on for every name in the roster — including agents deliberately put to sleep, whose brain
+# repos are typically ARCHIVED. That push fails, the unit fails, and your monitor pages you every night:
+# an unattended writer resurrecting itself is exactly the blast radius the human-confirm gate bounds.
+# agentic-divergence-check asserts the opposite for these agents, so without this the two root-installed
+# scripts contradict each other by construction.
+#
+# The FILE is authoritative when it exists, empty included — an emptied list means "nobody is dormant",
+# not "fall back to whatever was hardcoded". Only a missing file uses a built-in, and it says so.
+if [ -n "${DORMANT_AGENTS+x}" ]; then
+  :
+elif [ -f "$HERE/fleet-dormant" ]; then
+  # `|| true`: no matches is exit 1, and `set -euo pipefail` would abort the whole installer.
+  DORMANT_AGENTS="$(grep -vE '^\s*(#|$)' "$HERE/fleet-dormant" 2>/dev/null | tr -d ' \t\r' | tr '\n' ' ' || true)"
+else
+  DORMANT_AGENTS=""
+  echo "  [WARN] no $HERE/fleet-dormant — treating every roster agent as active"
+fi
+
 if [ "${1:-}" = "--enable-writers" ]; then
   echo "  -- per-agent memory-mirror timers (from $HERE/fleet-agents) --"
   echo "     each writes runtime auto-memory into that agent's brain, commits '[mirror] …' and pushes;"
@@ -195,6 +215,11 @@ if [ "${1:-}" = "--enable-writers" ]; then
       [ -n "$u" ] || continue
       if ! getent passwd "$u" >/dev/null; then
         echo "     [WARN] roster lists '$u' but there is no such Unix user — skipping"
+        continue
+      fi
+      _dorm=0; for _d in $DORMANT_AGENTS; do [ "$_d" = "$u" ] && _dorm=1; done
+      if [ "$_dorm" = 1 ]; then
+        echo "     [skip] memory-mirror@${u}.timer — '$u' is dormant (see $HERE/fleet-dormant)"
         continue
       fi
       if err_out="$(systemctl enable --now "memory-mirror@${u}.timer" 2>&1)"; then

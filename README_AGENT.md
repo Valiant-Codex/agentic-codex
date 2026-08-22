@@ -32,7 +32,7 @@ You cannot do these for yourself; verify them, don't assume them:
 7. **Runtime deps present:** `git`, `gh` (the GitHub CLI — required by the token wiring and by
    `provision-agent`'s auth check), `rsync` (used nightly by `memory-mirror`) and `python3`
    (`claude-topic` uses it to read session IDs). None of these can be assumed present on a minimal
-   cloud image: `sudo apt install -y git gh rsync python3`. Plus **Node** in `~/.local/node` if any
+   cloud image: `sudo apt install -y git gh rsync python3 python3-yaml`. Plus **Node** in `~/.local/node` if any
    MCP server runs via `npx`.
 
 Quick self-check:

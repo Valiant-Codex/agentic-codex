@@ -366,6 +366,12 @@ check_brain(){ # <user> <repo>
     done <<< "$unit_keys"
   fi
 
+  # A dormant brain is a frozen snapshot: its prose and its bootstrap point at a world that has moved
+  # on, and fixing paths in a repo nobody may write (often archived) buys nothing. Everything above
+  # this line still applies to it — including that it must say DORMANT.
+  local _dorm_ref=0; for da in $DORMANT_AGENTS; do [ "$da" = "$u" ] && _dorm_ref=1; done
+  if [ "$_dorm_ref" = 1 ]; then return 0; fi
+
   # 6) The live entry point resolves. Cheap and load-bearing: the runtime reads ~/CLAUDE.md, and
   #    it silently lagged the repo during the v2 migration until provision-agent re-ran.
   local hc="$home/CLAUDE.md"

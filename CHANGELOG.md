@@ -6,6 +6,59 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.2] — 2026-08-22 — Dormancy is a state the scripts have to agree on
+
+A fleet that puts an agent to sleep needs *both* root-installed scripts to know it. In the reference
+deployment they disagreed: `agentic-divergence-check` asserted a dormant agent's nightly writer is
+**off**, while `install-host-services --enable-writers` enabled it for every name in the roster. On a
+rebuilt box — the flag's documented use case, and the moment nobody is watching — that resurrects a
+writer pushing to an archived repo: 403, failed unit, a page every night. An unattended writer turning
+itself back on is exactly the blast radius a human-confirm gate exists to bound.
+
+*(By this project's own rule a batch of correctness fixes is a minor. Shipped as a patch on the
+maintainer's call; the substance is below either way.)*
+
+### Added
+- **`templates/infra/fleet-dormant`** — one Unix user per line, next to `fleet-agents`. A dormant agent
+  keeps its user, clones and roster entry (removing it would leave an unswept home nothing looks at),
+  so dormancy needs its own declaration rather than an absence. Read by the installer *and* the drift
+  check, which is the point of having a file instead of a literal in one script.
+- **The dormant-brain bail-out in `templates/infra/scripts/agentic-divergence-check`**, which had
+  landed in the reference implementation and not here. A dormant brain is a frozen snapshot: its prose
+  points at a world that moved on, and fixing references in a repo nobody may write buys nothing.
+  Everything before the bail-out still applies — including that its `CLAUDE.md` must say DORMANT.
+
+### Fixed
+- **`install-host-services --enable-writers` now skips dormant agents.** Two details found by testing
+  fixtures rather than reading the code, both in the new code: a `fleet-dormant` containing only
+  comments made `grep` exit 1 and, under `set -euo pipefail`, aborted the whole installer — and an
+  empty list is the normal state; and resolving it with `${VAR:-default}` meant a deliberately emptied
+  file silently fell back to a hardcoded list. The file is authoritative **when it exists, empty
+  included**; only a missing file uses a built-in, and it says so.
+- **`README_AGENT.md` claimed `owner-profile.md` is "loaded every session".** It is not — only
+  `CLAUDE.md` is auto-loaded. This is the precise false claim that release 0.7.0 existed to eliminate
+  (every `SOUL.md` asserted it in its own frontmatter and it was false the day it was written),
+  reintroduced in the one document a new adopter follows literally.
+- **`docs/architecture.md` had two bullets for `CLAUDE.md`**, the second reading "the single runtime
+  bootstrap … that points to **them**" — a dangling referent left by deleting `SOUL.md` and
+  `OPERATING.md`.
+- **The prerequisites omitted `python3-yaml`.** `apt install python3` does not provide PyYAML, and
+  without it the frontmatter validation cannot run — so a new adopter's very first check reports a
+  drift finding per brain. (The deeper issue, that this path reports CLEAN instead of failing closed,
+  is a known open item and not fixed here.)
+- **`app-layer.md` said the secret store is "backed up off the box, regularly"** while
+  `reference-architecture.md` says plainly that an off-box export is "the documented open item — not
+  yet the achieved state". Two pages of one repo disagreeing on a security fact, with the optimistic
+  one being what an adopter reads while planning recovery. Aligned to the honest version.
+- **`runbooks/` was still listed as part of the shared governance repo in three places**, abolished in
+  0.7.0 — a claim the repo already contradicted in `templates/root-agent-skills/README.md`
+  ("That directory is gone").
+- **`docs/divergence-check.md` described the timer assertion in the direction that inverts for dormant
+  agents**, and `DORMANT_AGENTS` appeared nowhere in the documentation.
+- Reference-architecture and app-layer now describe **two** active agents and the unprivileged build
+  user that runs the npm toolchain, matching what the reference deployment actually does since its
+  dev-agent was folded into its root-agent.
+
 ## [0.8.1] — 2026-08-18 — Take the ladder, not the plugin
 
 Coding agents over-build. That is not a controversial claim, and a viral MIT-licensed plugin —
@@ -1054,6 +1107,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.8.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.2
 [0.8.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.1
 [0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0
 [0.7.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.2

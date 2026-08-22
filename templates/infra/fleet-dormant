@@ -1,0 +1,15 @@
+# DORMANT agents, one Unix user per line (comments/blank lines ignored).
+#
+# A dormant agent keeps its Unix user, its clones and its roster entry in `fleet-agents`, and is
+# deliberately not running. Removing it from the roster instead would leave an unswept home that no
+# fleet script looks at; keeping it there without marking it dormant makes the writers look missing.
+# So it is listed in BOTH files, and this one is what says "on purpose".
+#
+# What reads this:
+#   - install-host-services --enable-writers : skips these, so a re-install does not resurrect a
+#     nightly writer that pushes to an archived repo (403 -> failed unit -> a nightly page for Dario).
+#   - agentic-divergence-check              : inverts its timer assertion for these — a dormant
+#     agent's memory-mirror timer must be OFF, and an ENABLED one is drift.
+#
+# Waking an agent is: remove it here, un-archive its repo, re-enable its timer and topics.
+# (one Unix user per line — empty means no dormant agents)
