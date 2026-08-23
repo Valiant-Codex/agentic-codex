@@ -98,6 +98,48 @@ if [ -d "$AUTOMEM" ]; then
         fail "mirror: commit failed"
       fi
     fi
+    # --- POST-MIRROR ASSERTIONS. Deliberately AFTER the push, never before. -------------------------
+    #
+    # This job asserted a great deal about its own execution and nothing about its RESULT. Two ways
+    # memory is lost that nothing on this box would have noticed:
+    #
+    #   (a) A file with no line in MEMORY.md is invisible to recall. The bytes are safe in git and the
+    #       fact is gone, which is worse than an error — it looks healthy. Found twice independently
+    #       in a single day in the reference deployment: five orphans in one agent's store, and four
+    #       (13.7 KB) in another's.
+    #   (b) rsync --delete propagates a disappearance from the store into the repo and commits it under
+    #       a generic "[mirror]" message. Recoverable from history, but only if someone reads the diff.
+    #
+    # These RAISE RC; they never abort. The secret scan aborts before mirroring on purpose — a secret in
+    # git cannot be un-published. This is the opposite case: aborting on a coverage gap would turn a
+    # findability problem into a durability outage, i.e. the check would cause a worse loss than the one
+    # it prevents. That guard/ordering inversion is a bug class this fleet has already paid for. Mirror,
+    # push, THEN assert.
+    #
+    # Vocabulary-free: it counts files and looks for "(<filename>)" in the index. Nothing to maintain.
+    idx="$AUTOMEM/MEMORY.md"
+    if [ -f "$idx" ]; then
+      orphans=""
+      for f in "$AUTOMEM"/*.md; do
+        [ -e "$f" ] || continue
+        b="$(basename "$f")"; [ "$b" = "MEMORY.md" ] && continue
+        grep -qF "($b)" "$idx" || orphans="$orphans $b"
+      done
+      [ -n "$orphans" ] && fail "memory NOT reachable: $(echo $orphans | wc -w) file(s) have no line in MEMORY.md, so recall cannot find them —$orphans"
+    else
+      fail "no MEMORY.md in $AUTOMEM — every memory is unreachable to recall until an index exists"
+    fi
+
+    # Did the count go DOWN? A drop is legitimate (a memory can be deleted deliberately) but it must
+    # never pass unremarked: this is the one place that sees the before and the after.
+    now_n="$(ls -1 "$AUTOMEM"/*.md 2>/dev/null | grep -cv '/MEMORY\.md$' || true)"
+    prev_n="$(run "cd '$BRAIN' && git show HEAD~1:memory/auto 2>/dev/null | grep -c '\.md$' || echo unknown")"
+    case "$prev_n" in
+      ''|unknown) : ;;
+      *) [ "${now_n:-0}" -lt "$prev_n" ] && fail "memory count DROPPED $prev_n -> $now_n — rsync --delete has just propagated a disappearance into the repo; check 'git show HEAD -- memory/auto' before it scrolls away" ;;
+    esac
+    # ------------------------------------------------------------------------------------------------
+
   fi
 elif [ -d "$BRAIN/memory/auto" ] && [ -n "$(ls -A "$BRAIN/memory/auto" 2>/dev/null)" ]; then
   # The source is gone but we have mirrored it before: this is a REGRESSION, not a fresh agent.

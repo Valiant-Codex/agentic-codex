@@ -6,6 +6,70 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.3] — 2026-08-23 — A guardian that cannot tell must say so
+
+Three fail-opens in the drift checker, a memory-durability gap nothing would have reported, and a
+budget that measured the cheaper half. Found by auditing the checker against deliberately broken
+fixtures rather than trusting its clean runs — which is the practice this release is really about:
+**a clean run never proves a check fires.**
+
+### Fixed — fail-opens
+
+- **PyYAML missing reported CLEAN, and deceptively.** The frontmatter validation ran twice: a verbose
+  pass that printed `[DRIFT]` lines and always exited 0, and a silent pass that returned the count.
+  Only the second fed the failure counter, so with PyYAML absent the log looked dirty while the exit
+  code and the dead-man's-switch ping both said clean. The comment above it claimed "Fails CLOSED".
+  Now one pass, reporting on a `COUNT=` line: the walk and the `type` vocabulary exist once, because
+  two copies of the same logic is how they drift apart.
+- **The reference check reported clean when it could not list files.** `subprocess.run` does not raise
+  on a non-zero exit, so an unreadable repo returned an empty file list — indistinguishable from a
+  repo with nothing wrong. It now drifts on a failed `git ls-files`, and on a repo with no `.md` at
+  all. *I could not look* must never render as *I looked and it was fine*.
+- **The AGENT_PATH assertion could not fail if the files were missing.** It counted the distinct
+  values it found, so three missing files plus one present was one variant — "unanimous". Only the
+  0-of-4 case drifted. It now asserts existence first: absence is not agreement.
+- **`${VAR:-default}` became `${VAR-default}`** for the roster, workspace and strict-clean lists. An
+  operator who empties one of these means empty; the `:-` form silently restores the built-in, which
+  is how a deliberately cleared list becomes last month's again.
+
+### Fixed — memory durability
+
+- **`memory-mirror` asserted a great deal about its own execution and nothing about its result.** Two
+  ways memory is lost that nothing would have noticed: a file with no line in `MEMORY.md` is invisible
+  to recall (the bytes are safe and the fact is gone, which is worse than an error because it looks
+  healthy), and `rsync --delete` propagates a disappearance from the store into the repo under a
+  generic `[mirror]` commit nobody reads. Both now raise the exit code, which routes to the existing
+  failed-unit alarm.
+
+  **They run after the push and never abort — that ordering is the design.** The secret scan aborts
+  *before* mirroring on purpose, because a secret in git cannot be un-published. This is the opposite
+  case: aborting on a coverage gap would turn a findability problem into a durability outage, so the
+  check would cause a worse loss than the one it prevents.
+
+### Added
+
+- **Dormant agents named as live actors.** The checker had no way to see the class of staleness that
+  matters most after an agent is put to sleep. Names are **derived** from the roster and
+  `fleet-dormant`, so waking or adding an agent needs no edit; the only literal list is a handful of
+  English tense markers, which describe grammar rather than technology and therefore do not rot.
+  `decisions/`, `memory/` and `archive/` are exempt — a record that cannot name a dormant agent is
+  useless. On its first run in the reference deployment it found ten live references that a full day
+  of manual sweeping had missed, including an access matrix still granting a revoked bot write on
+  production.
+- **The always-on budget now counts the runtime auto-memory index.** It watched `CLAUDE.md` plus its
+  imports and ignored the index the runtime injects on every session — which lives outside the repo
+  and, measured, cost more than the layer being watched. The path is derived from the agent's home,
+  the threshold is `CONTEXT_BUDGET`, and the breakdown is printed on **every** run, not only on
+  breach: the index grows by normal operation, so the useful signal is the trend.
+- `CONF` is overridable, so the checker can be exercised without pinging the dead-man's switch.
+
+### A note on the budget message
+
+The first version of the breach message said "trim the memory index". That prescribes the exact way a
+memory is lost: an unindexed file is unreachable. It now says to shorten the hooks, and says why
+deleting a line is a loss rather than a saving. Worth stating because it is the general failure —
+**a check whose remedy causes the harm it was written to prevent.**
+
 ## [0.8.2] — 2026-08-22 — Dormancy is a state the scripts have to agree on
 
 A fleet that puts an agent to sleep needs *both* root-installed scripts to know it. In the reference
@@ -1107,6 +1171,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.8.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.3
 [0.8.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.2
 [0.8.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.1
 [0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0

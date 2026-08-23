@@ -33,11 +33,14 @@
 # Canonical source: <ORG>/infra.
 set -uo pipefail
 
-ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
+# `${VAR-default}`, not `${VAR:-default}`: an operator who empties one of these means EMPTY. The
+# `:-` form silently restores the built-in, which is how a deliberately cleared list becomes last
+# month's again. Unset still falls back.
+ROSTER_FILE="${ROSTER_FILE-/usr/local/share/agentic/fleet-agents}"
 # Brains live at ~<user>/github/<org>/kb-agent-<role>-<user>. Every org dir under ~/github is
 # swept, so no ORG parameter is needed here — a literal placeholder in a path would have made the
 # whole checker silently find nothing and report CLEAN.
-CONF=/etc/agentic-monitor.env
+CONF="${CONF-/etc/agentic-monitor.env}"
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
 FAILS=0
@@ -65,7 +68,16 @@ INFRA_DIR="${INFRA_DIR:-/nonexistent}"
 # either an un-committed change to code that runs as root, or the state that makes kb-sync skip the
 # repo. provision-agent appends to infra/fleet-agents and asks a human to commit it, so this is the
 # assertion that keeps that from becoming the next silent manual step.
-STRICT_CLEAN_REPOS="${STRICT_CLEAN_REPOS:-infra kb-agent-shared}"
+STRICT_CLEAN_REPOS="${STRICT_CLEAN_REPOS-infra kb-agent-shared}"
+
+# Always-on context budget, in bytes: CLAUDE.md + its @-imports + the runtime auto-memory index.
+# Count the index: the runtime injects it on every session and it lives OUTSIDE the repo, so a budget
+# watching only CLAUDE.md can be — and in the reference deployment was — watching the cheaper half.
+#
+# Set it WITH HEADROOM. This assertion is for abnormal growth, not a permanent squeeze: the authored
+# layer is a small share of a session next to the harness base, so trimming here optimises the wrong
+# thing — and a budget treated as a target is how a curated memory file gets over-trimmed.
+CONTEXT_BUDGET="${CONTEXT_BUDGET-30000}"
 
 # Agents that are DORMANT: still on the box, still in the roster, deliberately not running. A dormant
 # agent keeps its Unix user, clones and roster entry — removing it would leave an unswept home and
@@ -75,7 +87,19 @@ STRICT_CLEAN_REPOS="${STRICT_CLEAN_REPOS:-infra kb-agent-shared}"
 # decide what the fleet checks — content is untrusted; this list is not.
 # Listing an agent here inverts the memory-mirror assertion: its timer must be OFF, so silently
 # re-enabling it is caught too.
-DORMANT_AGENTS="${DORMANT_AGENTS:-}"
+# Dormancy has ONE source on disk, shared with install-host-services: the two root-installed scripts
+# used to hold separate opinions, so `--enable-writers` re-enabled the very writers this check
+# asserts are off. The file is authoritative when it exists, empty included; only a missing file
+# falls back, and it says so rather than pretending.
+DORMANT_FILE="${DORMANT_FILE-/usr/local/share/agentic/fleet-dormant}"
+if [ -n "${DORMANT_AGENTS+x}" ]; then
+  :
+elif [ -n "$DORMANT_FILE" ] && [ -f "$DORMANT_FILE" ]; then
+  DORMANT_AGENTS="$(grep -vE '^\s*(#|$)' "$DORMANT_FILE" 2>/dev/null | tr -d ' \t\r' | tr '\n' ' ' || true)"
+else
+  DORMANT_AGENTS=""
+  drift "roster: $DORMANT_FILE is MISSING — dormancy is unknown, so every agent is treated as active; run install-host-services"
+fi
 
 echo "$(date -Is) agentic-divergence-check"
 
@@ -124,65 +148,69 @@ ALL_AGENTS="$(printf '%s\n%s\n' "$AGENTS" "$DISCOVERED" | grep . | sort -u)"
 #   memory/auto/** — machine-owned, byte-identical mirrors of the runtime's own store. The runtime
 #                    itself emits unquoted descriptions containing colons; validating them would be a
 #                    permanent false alarm about a file we must not edit.
-# Fails CLOSED: if PyYAML is unavailable the check reports that it could not run, rather than passing.
+# Fails CLOSED — and it did not, until 2026-08-22. The old shape ran the validation TWICE: a verbose
+# pass that printed `[DRIFT]` lines and always `exit 0`, then a silent pass that returned the count.
+# Only the second fed FAILS. With PyYAML missing, the first printed a [DRIFT] line and the second
+# returned 0, so the log looked dirty while the counter, the exit code and the healthchecks ping all
+# said CLEAN. A guardian that cannot tell must say so; this one told the human and lied to the machine.
+#
+# One pass now. It prints its findings and reports the count on a final COUNT= line, so the vocabulary
+# and the walk exist once — two copies of the same logic is how they drift apart.
 check_frontmatter(){ # <repo> <label>
-  local r="$1" n="$2"
-  python3 - "$r" "$n" <<'PY' || drift "$n: frontmatter validation could not run"
+  local r="$1" n="$2" out rc
+  out="$(python3 - "$r" "$n" <<'PY'
 import os,sys
 try:
     import yaml
 except ImportError:
-    print(f"  [DRIFT] {sys.argv[2]}: PyYAML missing — frontmatter is NOT being validated"); sys.exit(0)
+    sys.stderr.write("PyYAML missing\n"); sys.exit(2)
 ALLOWED={'skill','decision','policy','memory','tool-registry','template','reference','directory-readme','working-doc'}
 R,N=sys.argv[1],sys.argv[2]; bad=0
-for root,dirs,files in os.walk(R):
-    dirs[:]=[d for d in dirs if d not in ('.git','auto')]
-    for fn in files:
-        if not fn.endswith('.md') or fn=='CLAUDE.md': continue
-        p=os.path.join(root,fn)
-        try: s=open(p,encoding='utf-8').read()
-        except Exception: continue
-        if not s.startswith('---'): continue
-        try: fm=yaml.safe_load(s.split('---',2)[1])
-        except Exception as e:
-            bad+=1
-            print(f"  [DRIFT] {N}: {os.path.relpath(p,R)} frontmatter is not valid YAML ({type(e).__name__}) — quote any value containing ': '")
-            continue
-        # Closed `type` vocabulary. Declared 2026-08-07 and, for one day, declared and not applied:
-        # 36 files still carried retired values because nothing asserted it. A vocabulary nothing
-        # checks is a preference.
-        if isinstance(fm,dict):
-            t=fm.get('type')
-            if t is None:
-                bad+=1; print(f"  [DRIFT] {N}: {os.path.relpath(p,R)} has frontmatter but no `type`")
-            elif t not in ALLOWED:
-                bad+=1; print(f"  [DRIFT] {N}: {os.path.relpath(p,R)} has type '{t}', outside the closed vocabulary ({', '.join(sorted(ALLOWED))})")
-sys.exit(0)
+try:
+    walked=False
+    for root,dirs,files in os.walk(R):
+        walked=True
+        dirs[:]=[d for d in dirs if d not in ('.git','auto')]
+        for fn in files:
+            if not fn.endswith('.md') or fn=='CLAUDE.md': continue
+            p=os.path.join(root,fn)
+            try: s=open(p,encoding='utf-8').read()
+            except Exception: continue
+            if not s.startswith('---'): continue
+            try: fm=yaml.safe_load(s.split('---',2)[1])
+            except Exception as e:
+                bad+=1
+                print(f"{N}: {os.path.relpath(p,R)} frontmatter is not valid YAML ({type(e).__name__}) — quote any value containing ': '")
+                continue
+            # Closed `type` vocabulary. Declared 2026-08-07 and, for one day, declared and not applied:
+            # 36 files still carried retired values because nothing asserted it. A vocabulary nothing
+            # checks is a preference.
+            if isinstance(fm,dict):
+                t=fm.get('type')
+                if t is None:
+                    bad+=1; print(f"{N}: {os.path.relpath(p,R)} has frontmatter but no `type`")
+                elif t not in ALLOWED:
+                    bad+=1; print(f"{N}: {os.path.relpath(p,R)} has type '{t}', outside the closed vocabulary ({', '.join(sorted(ALLOWED))})")
+    # A tree we could not walk at all is "unknown", not "clean" — the zero-iteration fail-open.
+    if not walked: sys.stderr.write("tree not walkable\n"); sys.exit(2)
+except OSError as e:
+    sys.stderr.write(f"walk failed: {e}\n"); sys.exit(2)
+print(f"COUNT={bad}")
 PY
-  local c; c=$(python3 - "$r" <<'PY'
-import os,sys
-try: import yaml
-except ImportError: print(0); sys.exit(0)
-ALLOWED={'skill','decision','policy','memory','tool-registry','template','reference','directory-readme','working-doc'}
-R=sys.argv[1]; b=0
-for root,dirs,files in os.walk(R):
-    dirs[:]=[d for d in dirs if d not in ('.git','auto')]
-    for fn in files:
-        if not fn.endswith('.md') or fn=='CLAUDE.md': continue
-        p=os.path.join(root,fn)
-        try: s=open(p,encoding='utf-8').read()
-        except Exception: continue
-        if not s.startswith('---'): continue
-        try: fm=yaml.safe_load(s.split('---',2)[1])
-        except Exception: b+=1; continue
-        if isinstance(fm,dict) and fm.get('type') not in ALLOWED: b+=1
-print(b)
-PY
-)
-  [ "${c:-0}" -gt 0 ] && { FAILS=$((FAILS+c)); DRIFT_LOG="${DRIFT_LOG}${DRIFT_LOG:+; }$n: $c file(s) with invalid frontmatter"; }
+)"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    drift "$n: frontmatter validation could NOT run (PyYAML missing, or the tree is unreadable) — this is unknown, not clean"
+    return 0
+  fi
+  local c; c="$(printf '%s\n' "$out" | sed -n 's/^COUNT=//p' | tail -1)"
+  printf '%s\n' "$out" | sed '/^COUNT=/d;/^$/d' | while IFS= read -r l; do echo "  [DRIFT] $l"; done
+  if [ -z "$c" ]; then
+    drift "$n: frontmatter validation produced no count — treating as unknown"
+  elif [ "$c" -gt 0 ]; then
+    FAILS=$((FAILS+c)); DRIFT_LOG="${DRIFT_LOG}${DRIFT_LOG:+; }$n: $c file(s) with invalid frontmatter"
+  fi
   return 0
 }
-
 check_brain(){ # <user> <repo>
   local u="$1" r="$2" n; n="$(basename "$r")"
   echo "== $n =="
@@ -236,8 +264,24 @@ check_brain(){ # <user> <repo>
       esac
       [ -f "$r/$imp" ] && impsz=$((impsz + $(wc -c < "$r/$imp")))
     done < <(grep -oE '(^|[[:space:]])@[A-Za-z0-9._/-]+\.md' "$r/CLAUDE.md" 2>/dev/null | sed 's/^[[:space:]]*@//' | sort -u)
-    local total=$((cmsz + impsz))
-    [ "$total" -gt 20000 ] && drift "$n: always-on context is ${total} bytes (CLAUDE.md ${cmsz} + imports ${impsz}) — over the 20k working budget; trim the imported file or push reference material into skills/"
+    # The auto-memory INDEX is always-on too, and the budget used to ignore it because it lives
+    # outside the repo. Measured 2026-08-22 on the root agent: CLAUDE.md + imports = 16,538 bytes =
+    # 3,274 tokens, while the index alone = 8,257 bytes = 3,701 tokens. The layer the budget did not
+    # watch cost MORE than the layer it did. A budget that measures the cheaper half is decoration.
+    #
+    # Derived, not configured: the runtime keys its store by the session's cwd, and supervised topics
+    # run with cwd = the agent's home, so the path follows from the home directory. If it is absent
+    # the agent simply has no auto-memory yet — that is a legitimate zero, not an unknown.
+    local _bhome; _bhome="$(getent passwd "$u" | cut -d: -f6)"
+    local memidx="$_bhome/.claude/projects/-$(echo "${_bhome#/}" | tr '/' '-')/memory/MEMORY.md"
+    local memsz=0
+    [ -f "$memidx" ] && memsz=$(wc -c < "$memidx")
+    local total=$((cmsz + impsz + memsz))
+    # Reported EVERY run, not only on breach. The index grows by normal operation — every memory the
+    # runtime writes adds a line — so the useful signal is the trend, and a number you only see once
+    # it is already too late is a number you cannot plan around.
+    echo "  [info] $n: always-on ${total}B = CLAUDE.md ${cmsz} + imports ${impsz} + memory index ${memsz} (budget ${CONTEXT_BUDGET})"
+    [ "$total" -gt "$CONTEXT_BUDGET" ] && drift "$n: always-on context is ${total} bytes (CLAUDE.md ${cmsz} + imports ${impsz} + auto-memory index ${memsz}) — over the ${CONTEXT_BUDGET} working budget. Shorten the index HOOKS or push reference material out of CLAUDE.md into skills/ — do NOT delete index lines: a memory with no line in MEMORY.md is invisible to recall, which is a loss, not a saving."
   fi
 
   # 2) Skills: folders with SKILL.md, frontmatter name == dirname, non-empty description.
@@ -395,10 +439,22 @@ check_brain(){ # <user> <repo>
   local refbad; refbad="$(MD_BASE="$(dirname "$r")" REPO="$r" python3 - "$u" <<'PY'
 import os,re,subprocess,sys
 repo=os.environ["REPO"]; base=os.environ["MD_BASE"]; n=os.path.basename(repo)
+# Fail CLOSED on "cannot list". subprocess.run does NOT raise on a non-zero exit, so a repo we
+# cannot read used to come back as an empty file list — indistinguishable from a repo with nothing
+# wrong. "I could not look" must not render as "I looked and it was fine".
 try:
-    files=subprocess.run(["runuser","-u",sys.argv[1],"--","git","-C",repo,"ls-files","*.md"],
-                         capture_output=True,text=True,timeout=60).stdout.split()
-except Exception: files=[]
+    _p=subprocess.run(["runuser","-u",sys.argv[1],"--","git","-C",repo,"ls-files","*.md"],
+                      capture_output=True,text=True,timeout=60)
+    if _p.returncode != 0:
+        print(f"{n}: reference check could NOT list files (git ls-files exit {_p.returncode}) — unknown, not clean")
+        sys.exit(0)
+    files=_p.stdout.split()
+except Exception as e:
+    print(f"{n}: reference check could NOT run ({type(e).__name__}) — unknown, not clean")
+    sys.exit(0)
+if not files:
+    print(f"{n}: reference check found no .md files at all — unknown, not clean")
+    sys.exit(0)
 skip=("decisions/","handoffs/","memory/")
 # Backticked candidates must contain a '/': a bare `SKILL.md` or `ui.json` in prose names a
 # kind of file, not a link to one. Markdown links are checked as written.
@@ -421,6 +477,62 @@ PY
 )"
   if [ -n "$refbad" ]; then
     while IFS= read -r l; do [ -n "$l" ] && drift "$l"; done <<< "$refbad"
+  fi
+
+  # 7b) DORMANT AGENTS NAMED AS LIVE ACTORS. The gap this check did not have on 2026-08-22, when it
+  #     reported 0 drift twice while a dormant agent was named as the active owner of the application
+  #     layer in nine files, an access matrix handed production write to its revoked bot, and a
+  #     runbook said to hand it a token.
+  #
+  #     It stays vocabulary-free in the sense that matters: the NAMES are derived from the roster and
+  #     the dormant file, so adding or waking an agent needs no edit here. The only literal list is a
+  #     handful of English tense markers — those describe grammar, not technology, and grammar does
+  #     not rot. A dormant agent may appear in an active doc; it may not appear in the present tense.
+  #
+  #     Scope is active prose only. decisions/, memory/ and archive/ are history by definition and a
+  #     record that could not name a dormant agent would be useless.
+  if [ -n "${DORMANT_AGENTS// /}" ]; then
+    local stale
+    stale="$(REPO="$r" DORM="$DORMANT_AGENTS" python3 - "$u" <<'PY'
+import os,re,subprocess,sys
+repo=os.environ["REPO"]; n=os.path.basename(repo)
+names=[d for d in os.environ["DORM"].split() if d]
+if not names: sys.exit(0)
+try:
+    _p=subprocess.run(["runuser","-u",sys.argv[1],"--","git","-C",repo,"ls-files","*.md"],
+                      capture_output=True,text=True,timeout=60)
+    if _p.returncode!=0:
+        print(f"{n}: dormant-actor check could NOT list files (git ls-files exit {_p.returncode}) — unknown, not clean"); sys.exit(0)
+    files=_p.stdout.split()
+except Exception as e:
+    print(f"{n}: dormant-actor check could NOT run ({type(e).__name__}) — unknown, not clean"); sys.exit(0)
+skip=("decisions/","memory/","archive/","CHANGELOG")
+# Tense/status markers. Small, and about grammar rather than technology, which is why it is allowed
+# to be a literal list: it does not need maintaining when the fleet changes.
+PAST=re.compile(
+    r"dormant|dormiente|archiv|former|superseded|historical|storic|previously|no longer|used to"
+    r"|until |since |was |were |had |inherit|absorbed|folded|provenance|migrat|retired|sleep|asleep"
+    # Attribution and dates read as history: "Added by X", "Cut by X on 2026-08-03". A line that
+    # credits past work is not a line that routes future work.
+    r"|\b(?:added|cut|wrote|authored|built|created|shipped|introduced|handed|owned|ran|left)\b"
+    r"|\d{4}-\d{2}-\d{2}|\b(?:19|20)\d{2}\b", re.I)
+bad=[]
+for f in files:
+    if f.startswith(skip) or os.path.basename(f).startswith("CHANGELOG"): continue
+    try: txt=open(os.path.join(repo,f),encoding="utf-8",errors="ignore").read()
+    except Exception: continue
+    for i,line in enumerate(txt.splitlines(),1):
+        for nm in names:
+            if re.search(rf"\b{re.escape(nm)}\b", line, re.I) and not PAST.search(line):
+                bad.append(f"{f}:{i} names dormant agent '{nm}' with no past-tense or dormancy marker")
+                break
+for b in bad[:20]: print(f"{n}: {b}")
+if len(bad)>20: print(f"{n}: ... and {len(bad)-20} more line(s) naming a dormant agent in the present tense")
+PY
+)"
+    if [ -n "$stale" ]; then
+      while IFS= read -r l; do [ -n "$l" ] && drift "$l"; done <<< "$stale"
+    fi
   fi
 
   # 8) PER-AGENT INSTALLED ARTIFACTS. installed.manifest only covers root-installed paths, but
@@ -572,10 +684,31 @@ for _u in $ALL_AGENTS; do
   case "$INFRA_DIR/" in "$(getent passwd "$_u" | cut -d: -f6)"/github/*) _infra_audited=1; break;; esac
 done
 [ "$_infra_audited" = 1 ] || drift "installed: the manifest says the host services were installed from '$INFRA_DIR', which is not inside any fleet agent's ~/github/<org>/ — that clone is audited by nothing (not its cleanliness, not whether it is pushed), yet it is the source every 'installed matches source' comparison trusts. Re-run install-host-services from the canonical infra clone."
-AP_COUNT="$(grep -h '^AGENT_PATH=' \
-  "$INFRA_DIR/scripts/agentic-divergence-check" "$INFRA_DIR/scripts/memory-mirror" \
-  "$INFRA_DIR/scripts/provision-agent" "$INFRA_DIR/scripts/agentic-monitor" 2>/dev/null | sort -u | grep -c .)"
-[ "${AP_COUNT:-0}" = 1 ] || drift "installed: AGENT_PATH definitions across the four infra scripts are not identical (found $AP_COUNT variants) — re-align them; a diverged PATH silently changes what runs as the agents"
+# Assert the four files EXIST before comparing them. The old form counted the distinct values it
+# found: three missing files plus one present gave one variant, i.e. "they agree". Only the
+# 0-of-4 case drifted. Absence is not agreement — this is the same fail-open shape as an empty
+# list reading as a clean one.
+_AP_FILES="agentic-divergence-check memory-mirror provision-agent agentic-monitor"
+_ap_missing=""
+for _f in $_AP_FILES; do
+  [ -f "$INFRA_DIR/scripts/$_f" ] || _ap_missing="$_ap_missing $_f"
+done
+if [ -n "$_ap_missing" ]; then
+  drift "installed: cannot compare AGENT_PATH — missing from '$INFRA_DIR/scripts':$_ap_missing. The comparison would have counted the survivors and called them unanimous."
+else
+  _ap_defined=0
+  for _f in $_AP_FILES; do
+    grep -q '^AGENT_PATH=' "$INFRA_DIR/scripts/$_f" && _ap_defined=$((_ap_defined+1))
+  done
+  if [ "$_ap_defined" -ne 4 ]; then
+    drift "installed: only $_ap_defined of the 4 infra scripts define AGENT_PATH — one of them silently inherits the caller's PATH"
+  else
+    AP_COUNT="$(grep -h '^AGENT_PATH=' \
+      "$INFRA_DIR/scripts/agentic-divergence-check" "$INFRA_DIR/scripts/memory-mirror" \
+      "$INFRA_DIR/scripts/provision-agent" "$INFRA_DIR/scripts/agentic-monitor" | sort -u | grep -c .)"
+    [ "${AP_COUNT:-0}" = 1 ] || drift "installed: AGENT_PATH definitions across the four infra scripts are not identical (found $AP_COUNT variants) — re-align them; a diverged PATH silently changes what runs as the agents"
+  fi
+fi
 fi
 
 # --- timers that must be enabled (a job silently switched off is not a failed unit) ---
