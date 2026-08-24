@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Mechanical fail-open lint. Vocabulary-free: it knows shell shapes, not this fleet's nouns.
+
+Flags three shapes in which "I could not tell" renders as "I looked and it was fine":
+  A  `|| true` / `|| :`            — swallows a non-zero exit
+  B  `2>/dev/null` feeding a count — a failed command and an empty result are indistinguishable
+  C  `for x in $LIST` / `while read`— zero iterations report nothing
+
+A line is EXEMPT if the line itself, or the 3 lines above it, carry a comment saying why empty is
+legitimately clean. That is the whole contract: either drift, or write down why not.
+"""
+import re, sys
+
+path = sys.argv[1]
+lines = open(path, encoding='utf-8').read().split('\n')
+
+SHAPES = [
+    ('A  || true/:',    re.compile(r'\|\|\s*(true|:)\s*("|\)|$)')),
+    ('B  2>/dev/null',  re.compile(r'2>\s*/dev/null')),
+    ('C  loop over var', re.compile(r'^\s*for\s+\w+\s+in\s+\$|^\s*while\s+.*\bread\b')),
+]
+# a nearby comment that explains the emptiness is the sanctioned escape hatch
+EXPLAINS = re.compile(r'#.*\b(empty|none|no match|absent|missing|zero|not set|legitim|deliberat|'
+                      r'on purpose|by design|harmless|fails? closed|drift)\b', re.I)
+
+# ...and so is handling the failure on the spot. `cmd 2>/dev/null || drift "..."` is not a fail-open:
+# the whole point of the shape is that the failure branch reports. Same for `|| fail`, `|| continue`
+# inside a loop that has already drifted, and an explicit `[ -z "$x" ] && drift`. Without this the
+# lint flags its own remedy, which is how a linter gets ignored.
+HANDLED = re.compile(r'\|\|\s*(drift|fail)\b|&&\s*(drift|fail)\b')
+
+hits = []
+for i, ln in enumerate(lines):
+    if ln.lstrip().startswith('#'):
+        continue
+    for name, rx in SHAPES:
+        if rx.search(ln):
+            ctx = lines[max(0, i-3):i+1]
+            # look one line ahead too: `x=$(...)` on one line and `|| drift` on the next is common
+            fwd = lines[i:i+2]
+            exempt = (any(EXPLAINS.search(c) for c in ctx)
+                      or any(HANDLED.search(c) for c in fwd))
+            hits.append((i+1, name, exempt, ln.strip()[:110]))
+
+flagged = [h for h in hits if not h[2]]
+print(f"{path}: {len(lines)} lines, {len(hits)} fail-open shapes, "
+      f"{len(hits)-len(flagged)} explained, {len(flagged)} UNEXPLAINED\n")
+for n, name, _, txt in flagged:
+    print(f"  {n:>4}  {name:<16} {txt}")
+sys.exit(1 if flagged else 0)

@@ -152,6 +152,30 @@ inst 0644 systemd/memory-mirror@.service /etc/systemd/system/memory-mirror@.serv
 inst 0644 systemd/memory-mirror@.timer   /etc/systemd/system/memory-mirror@.timer
 echo "  [ok] memory-mirror"
 
+# The installer and provision-agent, LAST and via an atomic rename.
+#
+# Until 2026-08-23 these two were the only root-installed code that installed nothing of themselves
+# and appeared in no manifest row — so agentic-divergence-check's "installed matches source" sweep,
+# which iterates the manifest, could not see them by construction. The consequence was measured, not
+# hypothetical: /usr/local/bin/install-host-services sat 15 days behind git, missing the very commit
+# that stops `--enable-writers` from re-enabling a DORMANT agent's nightly writer against an archived
+# repo (403 -> failed unit -> a nightly page). The fix was in git and not on the box, and the daily
+# check reported 0 drift throughout.
+#
+# `install` truncates and rewrites in place, which is unsafe when the destination is the script
+# currently executing (bash reads a script incrementally). A temp file plus `mv` swaps the inode
+# instead: a running process keeps the file it already opened, and the next invocation gets the new
+# one. That is why this does not go through inst().
+inst_self() {  # inst_self <repo-relative-src> <dst>
+  local tmp; tmp="$(mktemp "$2.XXXXXX")"
+  install -m0755 -o root -g root "$HERE/$1" "$tmp"
+  mv -f "$tmp" "$2"
+  echo "$2|$HERE/$1" >> "$MANIFEST_TMP"
+}
+inst_self scripts/install-host-services /usr/local/bin/install-host-services
+inst_self scripts/provision-agent       /usr/local/bin/provision-agent
+echo "  [ok] install-host-services + provision-agent (self-installed, now in the manifest)"
+
 chmod 0644 "$MANIFEST_TMP" && mv "$MANIFEST_TMP" "$MANIFEST"
 echo "  [ok] installed manifest (derived from the installs above)"
 

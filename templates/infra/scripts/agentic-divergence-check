@@ -42,7 +42,16 @@ ROSTER_FILE="${ROSTER_FILE-/usr/local/share/agentic/fleet-agents}"
 # whole checker silently find nothing and report CLEAN.
 CONF="${CONF-/etc/agentic-monitor.env}"
 # shellcheck disable=SC1090
-[ -r "$CONF" ] && . "$CONF"
+if [ -r "$CONF" ]; then
+  . "$CONF"
+else
+  echo "FATAL: $CONF is missing or unreadable — every drift finding below would be printed and never
+  delivered, and the unit sets SuccessExitStatus=1 so nothing would look failed. agentic-monitor
+  guards its own HC_URL exactly this way; this script did not, until 2026-08-23." >&2
+  exit 2
+fi
+: "${UPDATE_HC_URL:?UPDATE_HC_URL not set in $CONF — the drift report has nowhere to go}"
+case "$UPDATE_HC_URL" in *REPLACE-*) echo "FATAL: UPDATE_HC_URL in $CONF is still the placeholder — the drift report is being sent nowhere." >&2; exit 2;; esac
 FAILS=0
 DRIFT_LOG=""
 drift(){ echo "  [DRIFT] $*"; FAILS=$((FAILS+1)); DRIFT_LOG="${DRIFT_LOG}${DRIFT_LOG:+; }$*"; }
@@ -175,8 +184,17 @@ try:
             if not fn.endswith('.md') or fn=='CLAUDE.md': continue
             p=os.path.join(root,fn)
             try: s=open(p,encoding='utf-8').read()
-            except Exception: continue
-            if not s.startswith('---'): continue
+            except Exception as e:
+                bad+=1
+                print(f"{N}: {os.path.relpath(p,R)} could not be read ({type(e).__name__}) — unknown, not clean")
+                continue
+            # A file with NO frontmatter block used to be skipped in silence, so "has no metadata at
+            # all" was the one way to pass every metadata assertion. That is the fail-open shape this
+            # checker exists to hunt, sitting inside the checker. Absence is not conformance.
+            if not s.startswith('---'):
+                bad+=1
+                print(f"{N}: {os.path.relpath(p,R)} has no frontmatter block at all")
+                continue
             try: fm=yaml.safe_load(s.split('---',2)[1])
             except Exception as e:
                 bad+=1
@@ -215,7 +233,15 @@ check_brain(){ # <user> <repo>
   local u="$1" r="$2" n; n="$(basename "$r")"
   echo "== $n =="
   local asu; asu(){ as_agent "$u" "$1"; }
-  check_frontmatter "$r" "$n"
+
+  # Frontmatter is a PROSE assertion, so a dormant agent is exempt — the same reason the reference
+  # sweep bails out on a frozen brain further down. This is not squeamishness: a dormant agent's repo
+  # is ARCHIVED and therefore read-only, so any finding against it is unactionable by construction,
+  # and a permanent unactionable finding is exactly how an alarm channel stops being read. Closing the
+  # no-frontmatter fail-open on 2026-08-24 surfaced two of them immediately (both dormant READMEs),
+  # which is how this exemption came to be written rather than assumed.
+  local _dorm_fm=0; for da in $DORMANT_AGENTS; do [ "$da" = "$u" ] && _dorm_fm=1; done
+  [ "$_dorm_fm" = 1 ] || check_frontmatter "$r" "$n"
 
   # 1) Declared brain shape (v3: one always-on file) + the assertions that keep it honest.
   #
@@ -329,10 +355,16 @@ check_brain(){ # <user> <repo>
     branch="$(asu "cd '$r' && git rev-parse --abbrev-ref HEAD 2>/dev/null" || echo '?')"
     drift "$n: branch '$branch' has no upstream — sync state is UNKNOWN and kb-sync skips this repo"
   else
-    ahead="$(asu "cd '$r' && git rev-list --count '@{u}..HEAD' 2>/dev/null" || echo 0)"
-    behind="$(asu "cd '$r' && git rev-list --count 'HEAD..@{u}' 2>/dev/null" || echo 0)"
-    [ "${ahead:-0}" -gt 0 ] && drift "$n: $ahead commit(s) unpushed (push failing? clone diverging)"
-    [ "${behind:-0}" -gt 0 ] && drift "$n: $behind commit(s) behind origin (kb-sync skipping this repo?)"
+    # `|| echo 0` used to make a FAILED rev-list indistinguishable from "0 commits ahead" — i.e. a
+    # broken repo read as a synced one. Empty now means the command failed, and that drifts.
+    ahead="$(asu "cd '$r' && git rev-list --count '@{u}..HEAD' 2>/dev/null" || true)"
+    behind="$(asu "cd '$r' && git rev-list --count 'HEAD..@{u}' 2>/dev/null" || true)"
+    if [ -z "$ahead" ] || [ -z "$behind" ]; then
+      drift "$n: git rev-list failed — sync state is UNKNOWN, not clean"
+    else
+      [ "$ahead" -gt 0 ] && drift "$n: $ahead commit(s) unpushed (push failing? clone diverging)"
+      [ "$behind" -gt 0 ] && drift "$n: $behind commit(s) behind origin (kb-sync skipping this repo?)"
+    fi
   fi
 
   # --- The topic registry is versioned state that a CLI mutates, so it drifts in three ways ---
@@ -768,10 +800,15 @@ for u in $ALL_AGENTS; do
     if ! runuser -u "$u" -- git -C "$r" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
       drift "$rname [$u]: branch has no upstream — sync state UNKNOWN and kb-sync skips it"
     else
-      a="$(runuser -u "$u" -- git -C "$r" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
-      b="$(runuser -u "$u" -- git -C "$r" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
-      [ "${a:-0}" -gt 0 ] && drift "$rname [$u]: $a commit(s) unpushed"
-      [ "${b:-0}" -gt 0 ] && drift "$rname [$u]: $b commit(s) behind origin (kb-sync skipping it?)"
+      # Same shape as the brain check above: a failed rev-list must not render as "in sync".
+      a="$(runuser -u "$u" -- git -C "$r" rev-list --count '@{u}..HEAD' 2>/dev/null || true)"
+      b="$(runuser -u "$u" -- git -C "$r" rev-list --count 'HEAD..@{u}' 2>/dev/null || true)"
+      if [ -z "$a" ] || [ -z "$b" ]; then
+        drift "$rname [$u]: git rev-list failed — sync state is UNKNOWN, not clean"
+      else
+        [ "$a" -gt 0 ] && drift "$rname [$u]: $a commit(s) unpushed"
+        [ "$b" -gt 0 ] && drift "$rname [$u]: $b commit(s) behind origin (kb-sync skipping it?)"
+      fi
     fi
     # Dirty worktree, for the repos where dirty is never work-in-progress (see STRICT_CLEAN_REPOS).
     # This is the assertion that stops provision-agent's "COMMIT AND PUSH the roster" from becoming
@@ -810,9 +847,19 @@ echo "== updates =="
 updates=0
 
 # --- OS ---
+# A broken apt used to render as a patched box: `apt list` failing gave grep an empty stdin, grep -c
+# said 0, and "0 upgradable (0 security)" is indistinguishable from "fully patched". Exit 0, healthchecks
+# pinged OK, and the security-update detector was dead behind a green dead-man's switch. Proven on
+# 2026-08-23 with stub binaries. Now: cannot tell => drift.
 apt-get update -qq >/dev/null 2>&1 || true
-upg=$(apt list --upgradable 2>/dev/null | grep -c '/'); upg=${upg:-0}
-sec=$(apt list --upgradable 2>/dev/null | grep -ci -E 'security|-esm-'); sec=${sec:-0}
+_aptlist="$(apt list --upgradable 2>/dev/null)"; _aptrc=$?
+if [ "$_aptrc" -ne 0 ]; then
+  drift "updates: 'apt list --upgradable' failed (rc=$_aptrc) — the OS update count is UNKNOWN, not zero"
+  upg="?"; sec=0
+else
+  upg=$(printf '%s\n' "$_aptlist" | grep -c '/'); upg=${upg:-0}
+  sec=$(printf '%s\n' "$_aptlist" | grep -ci -E 'security|-esm-'); sec=${sec:-0}
+fi
 reboot=no; [ -f /var/run/reboot-required ] && reboot=yes
 # Alarm only on actionable items: pending SECURITY updates (unattended-upgrades should auto-apply — if
 # still pending it's worth flagging). upgradable-count and reboot-required are REPORTED, not alarmed
@@ -825,10 +872,19 @@ cur=$(docker service inspect dokploy --format '{{.Spec.TaskTemplate.ContainerSpe
 latest=$(curl -fsS -m 15 https://api.github.com/repos/Dokploy/dokploy/releases/latest 2>/dev/null \
          | grep -oE '"tag_name"[^,]*' | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 dok="Dokploy: ${cur:-?}"
-if [ -n "$cur" ] && [ -n "$latest" ] && [ "$cur" != "$latest" ]; then
+# Same shape as the apt block above: an empty $cur (docker down) or an empty $latest (network or the
+# GitHub API) used to fall into the else and report "(latest ?)" while leaving updates=0 — a silent
+# "no update available" produced by not having looked. Absence is not agreement.
+if [ -z "$cur" ]; then
+  drift "updates: cannot read the running Dokploy version (docker unreachable?) — currency is UNKNOWN"
+  dok="$dok (running version unknown)"
+elif [ -z "$latest" ]; then
+  drift "updates: cannot reach the Dokploy releases API — currency is UNKNOWN, not up to date"
+  dok="$dok (latest unknown)"
+elif [ "$cur" != "$latest" ]; then
   dok="$dok -> ${latest} UPDATE AVAILABLE"; updates=1
 else
-  dok="$dok (latest ${latest:-?})"
+  dok="$dok (latest ${latest})"
 fi
 
 # (A weekly memory-mirror commit COUNT used to be reported here. Removed 2026-07-30: it measured
@@ -849,9 +905,14 @@ if [ "$FAILS" -gt 0 ]; then
 fi
 echo "$report"
 
-if [ -n "${UPDATE_HC_URL:-}" ]; then
-  suffix=""; { [ "$updates" = 1 ] || [ "$FAILS" -gt 0 ]; } && suffix="/fail"
-  curl -fsS -m 15 --data-raw "$report" "${UPDATE_HC_URL}${suffix}" -o /dev/null || true
+suffix=""; { [ "$updates" = 1 ] || [ "$FAILS" -gt 0 ]; } && suffix="/fail"
+# `|| true` on the delivery is deliberate and stays: a failed ping must not abort a run that has
+# already done its work. But an undelivered report used to be indistinguishable from a delivered one,
+# so the outcome is now stated on stdout, where the journal keeps it.
+if curl -fsS -m 15 --data-raw "$report" "${UPDATE_HC_URL}${suffix}" -o /dev/null; then
+  echo "$(date -Is) report delivered${suffix:+ (as failure)}"
+else
+  echo "$(date -Is) WARNING: report NOT delivered — healthchecks ping failed; the dead-man's switch will notice the missed beat" >&2
 fi
 
 echo

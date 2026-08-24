@@ -6,6 +6,70 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.4] — 2026-08-24 — Six more fail-opens, and a lint so the next six are found by a machine
+
+0.8.3 hunted this class by hand and said a clean run proves nothing. Then a cross-cutting audit found
+six more instances that had survived that very pass — including one inside the frontmatter checker
+itself. The lesson is not "look harder next time": **enumerating fail-opens by reading does not
+converge**, so this release ships the mechanical check first and the fixes second.
+
+### Added
+
+- **`scripts/failopen-lint`** — vocabulary-free, knows shell shapes and not any deployment's nouns.
+  Flags three constructs in which *I could not tell* renders as *I looked and it was fine*: `|| true`
+  swallowing an exit code, `2>/dev/null` feeding a count, and a loop over a variable that may be
+  empty. A line is exempt only if a comment within three lines says why empty is legitimately clean,
+  or if the failure is handled on the spot with `|| drift`. Either drift, or write down why not.
+  It reports a number; the number is the point, not zero.
+
+### Fixed — fail-opens
+
+- **Broken `apt`, `docker` or `curl` reported a patched, current box and exited 0.** A failed
+  `apt list --upgradable` gave `grep -c` empty stdin, so "0 upgradable (0 security)" was
+  indistinguishable from fully patched; an empty running-version or latest-release string fell
+  through to the else and left the update counter at zero. Exit 0 also pings the dead-man's switch
+  as OK — so the security-update detector was dead behind a green heartbeat. Both now drift.
+  Proven with stub binaries exiting non-zero, old code against new, side by side.
+- **A missing monitor config made every drift finding silent.** Sourcing the config file had no
+  `else`, and the report ping was guarded by `[ -n "${UPDATE_HC_URL:-}" ]`. With the file absent,
+  drift was printed, never delivered, and — because the unit sets `SuccessExitStatus=1` — the unit
+  did not even look failed. The sibling monitor script had guarded its own URL this way since it was
+  written. Now fatal, exit 2. Delivery outcome is also reported, because an undelivered report used
+  to be indistinguishable from a delivered one.
+- **`git rev-list --count … || echo 0` made a failed query read as "in sync"**, at two call sites.
+  Empty now means the command failed, and that drifts.
+- **A CHANGELOG that exists but yields no parseable version head was "nothing to report".** An absent
+  tag legitimately means "this repo does not tag"; an unparseable present file is cannot-tell.
+- **The frontmatter checker skipped any file with no frontmatter block at all** — so carrying no
+  metadata whatsoever was the one way to pass every metadata assertion. That is this checker's own
+  hunted shape, sitting inside the checker. An unreadable file was also `continue`, and now drifts.
+  Closing it immediately surfaced findings in **archived, read-only** repos, which no one can fix; so
+  frontmatter now skips dormant brains, for the same reason the reference sweep already does. A
+  permanent unactionable finding is how an alarm channel stops being read. Proven both ways.
+- **The memory mirror's drop guard counted two different sets** and cried wolf on a healthy fleet:
+  the current count excluded the index file, the previous count included it, so the guard fired every
+  night the memory count merely held steady. On the reference deployment it held the alarm channel in
+  failure for nine hours over a rename. Same line also fixed a `grep -c … || echo unknown` that
+  produced a two-line string matching no case arm, erroring out with no finding and no exit code.
+
+### Fixed — coverage
+
+- **`install-host-services` now installs itself and `provision-agent`**, via an atomic rename rather
+  than in-place `install` (overwriting a running script is how a shell reads garbage). Until now they
+  were the only root-installed code that appeared in no manifest row, so the "installed matches
+  source" sweep could not see them by construction. On the reference deployment the installed copy
+  sat **15 days behind git**, missing the commit that stops `--enable-writers` from re-enabling a
+  dormant agent's nightly writer against an archived repo — and the daily check reported zero drift
+  throughout.
+
+### Note on completeness
+
+`failopen-lint` reports 25–29 remaining unexplained shapes in `agentic-divergence-check`, mostly
+`while read` loops and their producers where an empty producer means "nothing to check" and the thing
+being checked drifts elsewhere. **They are deliberately not annotated as safe.** Writing "this one is
+legitimate" without verifying each is how a fail-open becomes permanent with a written blessing. The
+number is a measured backlog, not a claim of completeness.
+
 ## [0.8.3] — 2026-08-23 — A guardian that cannot tell must say so
 
 Three fail-opens in the drift checker, a memory-durability gap nothing would have reported, and a
@@ -1171,6 +1235,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.8.4]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.4
 [0.8.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.3
 [0.8.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.2
 [0.8.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.1

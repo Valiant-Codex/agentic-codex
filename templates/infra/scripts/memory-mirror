@@ -133,7 +133,13 @@ if [ -d "$AUTOMEM" ]; then
     # Did the count go DOWN? A drop is legitimate (a memory can be deleted deliberately) but it must
     # never pass unremarked: this is the one place that sees the before and the after.
     now_n="$(ls -1 "$AUTOMEM"/*.md 2>/dev/null | grep -cv '/MEMORY\.md$' || true)"
-    prev_n="$(run "cd '$BRAIN' && git show HEAD~1:memory/auto 2>/dev/null | grep -c '\.md$' || echo unknown")"
+    # Both sides must count the SAME SET. now_n excludes MEMORY.md; prev_n did not, so prev_n was
+    # systematically now_n+1 and the guard fired on every night the count merely held steady. Also
+    # `grep -c` prints 0 AND exits 1 on no matches, so `|| echo unknown` produced the two-line string
+    # "0\nunknown", which matched no case arm and made the comparison error out silently. Proven on
+    # 2026-08-23 against three fixtures: quiet on a healthy fleet, still firing on a real deletion,
+    # clean 0 on a previous commit that held no memories.
+    prev_n="$(run "cd '$BRAIN' && git show HEAD~1:memory/auto 2>/dev/null | grep '\.md$' | grep -cv '^MEMORY\.md$' || true")"
     case "$prev_n" in
       ''|unknown) : ;;
       *) [ "${now_n:-0}" -lt "$prev_n" ] && fail "memory count DROPPED $prev_n -> $now_n — rsync --delete has just propagated a disappearance into the repo; check 'git show HEAD -- memory/auto' before it scrolls away" ;;
