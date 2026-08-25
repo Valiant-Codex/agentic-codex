@@ -187,6 +187,18 @@ UNTRACKED_SKILLS="$(asU "cd '$BASE/$BRAIN' && git ls-files --others --exclude-st
 [ -n "${UNTRACKED_SKILLS// /}" ] && echo "  [note] untracked file(s) under skills/ in $BRAIN (the fleet-common symlinks just created, and anything else) — commit what belongs in git so the brain repo stays clean: $UNTRACKED_SKILLS"
 echo "  [ok] symlinks: shared, ~/CLAUDE.md -> $BOOTSTRAP, ~/.local/bin/claude-topic, ~/.claude/skills"
 
+# 3b) Output style (voice/register) — symlink if the brain declares one. This is a live symlink,
+#    same as CLAUDE.md and skills, not a copy: it carries no permission grant, so the settings.json
+#    reasoning (F1/F3, real copy so it does not live-follow the repo) does not apply to it.
+#    Optional: not every agent has one, and provisioning must not fail an agent that doesn't.
+SRC_STYLE="$BASE/$BRAIN/deploy/output-styles/$U.md"
+if asU "[ -f '$SRC_STYLE' ]"; then
+  asU "mkdir -p '$H/.claude/output-styles' && ln -sfn '$SRC_STYLE' '$H/.claude/output-styles/$U.md'"
+  echo "  [ok] ~/.claude/output-styles/$U.md -> deploy/output-styles/$U.md"
+else
+  echo "  [skip] $BRAIN has no deploy/output-styles/$U.md — no output style to symlink"
+fi
+
 # 4) Settings — install the curated, portable source as a REAL copy (not a symlink).
 #    Auto-accumulated ~/.claude/settings.local.json is left untouched (per-machine, git-ignored).
 SRC_SETTINGS="$BASE/$BRAIN/deploy/claude-settings.json"

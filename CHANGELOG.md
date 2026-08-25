@@ -6,6 +6,36 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.6] — 2026-08-25 — Voice moves to output style; a CHANGELOG a checker cannot parse is not clean
+
+A reference-deployment change (Durin + Galadriel both moving their voice/register out of `CLAUDE.md`
+prose into Claude Code's `outputStyle` mechanism) needed real support here first: `provision-agent` had
+none, and the OKF frontmatter checker would have flagged the new files as violations the moment anyone
+tried. Bundled with one propagation gap the new codex-propagation-check caught the same day.
+
+### Added
+
+- **`provision-agent` symlinks an output style, if the brain declares one.** `deploy/output-styles/<agent>.md`
+  → `~/.claude/output-styles/<agent>.md`, same live-symlink treatment as `CLAUDE.md` and `skills/` —
+  not the real-copy treatment `claude-settings.json` gets, because an output style carries no
+  permission grant, so the F1/F3 reasoning for keeping settings from live-following the repo does not
+  apply to it. Optional and non-fatal: a brain without one is skipped, not failed.
+- **A third OKF frontmatter exemption: `deploy/output-styles/*.md`.** That frontmatter is Claude Code's
+  own schema (`name`, `description`, `keep-coding-instructions`), not OKF's, parsed live by the harness
+  the moment the file is written — same reasoning as the existing `CLAUDE.md` exemption. Documented in
+  `knowledge-governance-workflow/SKILL.md`; `agentic-divergence-check` now skips the whole
+  `output-styles/` directory during its frontmatter walk, the same way it already skips `auto/`.
+- `deploy/README.md` in the agent template documents the new optional `output-styles/<agent>.md` file
+  alongside the existing `claude-settings.json` row.
+
+### Fixed
+
+- **Ported yesterday's guard, one day late.** `codex-propagation-check` compares the set of conditions
+  each script refuses to pass and found this repo had not carried a guard added to the reference
+  deployment the day before: a `CHANGELOG.md` that exists but yields no parseable version head is
+  cannot-tell, not nothing-to-report. An absent tag legitimately means "this repo does not tag"; an
+  unparseable present file does not. That is the whole point of the check the guard belongs to.
+
 ## [0.8.5] — 2026-08-25 — The lint shipped yesterday certified fail-opens as safe
 
 0.8.4 shipped `failopen-lint` and said the number it reports is the point. An independent review of
@@ -1278,6 +1308,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.8.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.6
 [0.8.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.5
 [0.8.4]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.4
 [0.8.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.3

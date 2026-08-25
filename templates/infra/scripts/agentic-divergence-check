@@ -189,7 +189,11 @@ try:
     walked=False
     for root,dirs,files in os.walk(R):
         walked=True
-        dirs[:]=[d for d in dirs if d not in ('.git','auto')]
+        # output-styles/: a third OKF exemption (2026-08-25) alongside CLAUDE.md and memory/auto —
+        # frontmatter there is Claude Code's own schema (name/description/keep-coding-instructions),
+        # parsed live by the harness, not OKF's. Same reasoning as CLAUDE.md: an OKF `type` field
+        # would be noise in a schema this checker does not own.
+        dirs[:]=[d for d in dirs if d not in ('.git','auto','output-styles')]
         for fn in files:
             if not fn.endswith('.md') or fn=='CLAUDE.md': continue
             p=os.path.join(root,fn)

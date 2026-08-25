@@ -64,7 +64,7 @@ one artefact "README of a folder" (`directory-readme`, `directory-index`, `repos
 and `decision-record` with no rule distinguishing them, and `distilled-memory` in three repos against
 `memory` in a fourth. A vocabulary that grows one value per document is not a vocabulary.
 
-### Two deliberate exemptions
+### Three deliberate exemptions
 
 These are **not** OKF documents and must not carry frontmatter:
 
@@ -75,6 +75,12 @@ These are **not** OKF documents and must not carry frontmatter:
    by hand is not merely pointless, it is **undone by the next nightly run**. Byte-identity is the
    feature: it is what makes restoring the tier a copy rather than a migration. Do not "fix" these files,
    and do not count them as violations.
+3. **`deploy/output-styles/*.md`** (added 2026-08-25) — a runtime artefact, symlinked into
+   `~/.claude/output-styles/` and parsed directly by Claude Code's own frontmatter schema (`name`,
+   `description`, `keep-coding-instructions`). Same reasoning as `CLAUDE.md`: an OKF `type` field would
+   be an unrecognized key in a schema this repo does not own, in a file live in production the moment
+   it is written. `agentic-divergence-check` skips the whole `output-styles/` directory, the same way
+   it skips `auto/`.
 
 Before 2026-08-07 these two exemptions were unwritten, so 31% of the fleet's Markdown "violated" a rule
 that was never intended to reach it. Excluding them, conformance is near-total.

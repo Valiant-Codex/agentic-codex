@@ -21,6 +21,7 @@ order to run* — declared in git so a machine can be rebuilt from it without an
 |---|---|
 | `topics.tsv` | The agent's Remote Control sessions: one row per topic, `key<TAB>Display Name`. `provision-agent` enables a `claude-topic@<key>` systemd user unit for each. `claude-topic new/remove` maintain this file and commit it themselves. |
 | `claude-settings.json` | The agent's Claude Code permissions and preferences. Installed as a **real 0600 copy** at `~/.claude/settings.json` — never symlinked, because the auto-sync must not be able to change what an agent is permitted to do. Edit it here, then re-run `provision-agent` (or reinstall it) to apply. |
+| *(optional)* `output-styles/<agent>.md` | The agent's Claude Code output style (voice/register — frontmatter `name`/`description`/`keep-coding-instructions`, then plain-Markdown instructions). **Symlinked**, not copied, at `~/.claude/output-styles/<agent>.md`: unlike `claude-settings.json` it carries no permission grant, so there is no reason to gate it behind an explicit re-provisioning step. Set `outputStyle` to `<agent>` in `claude-settings.json` to activate it. |
 | *(optional)* `*.service` | A systemd **user** unit this agent needs beyond its topics — e.g. an MCP server it runs for itself. |
 
 ## Why this exists as a directory rather than as documentation
