@@ -102,7 +102,14 @@ if ! git -C "$INFRA" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/nu
   echo "         upstream (git push -u origin <branch>) first."
   exit 1
 fi
-INFRA_AHEAD="$(git -C "$INFRA" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+# NOT `|| echo 0` -- see install-host-services: a failed rev-list must not read as "nothing
+# unpushed" in the guard that refuses to install unreviewed root-owned code.
+INFRA_AHEAD="$(git -C "$INFRA" rev-list --count '@{u}..HEAD' 2>/dev/null || true)"
+if [ -z "$INFRA_AHEAD" ]; then
+  echo "  [FAIL] cannot count unpushed commits in $INFRA — refusing to install root-owned code"
+  echo "         from a repo whose state I could not read."
+  exit 1
+fi
 if [ "${INFRA_AHEAD:-0}" != 0 ]; then
   echo "  [FAIL] $INFRA has $INFRA_AHEAD commit(s) not on origin — refusing to install an"
   echo "         unpushed wrapper fleet-wide. Push (and let it be reviewable) first."

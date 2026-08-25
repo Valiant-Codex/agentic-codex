@@ -50,7 +50,17 @@ else
   guards its own HC_URL exactly this way; this script did not, until 2026-08-23." >&2
   exit 2
 fi
-: "${UPDATE_HC_URL:?UPDATE_HC_URL not set in $CONF — the drift report has nowhere to go}"
+# NOT `${VAR:?}`: that exits 1, and this script's unit sets SuccessExitStatus=1 (exit 1 means
+# "drift reported", which is a successful run). So the `:?` idiom -- correct in agentic-monitor,
+# which has no such setting -- would have made the likeliest failure, someone editing the env file,
+# look like a clean run to systemd and to the failed-unit sweep. Copied idiom, different contract.
+if [ -z "${UPDATE_HC_URL:-}" ]; then
+  echo "FATAL: UPDATE_HC_URL not set in $CONF — the drift report has nowhere to go." >&2; exit 2
+fi
+case "$UPDATE_HC_URL" in *REPLACE-*) echo "FATAL: UPDATE_HC_URL in $CONF is still the placeholder — the drift report is being sent nowhere." >&2; exit 2;; esac
+FAILS=0
+DRIFT_LOG=""
+drift(){ echo "  [DRIFT] $*"; FAILS=$((FAILS+1)); DRIFT_LOG="${DRIFT_LOG}${DRIFT_LOG:+; }$*"; }
 case "$UPDATE_HC_URL" in *REPLACE-*) echo "FATAL: UPDATE_HC_URL in $CONF is still the placeholder — the drift report is being sent nowhere." >&2; exit 2;; esac
 FAILS=0
 DRIFT_LOG=""
@@ -326,8 +336,12 @@ check_brain(){ # <user> <repo>
   done
 
   # 3) Every symlink in the brain resolves (catches renamed/removed fleet-common skills, shared/).
-  local bad; bad="$(find "$r" -path "$r/.git" -prune -o -type l ! -exec test -e {} \; -print 2>/dev/null)"
-  [ -n "$bad" ] && drift "$n: dangling symlink(s): $(echo "$bad" | tr '\n' ' ')"
+  local bad
+  if ! bad="$(find "$r" -path "$r/.git" -prune -o -type l ! -exec test -e {} \; -print 2>/dev/null)"; then
+    drift "$n: could not walk the tree for symlinks — resolution is UNKNOWN, not clean"
+  else
+    [ -n "$bad" ] && drift "$n: dangling symlink(s): $(echo "$bad" | tr '\n' ' ')"
+  fi
 
   # 4) Runtime registration: ~/.claude/skills must BE a symlink, resolve, and point at this repo.
   local home cs tgt; home="$(getent passwd "$u" | cut -d: -f6)"; cs="$home/.claude/skills"
@@ -837,8 +851,15 @@ for u in $ALL_AGENTS; do
     # exact-token match, not `grep -w`: with -w a repo named "shared" would match inside
     # "kb-agent-shared" (hyphen is a non-word char) and be wrongly held to the strict rule.
     if [ "$strict" = 1 ]; then
-      porcelain="$(runuser -u "$u" -- git -C "$r" status --porcelain 2>/dev/null | head -5 | tr '\n' ' ')"
-      [ -n "${porcelain// /}" ] && drift "$rname [$u]: uncommitted changes ($porcelain) — root-installed code or governance left local-only; kb-sync will skip this repo once origin touches the same files"
+      # `[ -n "$x" ] && drift` reports on NON-empty, so an empty $porcelain covers both "clean" and
+      # "git status failed" — the second read as the first until 2026-08-25. Ask git whether it could
+      # answer, separately from what it answered.
+      if ! runuser -u "$u" -- git -C "$r" status --porcelain >/dev/null 2>&1; then
+        drift "$rname [$u]: 'git status' failed — worktree cleanliness is UNKNOWN, not clean"
+      else
+        porcelain="$(runuser -u "$u" -- git -C "$r" status --porcelain 2>/dev/null | head -5 | tr '\n' ' ')"
+        [ -n "${porcelain// /}" ] && drift "$rname [$u]: uncommitted changes ($porcelain) — root-installed code or governance left local-only; kb-sync will skip this repo once origin touches the same files"
+      fi
     fi
   done
 done

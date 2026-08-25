@@ -139,7 +139,14 @@ if [ -d "$AUTOMEM" ]; then
     # "0\nunknown", which matched no case arm and made the comparison error out silently. Proven on
     # 2026-08-23 against three fixtures: quiet on a healthy fleet, still firing on a real deletion,
     # clean 0 on a previous commit that held no memories.
-    prev_n="$(run "cd '$BRAIN' && git show HEAD~1:memory/auto 2>/dev/null | grep '\.md$' | grep -cv '^MEMORY\.md$' || true")"
+    # `git show` failing (no HEAD~1, unreadable repo) also yields an empty pipeline and therefore 0 --
+    # indistinguishable from "the previous commit held no memories", which silently disables the drop
+    # guard and made the ''|unknown case arm below dead code. Ask whether git could answer first.
+    if run "cd '$BRAIN' && git show HEAD~1:memory/auto >/dev/null 2>&1"; then
+      prev_n="$(run "cd '$BRAIN' && git show HEAD~1:memory/auto 2>/dev/null | grep '\.md$' | grep -cv '^MEMORY\.md$' || true")"
+    else
+      prev_n="unknown"
+    fi
     case "$prev_n" in
       ''|unknown) : ;;
       *) [ "${now_n:-0}" -lt "$prev_n" ] && fail "memory count DROPPED $prev_n -> $now_n — rsync --delete has just propagated a disappearance into the repo; check 'git show HEAD -- memory/auto' before it scrolls away" ;;

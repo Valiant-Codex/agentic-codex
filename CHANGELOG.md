@@ -6,6 +6,49 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.5] — 2026-08-25 — The lint shipped yesterday certified fail-opens as safe
+
+0.8.4 shipped `failopen-lint` and said the number it reports is the point. An independent review of
+that release found the lint was **exempting the shape it exists to find**, and had already retired two
+real fail-opens from the backlog it was measuring. If you took 0.8.4, take this.
+
+### Fixed — the lint itself
+
+- **`&&` must never exempt.** The `HANDLED` pattern accepted `&& drift` alongside `|| drift`. They are
+  opposites: `cmd || drift` reports on the failure branch, while `[ -n "$x" ] && drift` reports only on
+  non-empty — and *empty is exactly what a failed command produces*. A three-line fixture containing
+  nothing but the unsafe shape was reported "1 explained, 0 UNEXPLAINED", exit 0. A lint that blesses
+  its own quarry is worse than no lint: the number shrinks and gets trusted. Only `||` exempts now, and
+  the reference deployment's honest count went back from 25 to 30.
+
+### Fixed — the two it had hidden, plus three of the same family
+
+- **A repo whose `git status` fails read as clean**, in the strict-clean assertion whose job is
+  catching root-installed code left local-only. `porcelain="$(git status --porcelain 2>/dev/null)"`
+  followed by `[ -n "$porcelain" ] && drift`. The same shape had been fixed fifteen lines above in
+  0.8.4 and was invisible here because the loosened lint had just excused it.
+- **An unwalkable tree read as "no dangling symlinks."**
+- **`${UPDATE_HC_URL:?…}` exits 1, and the drift-check unit sets `SuccessExitStatus=1`** — so the guard
+  documented as FATAL was recorded by systemd as a *successful run* for its likeliest trigger, someone
+  editing the env file. The missing-file branch exits 2 and was genuinely fatal; the unset-variable
+  branch was not. The `:?` idiom is correct in the monitor script, which has no such setting, and was
+  copied across a different contract. Now an explicit `exit 2`.
+- **`memory-mirror` gained a new instance of the class 0.8.4 fixed in it.** A failed
+  `git show HEAD~1:memory/auto` also yields an empty pipeline and therefore `0`, indistinguishable from
+  "the previous commit held no memories" — silently disabling the drop guard and making the
+  `''|unknown` case arm dead code. It now asks whether git could answer before counting.
+- **`|| echo 0` survived in `install-host-services` and `provision-agent`**, in the guards that refuse
+  to install unreviewed root-owned code from an unpushed repo. A failed `rev-list` read as "nothing
+  unpushed". Both now fail the guard.
+
+### The lesson worth more than the patches
+
+0.8.3 closed three fail-opens by hand. 0.8.4 found six more and built a lint because hand-enumeration
+does not converge. 0.8.5 exists because **the lint was written by the same author, in the same pass,
+and inherited the same blind spot** — and the only thing that caught it was an independent reviewer
+running a deliberately broken fixture through it. A tool that measures your work is still your work.
+Point someone else's fixture at it.
+
 ## [0.8.4] — 2026-08-24 — Six more fail-opens, and a lint so the next six are found by a machine
 
 0.8.3 hunted this class by hand and said a clean run proves nothing. Then a cross-cutting audit found
@@ -1235,6 +1278,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.8.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.5
 [0.8.4]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.4
 [0.8.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.3
 [0.8.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.2

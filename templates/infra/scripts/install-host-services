@@ -55,7 +55,12 @@ if ! git -C "$HERE" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/nul
          answered — refusing to install it root-owned fleet-wide. Push this repo and set an
          upstream (git push -u origin <branch>) first."
 fi
-HERE_AHEAD="$(git -C "$HERE" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+# NOT `|| echo 0`: a failed rev-list would read as "nothing unpushed" and let this guard --
+# whose entire job is refusing to install unreviewed root-owned code -- pass on a repo it could not
+# read. Same shape fixed in agentic-divergence-check 2026-08-24 and missed here until 2026-08-25.
+HERE_AHEAD="$(git -C "$HERE" rev-list --count '@{u}..HEAD' 2>/dev/null || true)"
+[ -n "$HERE_AHEAD" ] || guard_fail "cannot count unpushed commits in $HERE — refusing to install
+         root-owned code from a repo whose state I could not read." 
 [ "${HERE_AHEAD:-0}" = 0 ] || guard_fail "$HERE has $HERE_AHEAD commit(s) not on origin — refusing to install an unpushed
          wrapper fleet-wide. Push (and let it be reviewable) first."
 HERE_BEHIND="$(git -C "$HERE" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"

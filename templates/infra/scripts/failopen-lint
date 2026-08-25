@@ -23,11 +23,18 @@ SHAPES = [
 EXPLAINS = re.compile(r'#.*\b(empty|none|no match|absent|missing|zero|not set|legitim|deliberat|'
                       r'on purpose|by design|harmless|fails? closed|drift)\b', re.I)
 
-# ...and so is handling the failure on the spot. `cmd 2>/dev/null || drift "..."` is not a fail-open:
-# the whole point of the shape is that the failure branch reports. Same for `|| fail`, `|| continue`
-# inside a loop that has already drifted, and an explicit `[ -z "$x" ] && drift`. Without this the
-# lint flags its own remedy, which is how a linter gets ignored.
-HANDLED = re.compile(r'\|\|\s*(drift|fail)\b|&&\s*(drift|fail)\b')
+# ...and so is handling the failure on the spot -- but ONLY on the failure branch.
+#
+#   cmd 2>/dev/null || drift "..."      SAFE: the failure branch is the one that reports.
+#   [ -n "$x" ] && drift "..."          NOT SAFE: non-empty reports, and EMPTY -- which is what a
+#                                       failed command produces -- says nothing at all.
+#
+# `&&` was in this pattern from 2026-08-24 until 2026-08-25 and it exempted the second shape, which
+# is a textbook fail-open. It had already retired two real ones from the backlog, including the
+# STRICT_CLEAN dirty-worktree assertion, where a repo whose `git status` fails read as clean. A lint
+# that blesses the shape it exists to find is worse than no lint: the number shrinks and gets
+# trusted. Only `||` may exempt.
+HANDLED = re.compile(r'\|\|\s*(drift|fail)\b')
 
 hits = []
 for i, ln in enumerate(lines):
