@@ -843,7 +843,12 @@ for u in $ALL_AGENTS; do
       chv="$(runuser -u "$u" -- sed -n 's/^## \[\([0-9][0-9.]*\)\].*/\1/p' "$r/CHANGELOG.md" 2>/dev/null | head -1)"
       tagv="$(runuser -u "$u" -- git -C "$r" tag -l 'v*' --sort=-v:refname 2>/dev/null | head -1)"
       tagv="${tagv#v}"
-      if [ -n "$chv" ] && [ -n "$tagv" ] && [ "$chv" != "$tagv" ]; then
+      # An EMPTY $tagv legitimately means "this repo does not tag" — that is the documented scope.
+      # An empty $chv with the file present is different: the CHANGELOG is there and unparseable,
+      # which is cannot-tell, not nothing-to-report.
+      if [ -z "$chv" ]; then
+        drift "$rname [$u]: CHANGELOG.md exists but no '## [x.y.z]' head parses — version currency UNKNOWN"
+      elif [ -n "$tagv" ] && [ "$chv" != "$tagv" ]; then
         drift "$rname [$u]: CHANGELOG head $chv but latest tag v$tagv — release(s) untagged"
       fi
     fi
