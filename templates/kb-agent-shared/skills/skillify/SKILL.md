@@ -10,7 +10,7 @@ tags:
 - lifecycle
 - fleet
 status: active
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-08-27T00:00:00Z
 ---
 # Skillify
 
@@ -91,12 +91,48 @@ timestamp: <ISO-8601>
 
 ## Validation
 
-- `name` + `description` present; `name` is lowercase-hyphens, <=64 chars, no reserved words.
+Two levels. The first checks the shape; the second checks whether the skill is worth its place.
+
+**Shape — every time:**
+
+- `name` + `description` present; `name` equals the folder name; lowercase-hyphens, <=64 chars, no
+  reserved words.
 - Body under ~5k tokens; deep detail lives in `references/`.
 - After the skills dir changes, the skill appears in the harness skill list (whole-dir symlink). If it
   doesn't, check the folder name and the frontmatter.
+
+**Effectiveness — for every new skill, and at every review:**
+
+`skills-policy.md` says the review question is "would this still earn its place against a no-skill
+baseline". This is how you answer it instead of guessing.
+
+1. Write 2–3 realistic test prompts — what <OWNER> would actually type, not a paraphrase of your own
+   `description`. A prompt written from the description tests the description, not the skill.
+2. For each prompt, spawn **two** sub-agents **in the same turn**: one given the skill's path, one
+   given no skill at all. Same prompt, same inputs. Write outputs under the session scratchpad,
+   `<scratchpad>/skill-eval/<name>/<prompt-id>/{with,without}/`. Launch them together — staggering
+   them invites you to read the first result and pre-judge the second.
+3. Compare, and name the outcome. **The skill wins** — keep it. **A tie** — the model already knew,
+   or the skill is too generic to add anything; either way it is a candidate for deletion, not for
+   more prose. **The skill loses** — almost always because it steers wrong, not because it is missing
+   a section; cut the steer rather than adding a caveat.
+4. **Triggering is a separate test from quality.** A good skill that never fires is worth nothing.
+   Take a prompt that *should* reach for it and check whether it does, without naming the skill. If
+   it doesn't fire, the defect is in the `description`, not the body — that is the field the harness
+   matches on.
+
+The rule underneath all of it: **a run with the skill proves nothing without the run without it.**
+A plausible-looking output is not evidence the skill caused it.
+
+When updating an existing skill, the baseline is the *old version*, not no-skill: snapshot it before
+editing and point the second sub-agent at the snapshot.
 
 ## Related
 
 - `shared/policies/skills-policy.md` — the policy this skill enacts.
 - `shared/templates/skill-template.md` — a blank v2 skeleton to copy.
+- The with/without evaluation above is borrowed from Anthropic's official `skill-creator` plugin,
+  **deliberately absorbed rather than installed** (2026-08-27). Installing it would have put
+  third-party instructions beside ours in a root-privileged session, and left two skills competing on
+  the same intent — the shadowing `skills-policy.md` guardrail 8 warns about. Do not re-propose
+  installing it; take further ideas from it by hand, the same way.

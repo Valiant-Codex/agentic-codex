@@ -46,7 +46,9 @@ discovered through the whole-dir symlink. Six ship with the framework — each o
 proved useful in the reference deployment, not because it seemed like a good idea:
 
 - **`skillify`** — the executable companion to `policies/skills-policy.md`: how to author, update, and
-  retire a skill in this format, including the naming taxonomy and lifecycle.
+  retire a skill in this format, including the naming taxonomy, the lifecycle, and how to check a
+  skill actually helps — a with/without sub-agent comparison, because a skill that reads well and
+  changes nothing is the one a reviewer keeps by default.
 - **`agent-audit`** — an interactive, human-in-the-loop tune-up of one agent's brain (its `CLAUDE.md`
   contract, skills, memory): the periodic sweep where accumulated experience becomes durable change
   (see [`memory.md`](memory.md)).

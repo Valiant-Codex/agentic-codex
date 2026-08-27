@@ -6,6 +6,36 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.7] — 2026-08-27 — Skills are validated on shape, never on whether they help
+
+`skillify`'s Validation section checked frontmatter and token count — the shape of a skill, not its
+worth. Meanwhile `skills-policy.md` guardrail 8 tells a reviewer to ask "would this still earn its
+place against a no-skill baseline", and gave no way to answer it. So the answer was always a guess,
+and the guess always favoured keeping the skill: nobody deletes a document that looks fine.
+
+### Added
+
+- **`skillify` Validation now has two levels: shape and effectiveness.** Shape is the old checklist.
+  Effectiveness is a procedure: 2–3 realistic test prompts, two sub-agents spawned in the same turn
+  (one with the skill's path, one with no skill), same inputs, outputs compared. Three named outcomes,
+  each with what it means — including that a *tie* makes a skill a deletion candidate rather than a
+  rewrite candidate, which is the case a reviewer is most likely to rationalise away.
+- **Triggering is tested separately from quality.** A skill can be good and never fire; the defect
+  then lives in `description`, the field the harness actually matches on, not in the body. Testing
+  the two together is how a description problem gets misdiagnosed as a content problem.
+- **The baseline rule, stated once:** a run *with* the skill proves nothing without the run *without*
+  it. When updating an existing skill the baseline is the old version — snapshot before editing.
+
+### Notes
+
+The with/without comparison is borrowed from Anthropic's official `skill-creator` plugin. The
+reference deployment **absorbed the idea rather than installing the plugin**, and `skillify` records
+why in its `Related` section so the question is not reopened as new: a third-party `SKILL.md` is
+instructions a model executes, and in a fleet where one agent holds root, installing one beside our
+own puts unreviewed third-party instructions in a privileged session. It would also leave two skills
+competing for the same intent — the selection failure guardrail 8 exists to prevent. Ideas from
+third-party skills are welcome; the files are not.
+
 ## [0.8.6] — 2026-08-25 — Voice moves to output style; a CHANGELOG a checker cannot parse is not clean
 
 A reference-deployment change (Durin + Galadriel both moving their voice/register out of `CLAUDE.md`
@@ -1308,6 +1338,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.8.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.7
 [0.8.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.6
 [0.8.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.5
 [0.8.4]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.4
