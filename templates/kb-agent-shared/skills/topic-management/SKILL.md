@@ -33,7 +33,8 @@ the same wrapper as that agent's Unix user (`manage-agents`).
 ```bash
 claude-topic list                       # key, state, sessionId, display name
 claude-topic urls                       # every topic's Remote Control URL
-claude-topic status <key>               # service state + stored/live sessionId
+claude-topic status <key>               # service state + stored/live/derived sessionId
+claude-topic status <key> --porcelain   # the same as field<TAB>value lines, with a drift verdict
 claude-topic new <key> "<Display Name>" # register + start, and commit topics.tsv
 claude-topic restart <key>              # resumes the SAME conversation
 claude-topic restart --new <key>        # start a FRESH conversation (see below)
@@ -114,9 +115,31 @@ bridge id and a new URL. Being `active` and `enabled` does **not** mean reachabl
   push, so it doesn't publish unrelated half-finished work. Push it yourself when your tree is sane.
 - **A dirty worktree makes the sync timer skip your repo silently.** Leaving `topics.tsv` uncommitted
   stops your brain from syncing at all, on a log line nobody reads.
+- **Check `drift` before you restart anything.** `claude-topic status <key> --porcelain` prints a
+  computed verdict: `no` means the stored pointer is the conversation you are actually having, `yes`
+  means it is not and a restart would adopt the newer branch, `unknown` means it could not tell —
+  which is **not** the same as clean. Do not read this out of the prose output with a regex; that is
+  how a guardian ended up silently reporting healthy for a stopped topic.
 - **MCP config changes need a restart** — MCP servers load at process start.
 - **Never restart a topic to "apply" a change you have not committed.** The unit re-reads the repo; an
   uncommitted change is not there.
+
+## MCP servers are a standing context tax — park what you do not use
+
+Every MCP tool **name** sits in the always-on context at roughly 16 tokens, whether or not you touch
+that server. One ~546-tool server measured 8,824 tokens — 23% of a whole session — paid on every
+session forever. `scripts/mcp-park` moves a server's definition between `~/.claude.json` (attached)
+and `~/.config/agent/mcp-parked.json` (parked), atomically and **without ever printing it**: the
+definition normally carries an API key.
+
+```bash
+scripts/mcp-park status <server>                  # attached / parked / not configured
+scripts/mcp-park on  <server> --restart <topic>   # attach, then restart so it loads
+scripts/mcp-park off <server> --restart <topic>   # park it again when the work is done
+```
+
+The restart is what makes it take effect, which is why this lives here rather than in a skill of its
+own. Afterwards, **open the topic's URL** — a restart cannot prove the bridge is still served.
 
 ## Validation
 

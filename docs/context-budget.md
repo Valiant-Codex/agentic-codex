@@ -57,7 +57,14 @@ mcp-park off <server> --restart <topic>
 ```
 
 A reference implementation ships at
-[`../templates/root-agent-skills/manage-agents/scripts/mcp-park`](../templates/root-agent-skills/manage-agents/scripts/mcp-park).
+[`../templates/kb-agent-shared/skills/topic-management/scripts/mcp-park`](../templates/kb-agent-shared/skills/topic-management/scripts/mcp-park).
+
+**It belongs in the shared `topic-management` skill, not in the root agent's toolbox.** Parking a
+server only takes effect on a topic restart, which is what that skill is for — and every agent with
+an MCP server pays this tax, not just the privileged one. The reference deployment learned this the
+slow way: the tool existed twice, as a server-specific copy inside one agent's own skill and as this
+generalisation in the template, so `skills-policy.md` guardrail 7 cited a "mcp-park pattern" that
+the shared layer did not contain, and the unprivileged agent had no way to park anything.
 It moves a server definition between the live config and a parked file — both `0600`, both outside
 git, the credentials it carries never printed — atomically, and verified byte-identical across a round
 trip.

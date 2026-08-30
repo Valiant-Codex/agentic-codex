@@ -71,8 +71,9 @@ if [ -n "$RESTART" ]; then
   claude-topic restart "$RESTART"
   cat <<'WARN'
 
-  WARNING — verify reachability. A restart resumes the same conversation, so nothing is lost, but
-  the Remote Control bridge is server-side state this box cannot observe. Run `claude-topic urls`
+  WARNING — verify reachability. A restart resumes the conversation the topic is actually on (the
+  wrapper derives it from the Remote Control bridge, so a stale stored pointer no longer sends you
+  back days), but reachability is server-side state this box cannot observe. Run `claude-topic urls`
   and OPEN the topic's URL. If it answers "session can't be found", the bridge is dead and the fix
   is `claude-topic rotate <key>` — not another restart, which would re-announce the same dead id.
 WARN
