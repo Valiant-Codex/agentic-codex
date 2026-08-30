@@ -6,6 +6,96 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.9] — 2026-08-30 — A restart that reports success can still have lost three days
+
+The runtime mints sessionIds and re-keys them silently on `/clear` and on compaction. The wrapper
+wrote `topics.state` only when one of its own verbs ran, so between a fork and the next invocation
+the stored pointer was stale and nothing said so — and the next restart resumed the stale branch,
+orphaned everything said since, and **reported success, because by its own definition it had
+succeeded**. In the reference deployment: six orphaning events across two agents, the largest
+losing 8.5 MB and three days. One of them was caused by a self-restart armed specifically to
+demonstrate that restarting was safe; the journal recorded nothing but `Started`.
+
+### Added
+
+- **`claude-topic-session-hook`** — a root-owned `SessionStart` hook, installed by
+  `install-host-services` and registered in each brain's `deploy/claude-settings.json`. It writes
+  the state at the instant the runtime creates an id, for `startup|resume|clear|compact` — exactly
+  the set that mints them. Root-owned deliberately: an agent must not be able to rewrite the record
+  of where its own history lives.
+- **Bridge-derived identity in `claude-topic`.** `sid_newest_on_bridge` and `bridge_of_sid` recover
+  the live branch from transcripts on disk. The Remote Control bridge is the durable identity a
+  sessionId is not, so *same bridge = same topic*. Derived from disk on purpose: it answers after a
+  crash and at boot, when there is no live process to ask.
+- **`claude-topic run` adopts.** The unattended path systemd re-enters on every restart — where the
+  damage actually happened — now adopts the newest branch on the bridge when the stored pointer is
+  stale. Verified counterfactually against both real incidents: it returns the branch that was
+  live, where the stored pointer returned one frozen for weeks.
+- **`claude-topic status --porcelain`** — field/value lines with a **computed `drift` verdict**
+  (`yes` / `no` / `unknown` / `unanchored`) and `newest_on_bridge`.
+- **The divergence check watches the hook**, asserting both that it is installed and that the
+  agent's settings register it, and reports pointer adoptions from the last 24 hours.
+
+### Fixed
+
+- **`rotate-all` aborted at the first failing topic**, on the boot path. The subshell the comment
+  credited with preventing exactly this does not: under `errexit`, a failing `( cmd ); rc=$?` kills
+  the loop before `rc` is read. One bad topic left every other one announcing a dead bridge while
+  `active` and `enabled` — the outage shape the verb exists to prevent.
+- **`rotate-all --dry-run` named the wrong conversation.** It printed the stored id while `rotate`
+  abandoned the live one, so the preview was wrong on precisely the drifted topics that are the
+  only reason to run it. Both now resolve through one helper.
+- **`rotate-all` accepted only the exact string `--dry-run`** and fell through to the destructive
+  path for anything else — `--dryrun` would have blanked every conversation on the box.
+- **Transcripts were ordered by the timestamp they declare about themselves**, in a tree the agent
+  can write. A two-line file claiming 2099 won outright and would have been `exec`'d. Ordering is
+  now by mtime.
+- **`remove` discarded the pointer with no record**, where `rotate` refuses to discard one it
+  cannot write down.
+- **The hook wrote `topics.state` without the lock** the wrapper uses for that same file.
+- **The divergence check recovered the live id with a regex over prose**, then `continue`d when it
+  found nothing. That regex returns empty — silently — for a stopped topic, for empty output, for
+  a reworded line, and for a change of case.
+- **An already-completed split was invisible.** Comparing stored against live only ever sees a
+  split still in progress: two topics reported CLEAN with orphaned branches sitting on disk.
+
+### Notes
+
+**Do not bind a hook to a systemd `Environment=`.** The first version of this fix passed the topic
+key as `Environment=TOPIC_KEY=%i`. It was wrong in both directions. Absent when needed: the units
+were running from before the unit file changed, so twelve of twelve topics refused, and the
+mechanism was inert for an afternoon *while being reported as verified* — the verification had run
+against a throwaway topic created after the edit, with no Remote Control bridge at all, so it
+exercised neither the unit path nor a bridge. Present when not wanted, which is worse: a systemd
+`Environment=` is inherited by the whole process tree, so any nested `claude` fires `SessionStart`
+carrying the topic's key and a foreign session id, and the hook writes that foreign id into the
+topic's row. **A binding that can be absent when you need it and present when you don't is not a
+binding.** The key is now derived from the bridge in the session's own transcript, which cannot
+name a session that is not on that bridge.
+
+**The hook runs detached.** `SessionStart` fires before the runtime has written the transcript —
+measured: a synchronous hook exhausted its budget at 18:12:21 and the transcript was created at
+18:12:21. It lost by being early. A wait long enough to win would be paid by every ordinary
+`claude` run that is not a topic.
+
+**mtime ordering is detection, not prevention.** It defeats pre-planting; a file planted just
+before a restart gets mtime "now" for free. That cannot be closed at that layer — the tree belongs
+to the principal it would defend against. Every adoption is therefore recorded and reported.
+
+**This supersedes the `claude-topic` port in 0.8.8.** That release shipped the first version of
+this fix — bridge derivation plus a `TOPIC_KEY`-driven hook — from the reference deployment before
+the deployment had finished reviewing it. Everything above was found afterwards, by an adversarial
+review and by running the mechanism against deliberately broken fixtures rather than a clean one.
+If you deployed 0.8.8, the `Environment=TOPIC_KEY=%i` line it added to `claude-topic@.service` is
+the one thing to remove first.
+
+**A structurally better fix exists and was deliberately deferred**: one working directory per topic
+(`WorkingDirectory=%h/.topics/%i`). The runtime derives its project directory purely from cwd, so
+the key would be readable from `dirname(transcript_path)` — no bridge, no parsing, no ambiguity —
+and it would delete both derivation functions outright. It needs a transcript migration and it
+moves where agents' relative paths resolve, so it is a decision to take calmly rather than at the
+tail end of an incident fix.
+
 ## [0.8.8] — 2026-08-30 — Four fixes the reference deployment had already made and never shipped
 
 Divergence between this repo and the deployment it was distilled from is the design. Divergence in the

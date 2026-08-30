@@ -117,6 +117,9 @@ tsv_upsert() {  # tsv_upsert <file> <key> <value>
       rest="$(awk -F'\t' -v k="$key" '$1!=k' "$file")" || { echo "cannot read $file" >&2; exit 1; }
     fi
     tmp="$(mktemp "${file}.XXXXXX")" || exit 1
+    trap 'rm -f "$tmp"' EXIT     # never leave a stray tmp beside a git-tracked file
+    trap 'rm -f "$tmp"' EXIT     # never leave a stray tmp beside a git-tracked file
+    trap 'rm -f "$tmp"' EXIT     # never leave a stray tmp beside a git-tracked file
     [ -f "$file" ] && chmod --reference="$file" "$tmp" 2>/dev/null
     { [ -n "$rest" ] && printf '%s\n' "$rest"; printf '%s\t%s\n' "$key" "$val"; } > "$tmp" && mv "$tmp" "$file"
   ) || die "failed to update $file"
@@ -260,7 +263,10 @@ Usage (systemd-managed topics — no tmux):
   $PROG restart <key>               systemctl restart (resumes the same sessionId)
   $PROG stop <key>                  stop + disable the topic's service (survives as state)
   $PROG remove <key>                unregister the topic for good (registry + state + unit)
-  $PROG status <key>                service state + stored/live sessionId
+  $PROG status <key> [--porcelain]  service state + stored/live/derived sessionId.
+                                    --porcelain prints tab-separated field<TAB>value lines
+                                    for machines, including a computed 'drift' verdict
+                                    (yes/no/unknown/unanchored). Never parse the prose.
   $PROG remember <key>              record the running topic's live sessionId to state
   $PROG run <key>                   foreground launch (invoked by the systemd unit)
 
@@ -316,6 +322,84 @@ session_id_live() {
   f="${SESS_DIR}/${cp}.json"
   [ -f "$f" ] && python3 -c "import json;print(json.load(open('$f')).get('sessionId',''))" 2>/dev/null || true
 }
+# Newest sessionId on a given Remote Control bridge, derived from transcripts on disk.
+#
+# WHY THIS EXISTS. The runtime — not this wrapper — mints sessionIds, and it re-keys them
+# silently on /clear and on compaction. topics.state is only written by new/restart/remember,
+# so from the moment the runtime forks, the stored pointer is stale and nothing says so. On
+# 2026-08-30 that cost three days of conversation; reconstructing the lineage afterwards showed
+# it was the FOURTH such split on this topic, and one on 2026-08-25 had silently orphaned two
+# days and 4.6 MB. Neither was visible from inside.
+#
+# The bridge id is the durable identity the sessionId is not: the runtime re-keys the session on
+# every /clear, but re-keys the bridge only when we deliberately start fresh (`new`/`rotate`).
+# So: same bridge = same topic, and the newest transcript on that bridge is the live branch.
+# Verified across both agents' topics, including reconstructing four drifted ones from disk with
+# no live process and no state file.
+#
+# Deliberately derives from DISK, so it answers after a crash and at boot — exactly when
+# session_id_live cannot, because the session file dies with the process it describes.
+# Normalisation note: session JSON says session_01…, transcripts say cse_01… — same suffix.
+sid_newest_on_bridge() {
+  local bridge="$1"
+  [ -n "$bridge" ] || return 0
+  BR="${bridge#session_}" BR="cse_${BR#cse_}" PD="$PROJ_DIR" python3 - <<'PYEOF' 2>/dev/null || true
+import json, os, glob
+br = os.environ["BR"]; pd = os.environ["PD"]
+best = (None, None)   # (mtime, sessionId)
+for f in glob.glob(os.path.join(pd, "*", "*.jsonl")):
+    seen = False
+    try:
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if '"bridge-session"' in line:
+                    try:
+                        if (json.loads(line).get("bridgeSessionId") or "") == br:
+                            seen = True; break      # one file, one bridge — stop reading
+                    except Exception: pass
+    except Exception:
+        continue
+    if not seen: continue
+    # ORDER BY MTIME, NOT BY THE TIMESTAMP THE FILE DECLARES ABOUT ITSELF. This tree is writable
+    # by the agent whose resume we are choosing, so a self-declared field is an instruction from
+    # the data: a two-line file claiming a timestamp in 2099 used to win outright and be exec'd by
+    # cmd_run, verified against a fixture.
+    #
+    # BE CLEAR ABOUT WHAT THIS BUYS, because it is less than it looks. mtime defeats PRE-planting:
+    # a file dropped today cannot win a restart that happens after the real branch is appended to
+    # again. It does NOT defeat a file planted in the window before a restart, which gets mtime
+    # 'now' for free. That hole cannot be closed here — the tree belongs to the principal we would
+    # be defending against, and an injection with a shell can write topics.state directly anyway.
+    # So the real control is DETECTION, not prevention: every adoption cmd_run makes is appended
+    # to topics.rotated, and agentic-divergence-check reports adoptions it finds there. Do not
+    # add a guard here and call the class closed.
+    #
+    # It is also strictly cheaper — no timestamp parsing at all.
+    try: m = os.path.getmtime(f)
+    except Exception: continue
+    if best[0] is None or m > best[0]:
+        best = (m, os.path.basename(f)[:-6])
+print(best[1] or "")
+PYEOF
+}
+# The bridge a topic is on, taken from disk for a given sessionId.
+bridge_of_sid() {
+  local sid="$1"
+  [ -n "$sid" ] || return 0
+  SID="$sid" PD="$PROJ_DIR" python3 - <<'PYEOF' 2>/dev/null || true
+import json, os, glob
+sid = os.environ["SID"]; pd = os.environ["PD"]
+for f in glob.glob(os.path.join(pd, "*", sid + ".jsonl")):
+    br = ""
+    with open(f, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if '"bridge-session"' in line:
+                try: br = json.loads(line).get("bridgeSessionId") or br
+                except Exception: pass
+    print(br); break
+PYEOF
+}
+
 # Live Remote Control bridge id from the running claude's session file.
 #
 # READ THIS BEFORE TRUSTING IT: this is the id the session ANNOUNCES, not proof that the
@@ -387,9 +471,68 @@ cmd_list() {
   done
 }
 
+# --- status ------------------------------------------------------------------
+# `--porcelain` exists because the daily divergence check used to recover the live sessionId by
+# running `sed -n 's/.*(live: \(...\)).*/\1/p'` over the PROSE below. That regex returns empty —
+# and the check then `continue`s, reporting nothing — for a stopped topic, for empty output
+# (command missing, sudo failed, user manager unreachable), for any rewording of this line, and
+# for a change of case. A guardian whose only input is another program's prose fails open on every
+# one of those, silently. Verified against all four.
+#
+# So the drift verdict is computed HERE, by the code that owns the state, and published as a
+# field. Three values, and the third is the point: `unknown` is not `no`. A caller that cannot
+# tell must be able to say so instead of staying quiet.
+#
+# It also publishes `newest_on_bridge`, which is what makes an ALREADY-COMPLETED split visible.
+# stored-vs-live only ever sees a split still in progress: on 2026-08-30 both `durin` and
+# galadriel's `ideas` reported CLEAN with orphaned branches sitting on disk, because by then the
+# damage was done and the live session agreed with the pointer that had caused it.
+cmd_status_porcelain() {
+  local k="$1" stored live newest bridge act ena drift
+  stored="$(state_sid "$k")"
+  live="$(session_id_live "$k")"
+  bridge="$(bridge_id_live "$k")"
+  [ -n "$bridge" ] || bridge="$(bridge_of_sid "$stored")"
+  newest="$(sid_newest_on_bridge "$bridge")"
+  act="$(svc_state "$k")"; [ -n "$act" ] || act=unknown
+  ena="$(systemctl --user is-enabled "$(svc "$k")" 2>/dev/null || echo unknown)"
+  if [ -z "$stored" ]; then
+    drift=unanchored                      # enabled with no pointer at all: a restart starts blank
+  elif [ -n "$live" ] && [ "$live" != "$stored" ]; then
+    drift=yes
+  elif [ -n "$newest" ] && [ "$newest" != "$stored" ]; then
+    drift=yes                             # the completed-split case the old check could not see
+  elif [ -n "$live" ] || [ -n "$newest" ]; then
+    drift=no
+  else
+    drift=unknown                         # nothing running AND nothing derivable — say so
+  fi
+  printf 'key\t%s\n'              "$k"
+  printf 'display\t%s\n'          "$(reg_name "$k")"
+  printf 'active\t%s\n'           "$act"
+  printf 'enabled\t%s\n'          "$ena"
+  printf 'stored\t%s\n'           "$stored"
+  printf 'live\t%s\n'             "$live"
+  printf 'newest_on_bridge\t%s\n' "$newest"
+  printf 'bridge\t%s\n'           "$bridge"
+  printf 'registered\t%s\n'       "$(reg_has "$k" && echo yes || echo no)"
+  printf 'drift\t%s\n'            "$drift"
+}
+
 cmd_status() {
-  local k="$1" stored live
+  local k="" porcelain=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --porcelain) porcelain=1 ;;
+      -*) die "unknown flag '$1' for status" ;;
+      *)  [ -z "$k" ] || die "status takes one key (got '$k' and '$1')"; k="$1" ;;
+    esac
+    shift
+  done
+  [ -n "$k" ] || { usage; exit 2; }
+  local stored live
   require_valid_key "$k"; require_systemd; require_known_key "$k"
+  if [ "$porcelain" = 1 ]; then cmd_status_porcelain "$k"; return 0; fi
   stored="$(state_sid "$k")"; live="$(session_id_live "$k")"
   echo "key:        $k"
   echo "display:    $(reg_name "$k")"
@@ -397,6 +540,14 @@ cmd_status() {
   echo "sessionId:  ${stored:-<none stored>}  (live: ${live:-<not running>})"
   [ -z "$stored" ] || [ -z "$live" ] || [ "$stored" = "$live" ] || \
     err "warning: live sessionId differs from stored — '$PROG remember $k' to reconcile"
+  # Also show the branch derived from disk. Without it, `status` on a topic that is not running
+  # says nothing at all about drift — and a completed split looks identical to a healthy topic.
+  local _nb; _nb="$(sid_newest_on_bridge "$(bridge_id_live "$k")")"
+  [ -n "$_nb" ] || _nb="$(sid_newest_on_bridge "$(bridge_of_sid "$stored")")"
+  echo "on bridge:  ${_nb:-<cannot derive from disk>}"
+  [ -z "$_nb" ] || [ "$_nb" = "$stored" ] || \
+    err "warning: the newest conversation on this topic's bridge is $_nb, not the stored $stored —
+  a restart will adopt $_nb. If that is not what you want, '$PROG status $k --porcelain' and read 'drift'."
   reg_has "$k" || err "warning: '$k' has a service but no entry in $REG — it cannot be restarted until registered"
   local b bu; b="$(bridge_id_live "$k")"
   bu="<none — not on Remote Control>"; [ -z "$b" ] || bu="https://claude.ai/code/$b"
@@ -431,10 +582,27 @@ cmd_urls() {
 # stored sessionId with only a stderr warning — fine when a human is watching, not fine as
 # the documented recovery path for a whole fleet. `rotate` appends the abandoned id to
 # $ROTATED first, so every replaced conversation stays addressable afterwards.
+# The sessionId `rotate` would actually abandon, resolved the same way whether we are about to
+# destroy it or merely previewing. This exists because the two disagreed: the dry-run printed the
+# STORED pointer while the action abandoned the LIVE one, so on a drifted topic — the only reason
+# anyone runs the preview — the preview named the wrong conversation. Live wins; disk-derived is
+# the fallback for a topic that is not running; stored is the last resort.
+sid_to_abandon() {  # sid_to_abandon <key>
+  local key="$1" s
+  s="$(session_id_live "$key")"
+  [ -n "$s" ] || s="$(sid_newest_on_bridge "$(bridge_of_sid "$(state_sid "$key")")")"
+  [ -n "$s" ] || s="$(state_sid "$key")"
+  printf '%s' "$s"
+}
+
 cmd_rotate() {
   local key="$1" old
   require_valid_key "$key"; require_systemd; require_registry; require_known_key "$key"
-  old="$(state_sid "$key")"; [ -n "$old" ] || old="$(session_id_live "$key")"
+  # Record the id actually being abandoned. This preferred the STORED pointer, so on a drifted
+  # topic it wrote the wrong id into topics.rotated and the conversation being destroyed was
+  # recorded nowhere — the opposite of what the note below promises. Live wins; disk-derived is
+  # the fallback for a topic that is not running.
+  old="$(sid_to_abandon "$key")"
   if [ -n "$old" ]; then
     umask 077
     printf '%s\t%s\t%s\t%s\n' "$(date -Is)" "$key" "$old" "$(reg_name "$key")" >> "$ROTATED" \
@@ -477,7 +645,16 @@ cmd_rotate() {
 # purpose must not be resurrected by a reboot.
 cmd_rotate_all() {
   local dry=0
-  [ "${1:-}" = "--dry-run" ] && dry=1
+  # Reject unknown arguments. This accepted ONLY the exact string --dry-run and fell through to
+  # the destructive path for anything else: --dryrun, --dry, -n, or a stray key would blank every
+  # conversation on the box. A typo must not be a fleet-wide rotate.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) dry=1 ;;
+      *) die "rotate-all takes no arguments except --dry-run (got '$1')" ;;
+    esac
+    shift
+  done
   require_systemd; require_registry
   local digest="${STATE_DIR}/last-boot-rotation.tsv"
   local k name old new rc total=0 done=0 failed=0
@@ -492,7 +669,7 @@ cmd_rotate_all() {
     printf '%-18s %-38s %s\n' KEY 'SESSIONID THAT WOULD BE ABANDONED' NAME
     for k in $(all_keys); do
       systemctl --user is-enabled --quiet "$(svc "$k")" 2>/dev/null || continue
-      old="$(state_sid "$k")"; [ -n "$old" ] || old='<none — plain fresh start>'
+      old="$(sid_to_abandon "$k")"; [ -n "$old" ] || old='<none — plain fresh start>'
       printf '%-18s %-38s %s\n' "$k" "$old" "$(reg_name "$k")"
     done
     err "dry run: nothing was changed. $total topic(s) would be rotated."
@@ -506,9 +683,14 @@ cmd_rotate_all() {
   for k in $(all_keys); do
     systemctl --user is-enabled --quiet "$(svc "$k")" 2>/dev/null || continue
     name="$(reg_name "$k")"; [ -n "$name" ] || name="$k"
-    old="$(state_sid "$k")"; [ -n "$old" ] || old='-'
+    old="$(sid_to_abandon "$k")"; [ -n "$old" ] || old='-'
     # Subshell: a die() inside cmd_rotate must not abandon the remaining topics half-done.
-    ( cmd_rotate "$k" ) >/dev/null 2>&1; rc=$?
+    # It MUST be the condition of an `if`. `( cmd_rotate "$k" ); rc=$?` does NOT work: under
+    # `set -e` the failing subshell is a simple command in ordinary position, so errexit fires
+    # and kills the whole loop before `rc=$?` ever runs — the exact opposite of what the comment
+    # above promised, on the path that runs at boot for every agent. Proved with a fixture:
+    # a three-item loop processed one item and exited 1.
+    if ( cmd_rotate "$k" ) >/dev/null 2>&1; then rc=0; else rc=$?; fi
     if [ "$rc" -eq 0 ]; then done=$((done + 1)); else failed=$((failed + 1)); fi
     new="$(bridge_id_live "$k")"
     if [ -n "$new" ]; then new="https://claude.ai/code/$new"
@@ -606,15 +788,15 @@ cmd_restart() {
   else
     # Read the LIVE id first, always. The stored one is written at create/restart/remember and at no
     # other time, but the running conversation's id can change underneath it — a compaction, a slash
-    # command, a new chat started in the app. From that moment the stored state is stale and silent,
-    # and the next restart resumes the OLD branch, orphaning everything said since. Observed in the
-    # reference deployment: state held one id, the live conversation another, and a restart three days
-    # later jumped back three days. Nothing was lost, but nobody could see the split from inside —
-    # the restart reported success, because by its own definition it had succeeded.
+    # command, a new chat started in the app. From that moment state is stale and silent, and the next
+    # restart resumes the OLD branch, orphaning everything said since. That is exactly what happened on
+    # 2026-08-27: state said 67de1312, the live conversation was cd4f4314, and the 2026-08-30 restart
+    # jumped back three days. Nothing was lost, but neither Durin nor Dario could see the split from
+    # inside — the restart reported success, because by its own definition it had succeeded.
     live="$(session_id_live "$key")"
     if [ -z "$stored" ]; then
       [ -n "$live" ] || die "no stored or live sessionId for '$key' — a restart would start a BLANK conversation
-  and orphan its history. Re-run with '$PROG restart --new $key' if that is what you want."
+  and orphan its history (incident 2026-07-17). Re-run with '$PROG restart --new $key' if that is what you want."
       save_sid "$key" "$live"; stored="$live"
       err "note: no sessionId was stored for '$key' — captured the live one ($live) before restarting"
     elif [ -n "$live" ] && [ "$live" != "$stored" ]; then
@@ -689,6 +871,16 @@ cmd_remove() {
   require_valid_key "$key"; require_systemd
   reg_has "$key" || unit_known "$key" || die "unknown topic '$key' — nothing to remove.
   Known topics: $(all_keys | paste -sd' ' - || true)"
+  # Record the pointer before discarding it. `rotate` refuses to abandon an id it cannot write
+  # down; `remove` used to drop one in silence, leaving a transcript on disk that nothing on the
+  # box could name afterwards. Same append, same file, same reason.
+  local gone; gone="$(sid_to_abandon "$key")"
+  if [ -n "$gone" ]; then
+    umask 077
+    printf '%s\t%s\t%s\t%s\n' "$(date -Is)" "$key" "$gone" "removed:$(reg_name "$key")" >> "$ROTATED" \
+      || die "could not append to $ROTATED — refusing to remove '$key' with no record of $gone"
+    err "note: recorded $gone for '$key' in $ROTATED before removing — its transcript stays on disk"
+  fi
   systemctl --user disable --now "$(svc "$key")" >/dev/null 2>&1 || true
   systemctl --user reset-failed "$(svc "$key")" >/dev/null 2>&1 || true
   reg_del "$key"; del_sid "$key"
@@ -714,8 +906,29 @@ cmd_run() {
   require_safe_value "display name" "$name"
   command -v claude >/dev/null 2>&1 || die "claude not found in PATH ($PATH)"
   sid="$(state_sid "$key")"
+  # THE UNATTENDED PATH. systemd re-runs this on every crash (Restart=always), and it used to
+  # resume the stored pointer without question. That is where the damage happened: the runtime
+  # re-keys the sessionId on /clear and on compaction without telling anyone, so a stored pointer
+  # can be days stale, and this exec is the moment it becomes a lost conversation. The adoption
+  # logic first lived only in `restart` — the one path with a human watching — which is exactly
+  # backwards. Reconstructed against the real incidents: at both the 2026-08-25 and 2026-08-30
+  # restarts the derivation below returns the branch that was actually live, where stored returned
+  # a pointer frozen since 2026-08-06.
+  #
+  # Derive from DISK, not from the live process: at this point nothing is running (we are about to
+  # exec it), and the session file the live-poll reads dies with the process it describes.
   if [ -n "$sid" ]; then
     require_uuid "stored sessionId" "$sid"
+    local _br _newest
+    _br="$(bridge_of_sid "$sid")"
+    _newest="$(sid_newest_on_bridge "$_br")"
+    if [ -n "$_newest" ] && [ "$_newest" != "$sid" ] && transcript_exists "$_newest"; then
+      err "note: '$key' had drifted — state recorded $sid, but the newest conversation on its"
+      err "      Remote Control bridge is $_newest. Resuming that instead; $sid stays on disk."
+      printf '%s\t%s\t%s\t%s\n' "$(date -Is)" "$key" "$sid" "superseded-by:$_newest" >> "$ROTATED" 2>/dev/null || true
+      save_sid "$key" "$_newest"
+      sid="$_newest"
+    fi
     # claude's own failure here is ANSI-mangled in the journal; log the cause in plain text.
     transcript_exists "$sid" || err \
       "warning: no transcript for sessionId $sid — 'claude --resume' will likely fail and this unit will fail-loop; fix with '$PROG restart --new $key'"
@@ -733,8 +946,8 @@ main() {
     list)             cmd_list ;;
     urls)             cmd_urls ;;
     rotate)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_rotate "$1" ;;
-    rotate-all)       cmd_rotate_all "${1:-}" ;;
-    status)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_status "$1" ;;
+    rotate-all)       cmd_rotate_all "$@" ;;
+    status)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_status "$@" ;;
     new)              [ $# -ge 2 ] || { usage; exit 2; }; cmd_new "$1" "$2" ;;
     restart)          [ $# -ge 1 ] || { usage; exit 2; }; cmd_restart "$@" ;;
     stop)             [ $# -ge 1 ] || { usage; exit 2; }; cmd_stop "$1" ;;

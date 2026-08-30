@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+# claude-topic-session-hook — record the session a topic is actually on, at the instant the
+# runtime creates it.
+#
+# WHY. The runtime owns sessionIds and re-keys them silently on /clear and on compaction.
+# topics.state was written only by new/restart/remember, so between a fork and the next wrapper
+# invocation the stored pointer was stale and nothing said so. Reconstructed from disk: six
+# orphaning events across two agents — including the 2026-08-30 self-restart that was armed to
+# prove the mechanism and lost three days instead. None was visible from inside.
+#
+# This closes it on the WRITE path: SessionStart fires for source=startup|resume|clear|compact,
+# which is exactly the set that mints ids, and hands us session_id and transcript_path.
+#
+# HOW IT KNOWS WHICH TOPIC IT IS — and why it does NOT take an environment variable.
+# The runtime knows nothing about topics. The first version took the key from TOPIC_KEY, set by
+# `Environment=TOPIC_KEY=%i` in the unit. That was wrong in both directions, and the second
+# direction is the dangerous one:
+#
+#   - ABSENT when needed. The unit gained the line on 2026-08-30; the twelve running services were
+#     never restarted; every SessionStart refused. The mechanism was inert on 12 of 12 topics while
+#     being reported as verified.
+#   - PRESENT when not wanted. A systemd Environment= is inherited by the WHOLE process tree under
+#     the unit. Any nested `claude` — a tool call, a script, a manual --resume to inspect something
+#     — inherits TOPIC_KEY and fires SessionStart with a foreign session id. Demonstrated on this
+#     box before anyone noticed: 2026-08-30 14:24:09, a plain `claude` run with cwd /tmp and no
+#     Remote Control bridge at all wrote `hooktest -> 12163b9a…` into topics.state. It was harmless
+#     only because `hooktest` was not a real topic key. With TOPIC_KEY=durin inherited, it would
+#     have overwritten a live topic's pointer with a throwaway conversation — the very defect this
+#     hook exists to prevent, caused by the hook.
+#
+# So the key is DERIVED, from the same durable identity the wrapper uses: the Remote Control
+# bridge. Read bridgeSessionId out of the transcript the runtime just handed us, then find which
+# row of topics.state holds a sessionId sitting on that same bridge. A session with no bridge is
+# not a topic and is ignored; zero matches and two matches are both refusals, never a guess.
+#
+# Root-owned and installed by install-host-services, deliberately: an agent must not be able to
+# rewrite the thing that records where its own history lives.
+#
+# FAILS CLOSED, AND LOUD ONLY WHEN IT MATTERS. A hook that silently no-ops rebuilds the original
+# problem with more machinery, so every refusal that concerns a REAL topic is logged with its
+# reason. The one refusal that is the ordinary case — "this session is not on a Remote Control
+# bridge", i.e. every normal `claude` the agent runs — is logged at debug level, because a warning
+# that fires on the common case trains everyone to ignore the line that matters.
+#
+# It never blocks the session: a topic that cannot record its id must still run, because a running
+# agent with stale state is recoverable and an agent that will not start is not.
+set -uo pipefail
+
+log()   { logger -t claude-topic-hook -p user.warning -- "$*" 2>/dev/null || echo "claude-topic-hook: $*" >&2; }
+debug() { logger -t claude-topic-hook -p user.debug   -- "$*" 2>/dev/null || true; }
+
+STATE="$HOME/.config/agent/topics.state"
+PROJ_DIR="$HOME/.claude/projects"
+LOCKDIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+# NOTE: TOPIC_KEY is deliberately NOT consulted. See the header. If a future change reintroduces
+# it, it must first explain why an inherited variable cannot name a foreign session.
+
+payload="$(cat 2>/dev/null || true)"
+[ -n "$payload" ] || { log "REFUSING: empty hook payload. State NOT updated."; exit 0; }
+
+# session_id, source and transcript_path in one pass, tab-separated (paths may contain spaces).
+IFS=$'\t' read -r sid src tpath <<EOF2
+$(printf '%s' "$payload" | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print("\t\t"); raise SystemExit
+print("\t".join([(d.get("session_id") or ""), (d.get("source") or "?"), (d.get("transcript_path") or "")]))
+' 2>/dev/null)
+EOF2
+
+case "${sid:-}" in
+  [0-9a-fA-F]*-*-*-*-*) : ;;
+  *) log "REFUSING: no usable session_id in ${src:-?} payload (is python3 on PATH?). State NOT updated."; exit 0 ;;
+esac
+
+[ -f "$STATE" ] || { debug "no $STATE yet; nothing to match $sid ($src) against"; exit 0; }
+
+# --- everything below runs DETACHED, and here is why ---------------------------
+# SessionStart fires at the instant the session is minted — before the runtime has written the
+# transcript, let alone the bridge line inside it. Measured on a real /clear of a live topic: the
+# hook waited its whole budget and gave up at 18:12:21, and the transcript was created at 18:12:21.
+# It lost the race by being early, not by being slow.
+#
+# A synchronous fix means a longer wait, and that wait is paid by EVERY session start including the
+# ordinary `claude` runs that are not topics at all — a hook that blocks a human's startup to
+# discover it had nothing to do. So the identification runs in a detached child with a generous
+# budget while the hook itself returns immediately. `setsid` because the runtime may reap the
+# hook's process group, and the child must outlive it.
+#
+# Writing late is safe: the write is lock-serialised against the wrapper, and it is idempotent —
+# if `claude-topic` recorded the same id in the meantime the child finds nothing to change and
+# stays silent.
+if [ "${_CT_HOOK_CHILD:-0}" != 1 ]; then
+  if command -v setsid >/dev/null 2>&1; then
+    _CT_HOOK_CHILD=1 setsid "$0" <<<"$payload" >/dev/null 2>&1 &
+  else
+    _CT_HOOK_CHILD=1 "$0" <<<"$payload" >/dev/null 2>&1 &
+  fi
+  exit 0
+fi
+
+# Our bridge, from the transcript the runtime is creating for this session.
+#
+# WAIT FOR IT, and wait for the FILE as well as the line. SessionStart fires at the instant the
+# session is minted, which is *before* the runtime has written anything: measured on a real topic
+# start, the transcript did not exist on disk yet when the hook ran, and an earlier version of this
+# hook refused on that alone — which would have left it as inert as the version it replaced, on the
+# one event it exists to catch. The bridge line then lands a beat later still.
+#
+# Read the WHOLE file, not the head: the line is normally line 3-4 but has been observed at lines
+# 330, 1012 and 1330 in sessions that attached to Remote Control after starting.
+#
+# Bounded at ~6s, then give up: a topic that cannot be identified must not hold a session's startup
+# hostage. Giving up is safe here — cmd_run derives the same answer from the same bridge at the
+# next restart, so a missed SessionStart costs one stale window, not a lost conversation.
+read_bridge() {
+  local f="${1:-}"
+  [ -n "$f" ] && [ -f "$f" ] || return 0
+  TP="$f" python3 -c '
+import json,os
+br=""
+try:
+    with open(os.environ["TP"],encoding="utf-8",errors="replace") as fh:
+        for line in fh:
+            if "\"bridge-session\"" in line:
+                try: br=json.loads(line).get("bridgeSessionId") or br
+                except Exception: pass
+except Exception: pass
+print(br)
+' 2>/dev/null
+}
+# Two phases, each with its own countdown: wait for the file to exist, then wait for the bridge
+# line to appear inside it. One combined countdown lets a slow file creation eat the whole budget
+# and then report "no bridge" about a file it barely opened — which is exactly the wrong diagnosis.
+mybr=""; i=0; seen_file=0
+while :; do
+  if [ -z "${tpath:-}" ] || [ ! -f "${tpath:-}" ]; then
+    tpath="$(ls -1 "$PROJ_DIR"/*/"$sid".jsonl 2>/dev/null | head -1)"
+  fi
+  if [ -n "${tpath:-}" ] && [ -f "$tpath" ]; then
+    [ "$seen_file" = 1 ] || { seen_file=1; i=0; }     # restart the countdown for the line
+    mybr="$(read_bridge "$tpath")"
+    [ -n "$mybr" ] && break
+  fi
+  i=$((i + 1)); [ "$i" -ge 60 ] && break
+  sleep 1
+done
+if [ -z "$mybr" ]; then
+  if [ -z "${tpath:-}" ] || [ ! -f "${tpath:-}" ]; then
+    debug "$sid ($src) wrote no transcript within 60s — cannot derive the topic. State NOT updated."
+  else
+    # The ordinary case: an ordinary `claude` run by this agent. Not a topic. Debug, not warning.
+    debug "$sid ($src) announces no Remote Control bridge within 60s — not a topic session. State NOT updated."
+  fi
+  exit 0
+fi
+
+# Which stored row sits on that same bridge? Exactly one, or refuse.
+matches="$(STATE="$STATE" PD="$PROJ_DIR" BR="$mybr" python3 -c '
+import json,os,glob
+state=os.environ["STATE"]; pd=os.environ["PD"]; br=os.environ["BR"]
+out=[]
+for line in open(state,encoding="utf-8",errors="replace"):
+    parts=line.rstrip("\n").split("\t")
+    if len(parts)<2 or not parts[0] or not parts[1]: continue
+    k,s=parts[0],parts[1]
+    for f in glob.glob(os.path.join(pd,"*",s+".jsonl")):
+        b=""
+        try:
+            with open(f,encoding="utf-8",errors="replace") as fh:
+                for l in fh:
+                    if "\"bridge-session\"" in l:
+                        try: b=json.loads(l).get("bridgeSessionId") or b
+                        except Exception: pass
+        except Exception: pass
+        if b==br: out.append(k)
+        break
+print("\n".join(sorted(set(out))))
+' 2>/dev/null)"
+n="$(printf '%s' "$matches" | /usr/bin/grep -c . 2>/dev/null || true)"
+case "${n:-0}" in
+  1) KEY="$matches" ;;
+  0) log "REFUSING: $sid ($src) is on bridge $mybr, which matches no row in $STATE. Either it is not a registered topic, or a registered topic's stored sessionId has no transcript on disk (a repairable condition: 'claude-topic remember <key>'). State NOT updated."
+     exit 0 ;;
+  *) log "REFUSING: bridge $mybr matches MORE THAN ONE topic ($(printf '%s' "$matches" | tr '\n' ' ')) — refusing to guess which. Two topics must never share a conversation; fix with 'claude-topic rotate <key>' on one of them. State NOT updated."
+     exit 0 ;;
+esac
+
+# --- write --------------------------------------------------------------------
+# Serialised with the SAME lock the wrapper uses for this file, so a hook write and a concurrent
+# `claude-topic` upsert cannot lose each other's row. The lock path must match lock_path_for()
+# in claude-topic exactly: absolute path, '/' replaced by '_'.
+abs="$(cd "$(dirname -- "$STATE")" && pwd -P)/$(basename -- "$STATE")"
+lock="${LOCKDIR}/claude-topic-lock-$(printf '%s' "$abs" | tr '/' '_')"
+
+# `prev` is read INSIDE the lock and returned on stdout — never through a temp file beside the
+# lock. The lock is per-file, not per-key, so two hooks firing for different topics would share
+# any such path and could swap or delete each other's value.
+prev="$(
+  exec 200>"$lock" || exit 1
+  flock 200 || exit 1
+  p="$(awk -F'\t' -v k="$KEY" '$1==k{print $2; exit}' "$STATE" 2>/dev/null || true)"
+  [ "$p" = "$sid" ] && exit 2                       # nothing changed; the common case
+  rest="$(awk -F'\t' -v k="$KEY" '$1!=k' "$STATE")" || exit 1
+  tmp="$(mktemp "${STATE}.XXXXXX")" || exit 1
+  trap 'rm -f "$tmp"' EXIT
+  chmod --reference="$STATE" "$tmp" 2>/dev/null || chmod 0600 "$tmp"
+  { [ -z "$rest" ] || printf '%s\n' "$rest"; printf '%s\t%s\n' "$KEY" "$sid"; } > "$tmp" || exit 1
+  mv -f "$tmp" "$STATE" || exit 1
+  trap - EXIT
+  printf '%s' "$p"
+)"; rc=$?
+
+case "$rc" in
+  0) if [ -n "$prev" ]; then
+       log "topic '$KEY' re-keyed by the runtime (source=$src): $prev -> $sid. State updated; $prev stays on disk."
+     else
+       log "topic '$KEY' recorded (source=$src): $sid"
+     fi ;;
+  2) debug "topic '$KEY' unchanged ($sid)" ;;
+  *) log "REFUSING: could not write $STATE for '$KEY' (lock or write failed). State NOT updated." ;;
+esac
+exit 0

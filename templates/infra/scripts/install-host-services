@@ -139,6 +139,15 @@ echo "  [ok] agentic-monitor"
 inst 0755 bin/claude-topic /usr/local/bin/claude-topic
 echo "  [ok] /usr/local/bin/claude-topic (root-owned)"
 
+# SessionStart hook — root-owned for the same reason as the wrapper, and one more: it records
+# where an agent's own conversation history lives, so the agent must not be able to rewrite it.
+# It is what keeps topics.state fresh BETWEEN wrapper invocations; without it every /clear and
+# every compaction goes unrecorded and the next restart resumes a stale branch. Registering it is
+# a separate step (each brain's deploy/claude-settings.json declares it as a SessionStart hook) and
+# BOTH halves fail silently on their own — the divergence check asserts both.
+inst 0755 bin/claude-topic-session-hook /usr/local/bin/claude-topic-session-hook
+echo "  [ok] /usr/local/bin/claude-topic-session-hook (root-owned)"
+
 # fleet roster — single source of truth for kb-sync / agentic-monitor / divergence-check.
 # The shrink guard that protects this ran at step 0, before anything was mutated.
 inst 0644 fleet-agents /usr/local/share/agentic/fleet-agents

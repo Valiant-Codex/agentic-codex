@@ -48,7 +48,8 @@ claude-topic rotate <key>         # abandon the conversation, mint a NEW bridge 
 claude-topic rotate-all           # rotate every enabled topic (what the boot unit runs)
 claude-topic stop <key>           # stop + disable the service (sessionId is kept)
 claude-topic remove <key>         # unregister for good (registry + state + unit)
-claude-topic status <key>         # service state + stored/live sessionId + bridge URL
+claude-topic status <key>         # service state + stored/live/derived sessionId + bridge URL
+claude-topic status <key> --porcelain   # the same, as field<TAB>value lines, for machines
 claude-topic remember <key>       # persist the running topic's live sessionId to state
 ```
 
@@ -58,6 +59,52 @@ fast rather than letting systemd fail-loop a topic: unknown keys are rejected be
 called, and a restart is refused when there's nothing to resume (no stored session ID, or one whose
 transcript is missing) — both point you at `--new`, the only way to deliberately start blank. These
 guards encode real incidents; keep them.
+
+### The pointer goes stale on its own, and that is the hard part
+
+The runtime — not the wrapper — mints sessionIds, and **re-keys them silently on `/clear` and on
+compaction**. If `topics.state` is written only when a wrapper verb runs, then from the moment the
+runtime forks, the stored pointer is stale and nothing says so. The next restart resumes the stale
+branch, orphans everything said since, and **reports success**, because by its own definition it
+succeeded. In the reference deployment this happened six times across two agents before anyone
+noticed; the largest instance lost 8.5 MB and three days, and one was caused by a self-restart
+armed specifically to demonstrate that restarting was safe.
+
+Two mechanisms close it, and they are deliberately independent:
+
+- **A `SessionStart` hook** (`claude-topic-session-hook`, root-owned, registered in each brain's
+  `deploy/claude-settings.json`) writes the state at the instant the runtime creates an id.
+  `SessionStart` fires for `startup|resume|clear|compact` — exactly the set that mints ids.
+- **`claude-topic run`** — the unattended path systemd re-enters on every restart — derives the
+  live branch from disk and adopts it when the stored pointer is stale.
+
+**Both identify the topic the same way: by the Remote Control bridge, never by configuration.**
+The bridge is the durable identity a sessionId is not — the runtime re-keys the session on every
+`/clear` but re-keys the bridge only when you deliberately start fresh — so *same bridge = same
+topic*, and the newest transcript on that bridge is the live branch. Deriving from disk also means
+it answers after a crash and at boot, when there is no live process to ask.
+
+The hook's first version took the topic key from a systemd `Environment=TOPIC_KEY=%i` instead.
+**Do not do this.** It was wrong in both directions: absent when needed (the units were running
+from before the unit file changed, so twelve of twelve topics silently refused), and — worse —
+present when not wanted, because a systemd `Environment=` is inherited by the entire process tree,
+so any nested `claude` fires `SessionStart` carrying the topic's key and a *foreign* session id.
+A binding that can be absent when you need it and present when you don't is not a binding.
+
+The hook runs **detached**: `SessionStart` fires before the runtime has written the transcript, so
+a synchronous hook loses the race by being early, and a wait long enough to win it would be paid
+by every ordinary `claude` run that is not a topic at all.
+
+**Order transcripts by mtime, not by the timestamp a transcript declares about itself.** That tree
+is writable by the agent whose resume you are choosing, so a self-declared field is an instruction
+from the data: a two-line file claiming a timestamp in 2099 wins outright. mtime defeats
+pre-planting and nothing more — a file planted just before a restart gets mtime "now" for free.
+That hole cannot be closed at this layer, so the control is **detection**: every adoption is
+appended to `topics.rotated`, and the divergence check reports recent ones.
+
+Finally: **watch the mechanism itself.** The hook was inert on every live topic for an afternoon
+while every monitoring layer reported clean, because nothing asserted it was installed *and*
+registered. Both halves fail silently on their own.
 
 ## `active` is not `reachable`
 

@@ -54,6 +54,17 @@ Environment=PATH=%h/.local/bin:%h/.local/node/bin:/usr/local/bin:/usr/bin:/bin
 # claude is a TUI: without a pty it falls into non-interactive --print mode and exits.
 # `script` allocates a pty and stays in the foreground so systemd supervises claude
 # directly (Restart=always works). The wrapper is the root-owned /usr/local/bin/claude-topic.
+# NO Environment=TOPIC_KEY=%i HERE, AND DO NOT PUT IT BACK. It was added on 2026-08-30 so the
+# SessionStart hook could know which topic it belonged to, and it was wrong in both directions.
+# Absent when needed: the twelve running services were never restarted after the line was added,
+# so every SessionStart refused and the mechanism was inert on 12 of 12 topics while being
+# reported as verified. Present when not wanted, which is the dangerous half: a systemd
+# Environment= is inherited by the WHOLE process tree, so any nested `claude` — a tool call, a
+# script, a manual --resume — would fire SessionStart carrying this topic's key and a foreign
+# session id, and the hook would write that foreign id into topics.state. It happened before
+# anyone noticed: 2026-08-30 14:24:09, a plain `claude` with cwd /tmp and no bridge at all wrote
+# `hooktest -> 12163b9a…`. The hook now derives the topic from the Remote Control bridge in its
+# own transcript instead, which cannot name a session that is not on that bridge.
 ExecStart=/usr/bin/script -qfec "/usr/local/bin/claude-topic run %i" /dev/null
 Restart=always
 RestartSec=10

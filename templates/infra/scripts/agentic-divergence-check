@@ -458,23 +458,62 @@ check_brain(){ # <user> <repo>
       awk -F'\t' -v key="$k" '$1==key && $2 ~ /^[0-9a-fA-F-]{36}$/ {f=1} END{exit !f}' "$state_file" 2>/dev/null \
         || drift "$n: topic '$k' is enabled but has NO stored sessionId — a restart or reboot would start a BLANK conversation and orphan its history (fix: claude-topic remember $k)"
     done <<< "$unit_keys"
-    # Stored and live can BOTH exist and still disagree. The stored id is written at
-    # create/restart/remember and at no other time, while the running conversation's id can change
-    # underneath it — a compaction, a slash command, a new chat started in the app. From that moment
-    # the state is stale and silent, and a restart resumes the OLD branch: it reports success, because
-    # by its own definition it succeeded, while jumping the user back to wherever the stored id points.
-    # `claude-topic restart` now adopts the live id, and this makes the drift visible BEFORE anyone
-    # restarts.
+    # Has the stored pointer come loose from the conversation? Two ways it can, and this used to
+    # see only the first: a split still IN PROGRESS (stored != live), and a split ALREADY DONE
+    # (a newer branch exists on the topic's bridge). On 2026-08-30 both `durin` and galadriel's
+    # `ideas` reported CLEAN with orphaned branches on disk, because by then the damage was done
+    # and the live session agreed with the pointer that had caused it.
+    #
+    # ASK THE WRAPPER, DO NOT PARSE ITS PROSE. This used to recover the live id with
+    # `sed -n 's/.*(live: \(...\)).*/\1/p'` over `claude-topic status`, then `continue` when the
+    # regex found nothing. Verified against four fixtures: a stopped topic, empty output (command
+    # missing / runuser failed / user manager unreachable), a reworded line and a case change ALL
+    # yielded empty, and all four were silently reported as clean. The verdict is now computed by
+    # the code that owns the state and published as a field, and `unknown` is a distinct value
+    # from `no` — so "I could not tell" is reported instead of swallowed.
     while IFS= read -r k; do
       [ -n "$k" ] || continue
-      local st_sid live_sid
-      st_sid="$(awk -F'\t' -v key="$k" '$1==key{print $2}' "$state_file" 2>/dev/null)"
-      [ -n "$st_sid" ] || continue          # already reported as missing above
-      live_sid="$(as_agent "$u" "claude-topic status '$k' 2>/dev/null" | sed -n 's/.*(live: \([0-9a-fA-F-]\{36\}\)).*/\1/p' | head -1)"
-      [ -n "$live_sid" ] || continue        # not running, or too young to have written a session file
-      [ "$live_sid" = "$st_sid" ] \
-        || drift "$n: topic '$k' has DRIFTED — state records $st_sid but the live conversation is $live_sid; a restart would resume the wrong branch (fix: claude-topic remember $k)"
+      local porc verdict st_sid live_sid newest
+      porc="$(as_agent "$u" "claude-topic status '$k' --porcelain 2>/dev/null" || true)"
+      if [ -z "$porc" ]; then
+        drift "$n: topic '$k' — 'claude-topic status --porcelain' returned nothing, so drift is UNKNOWN, not clean (old claude-topic without --porcelain? runuser failed? user manager unreachable?)"
+        continue
+      fi
+      verdict="$(printf '%s\n' "$porc" | awk -F'\t' '$1=="drift"{print $2; exit}')"
+      st_sid="$(printf '%s\n' "$porc"  | awk -F'\t' '$1=="stored"{print $2; exit}')"
+      live_sid="$(printf '%s\n' "$porc"| awk -F'\t' '$1=="live"{print $2; exit}')"
+      newest="$(printf '%s\n' "$porc"  | awk -F'\t' '$1=="newest_on_bridge"{print $2; exit}')"
+      case "${verdict:-}" in
+        no) : ;;
+        yes)
+          if [ -n "$live_sid" ] && [ "$live_sid" != "$st_sid" ]; then
+            drift "$n: topic '$k' has DRIFTED — state records $st_sid but the live conversation is $live_sid; a restart would resume the wrong branch (fix: claude-topic remember $k)"
+          else
+            drift "$n: topic '$k' has ALREADY SPLIT — state records $st_sid but the newest conversation on its bridge is $newest; $st_sid was orphaned and nothing said so (fix: claude-topic remember $k, or restart to adopt)"
+          fi ;;
+        unanchored) : ;;                    # already reported as "no stored sessionId" above
+        unknown)
+          drift "$n: topic '$k' — neither a live session nor a branch derivable from disk, so drift is UNKNOWN, not clean" ;;
+        *)
+          drift "$n: topic '$k' — 'status --porcelain' reported no usable drift verdict (got '${verdict:-<empty>}'); treat as UNKNOWN" ;;
+      esac
     done <<< "$unit_keys"
+
+    # Adoptions. cmd_run rewrites the stored pointer on its own when it finds a newer branch on
+    # the bridge — the repair that stops a restart from orphaning a conversation. It is also the
+    # one moment an attacker-planted transcript would be picked up, because the projects tree
+    # belongs to the agent (see the mtime note in claude-topic's sid_newest_on_bridge: this is
+    # detection, not prevention). Either way, an automatic switch of which conversation a topic
+    # resumes must not be something only the journal ever knew.
+    local rot="$home_dir/.config/agent/topics.rotated"
+    if [ -f "$rot" ]; then
+      local recent
+      recent="$(as_agent "$u" "awk -F'\t' -v cut=\"\$(date -Is -d '25 hours ago')\" '\$1>cut && \$4 ~ /^superseded-by:/ {print \$2\" \"\$3\" -> \"\$4}' '$rot' 2>/dev/null" || true)"
+      while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        drift "$n: topic pointer was adopted automatically in the last 24h — $line (claude-topic run found a newer branch on the bridge; confirm this was a real /clear or compaction, not a planted transcript)"
+      done <<< "$recent"
+    fi
   fi
 
   # A dormant brain is a frozen snapshot: its prose and its bootstrap point at a world that has moved
@@ -618,6 +657,17 @@ PY
     drift "$n: ~/.claude/settings.json differs from deploy/claude-settings.json — re-run provision-agent (permission allowlist is stale)"
   fi
   # (settings.local.json is deliberately NOT checked: per-machine, auto-accumulated, git-ignored.)
+  # The SessionStart hook. It is the only thing that keeps topics.state fresh BETWEEN wrapper
+  # invocations, and nothing watched it: on 2026-08-30 it was inert on 12 of 12 live topics for
+  # hours and every layer reported clean. A safety mechanism with no guardian is a safety
+  # mechanism you find out about from the damage. Two assertions — the binary is installed, and
+  # the agent's settings actually register it — because either alone fails silently.
+  if [ ! -x /usr/local/bin/claude-topic-session-hook ]; then
+    drift "$n: /usr/local/bin/claude-topic-session-hook is missing or not executable — topics.state is only written by claude-topic itself, so every /clear and compaction goes unrecorded (fix: install-host-services)"
+  elif [ -f "$liveset" ] && ! /usr/bin/grep -q 'claude-topic-session-hook' "$liveset" 2>/dev/null; then
+    drift "$n: ~/.claude/settings.json does not register claude-topic-session-hook as a SessionStart hook — the hook is installed but never runs"
+  fi
+
   local liveunit="$home/.config/systemd/user/claude-topic@.service"
   local srcunit="${INFRA_DIR}/systemd/claude-topic@.service"
   if [ ! -f "$liveunit" ]; then
