@@ -6,6 +6,56 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.8.8] — 2026-08-30 — Four fixes the reference deployment had already made and never shipped
+
+Divergence between this repo and the deployment it was distilled from is the design. Divergence in the
+things that must not diverge — the safety logic, and the skills that shape how an agent decides — is
+rot, and it had set in unnoticed in four places. Found by hand, because the propagation check that
+should have caught them compares only the `infra/scripts` pairs whose raises it can parse, and says so
+now.
+
+### Fixed
+
+- **`claude-topic restart` resumed the wrong conversation, silently.** It read the STORED session id.
+  That id is written at create/restart/remember and at no other time, while the running conversation's
+  id can change underneath it — a compaction, a slash command, a new chat started in the app. From
+  that moment the state is stale, and the next restart resumes the OLD branch while reporting success,
+  because by its own definition it succeeded. In the reference deployment that meant a three-day jump
+  backwards that nobody could see from inside. `restart` now reads the live id first, always, and
+  adopts it when the two disagree; the stored branch stays on disk. `agentic-divergence-check` gains
+  the matching daily assertion, so the drift is visible *before* anyone restarts.
+- **`fleet-brain-change` prescribed a commit recipe that commits without pushing.** The example fed the
+  message by heredoc and then chained `&& git push`. `bash -c` executes each *complete* command as it
+  parses, so the commit runs and only the following line fails to parse — leaving the repo
+  committed-but-unpushed, which is exactly what makes an ff-only sync skip it silently and forever.
+  The recipe is fixed rather than annotated, and the file gained the **Gotchas section that two places
+  in it already pointed at and which did not exist**.
+
+### Changed
+
+- **`decision-loop` rewritten.** The shipped version justified its central step with an unsourced
+  "reacting beats answering open questions 3-4x". A research pass found no controlled study behind it,
+  and found the adjacent evidence pointing the other way — a written proposal measurably pulls the
+  reader toward it. The skill was breaking its own rule against numbers a reader cannot check, in its
+  founding line. It now carries a verifiable four-part trigger with a negative list, a **gated**
+  research fan-out (1–5 sub-agents, and none at all when no external source can change the answer, with
+  the mandatory brief constraints in a new `references/research-brief.md`), a premortem in place of the
+  deleted claim, an independent advisor pass, the choices put as structured questions, and the record
+  written in the same turn.
+- **The local-addendum instruction is now conditional.** It asserted that every agent keeps one. An
+  agent whose decisions all land in one shared place needs no addendum and should not grow one for
+  symmetry: a thin skill overlapping an existing one degrades selection for both.
+- **`agent-audit`'s Memory step was one sentence; it is now four checks.** Including the one that
+  exists because a curated memory tier was over-trimmed twice by sessions following the old wording
+  literally — prove a duplicate with two greps against both the mirror and the runtime store, cite
+  `file:line` for each, or keep it.
+
+### Notes
+
+`docs/skills.md` described `decision-loop` accurately enough to catch a regression in its own rewrite:
+the falsify-assumptions-early step had been dropped. A downstream description found an upstream
+defect, which is the argument for keeping such descriptions specific rather than vague.
+
 ## [0.8.7] — 2026-08-27 — Skills are validated on shape, never on whether they help
 
 `skillify`'s Validation section checked frontmatter and token count — the shape of a skill, not its
@@ -1338,6 +1388,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.8.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.8
 [0.8.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.7
 [0.8.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.6
 [0.8.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.5
