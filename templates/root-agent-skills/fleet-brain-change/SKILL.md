@@ -92,14 +92,18 @@ For each target agent `<AGENT>` with brain repo `<BRAIN>`:
    and the daily divergence check reports it. Don't sweep it in; investigate it.
 4. **Commit + push as that user** (its own bot signs it). **Gate `commit` on `add` with `&&`** —
    never a newline, never `;`:
+   Write the message to a world-readable file first, then keep the whole chain on **one line**.
+   Do not feed the message by heredoc: terminating one mid-chain splits the command and commits
+   without pushing (see Gotchas).
    ```
-   asA <AGENT> 'cd ~/github/<ORG>/<BRAIN> \
-     && git add <paths> \
-     && git commit -F - <<EOF
+   cat > /tmp/<dir>/msg.txt <<'MSG'
    ... message ...
-   EOF
-     && git push'
+   MSG
+   chmod 644 /tmp/<dir>/msg.txt
+   asA <AGENT> 'cd ~/github/<ORG>/<BRAIN> && git add <paths> && git commit -q -F /tmp/<dir>/msg.txt && git push -q; git status --porcelain; git log --oneline @{u}..HEAD'
    ```
+   The two unconditional checks at the end are the point: an empty `status` and an empty
+   `@{u}..HEAD` together are the only proof the change actually left the box.
    **Why this is not pedantry.** `git add` aborts on a pathspec that matches nothing and stages
    *nothing*. The classic trigger is a path you already moved: after `git mv skills/x
    skills/y`, the rename is staged but `git add skills/x` is now fatal. Ungated, the commit
@@ -110,6 +114,30 @@ For each target agent `<AGENT>` with brain repo `<BRAIN>`:
 5. **Verify** the change resolves and the working tree is clean of anything you did not intend.
 6. If the change is common to all, remember it likely belonged in `shared/` — reconsider before
    repeating across N brains.
+
+## Gotchas (learned the hard way)
+
+- **The heredoc-then-`&&` form is a trap.** `bash -c` executes each *complete* command as it parses,
+  so `git commit -F - <<EOF … EOF` runs, and only the following line beginning with `&&` fails to
+  parse. You get `syntax error near unexpected token '&&'`, which reads like nothing happened — while
+  the commit has in fact been made and the push has not. That is precisely the committed-but-unpushed
+  state that makes an ff-only sync skip the repo silently and forever. **Write the commit message to a
+  world-readable file and use `git commit -F <file>`**, keeping the whole chain on one line; never
+  terminate a heredoc mid-chain. And when a run reports a syntax error, still check `git log` and
+  `git status` before retrying: the retry will say "nothing to commit", which looks like a second
+  failure and is not.
+- **Never leave a clone dirty — the sync job skips it silently and forever.** The sync pulls
+  `--ff-only`, so a single uncommitted local edit makes every later sync abort on that repo, and the
+  agent keeps loading stale governance with no error anywhere. After any edit-and-push, confirm
+  `git status` is clean and `git pull --ff-only` succeeds.
+- **The other brains are LIVE — check for concurrent work before editing.** A scripted edit can fail
+  its anchor assertion because that agent rewrote the section itself in its own session, and a
+  following `git add && commit` then captures its uncommitted work under your commit message. Before
+  touching another brain: `git status` and `git log --since='1 hour ago'` in that repo. If it is
+  dirty, either wait, or commit that work attributed to that agent and say so in the message.
+- **Fleet-common skills propagate on the sync schedule.** A skill edited in the shared repo and
+  symlinked into the brains does not change what a running session loads until the clone syncs — so a
+  freshly-edited skill can execute with its previous body. Pull explicitly if you need it now.
 
 ## Safety / gates
 

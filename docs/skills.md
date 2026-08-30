@@ -55,9 +55,11 @@ proved useful in the reference deployment, not because it seemed like a good ide
 - **`advisor-review`** — how to get a genuinely independent second opinion out of a sub-agent: make it
   argue *against* you, constrain it (read-only, no credential hunting — a real incident, described in
   the skill, is why), and re-verify its load-bearing claims before you act on them.
-- **`decision-loop`** — a sparring procedure for strategic calls: strawman rather than interrogate,
-  work blocks in dependency order, falsify the load-bearing assumption early, record the outcome where
-  it belongs instead of leaving it in a chat.
+- **`decision-loop`** — a sparring procedure for any call that is not trivially reversible: a
+  verifiable trigger test, a *gated* research fan-out (1–5 sub-agents, and none at all when no
+  external source can change the answer), a strawman attacked by a premortem, an independent advisor
+  pass, the choices put as structured questions rather than prose, and the record written in the same
+  turn. Blocks run in dependency order; the load-bearing assumption gets falsified early.
 - **`knowledge-governance-workflow`** — the frontmatter and hygiene rules that keep a brain
   machine-readable and lean.
 - **`topic-management`** — how an agent manages *its own* Remote Control sessions through the
