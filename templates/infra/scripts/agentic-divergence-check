@@ -458,6 +458,23 @@ check_brain(){ # <user> <repo>
       awk -F'\t' -v key="$k" '$1==key && $2 ~ /^[0-9a-fA-F-]{36}$/ {f=1} END{exit !f}' "$state_file" 2>/dev/null \
         || drift "$n: topic '$k' is enabled but has NO stored sessionId — a restart or reboot would start a BLANK conversation and orphan its history (fix: claude-topic remember $k)"
     done <<< "$unit_keys"
+    # Stored and live can BOTH exist and still disagree. The stored id is written at
+    # create/restart/remember and at no other time, while the running conversation's id can change
+    # underneath it — a compaction, a slash command, a new chat started in the app. From that moment
+    # the state is stale and silent, and a restart resumes the OLD branch: it reports success, because
+    # by its own definition it succeeded, while jumping the user back to wherever the stored id points.
+    # `claude-topic restart` now adopts the live id, and this makes the drift visible BEFORE anyone
+    # restarts.
+    while IFS= read -r k; do
+      [ -n "$k" ] || continue
+      local st_sid live_sid
+      st_sid="$(awk -F'\t' -v key="$k" '$1==key{print $2}' "$state_file" 2>/dev/null)"
+      [ -n "$st_sid" ] || continue          # already reported as missing above
+      live_sid="$(as_agent "$u" "claude-topic status '$k' 2>/dev/null" | sed -n 's/.*(live: \([0-9a-fA-F-]\{36\}\)).*/\1/p' | head -1)"
+      [ -n "$live_sid" ] || continue        # not running, or too young to have written a session file
+      [ "$live_sid" = "$st_sid" ] \
+        || drift "$n: topic '$k' has DRIFTED — state records $st_sid but the live conversation is $live_sid; a restart would resume the wrong branch (fix: claude-topic remember $k)"
+    done <<< "$unit_keys"
   fi
 
   # A dormant brain is a frozen snapshot: its prose and its bootstrap point at a world that has moved

@@ -604,12 +604,27 @@ cmd_restart() {
     del_sid "$key"; stored=""
     err "warning: '$key' will start a NEW conversation — prior history stays on disk but is no longer resumed"
   else
+    # Read the LIVE id first, always. The stored one is written at create/restart/remember and at no
+    # other time, but the running conversation's id can change underneath it — a compaction, a slash
+    # command, a new chat started in the app. From that moment the stored state is stale and silent,
+    # and the next restart resumes the OLD branch, orphaning everything said since. Observed in the
+    # reference deployment: state held one id, the live conversation another, and a restart three days
+    # later jumped back three days. Nothing was lost, but nobody could see the split from inside —
+    # the restart reported success, because by its own definition it had succeeded.
+    live="$(session_id_live "$key")"
     if [ -z "$stored" ]; then
-      live="$(session_id_live "$key")"
       [ -n "$live" ] || die "no stored or live sessionId for '$key' — a restart would start a BLANK conversation
-  and orphan its history (incident 2026-07-17). Re-run with '$PROG restart --new $key' if that is what you want."
+  and orphan its history. Re-run with '$PROG restart --new $key' if that is what you want."
       save_sid "$key" "$live"; stored="$live"
       err "note: no sessionId was stored for '$key' — captured the live one ($live) before restarting"
+    elif [ -n "$live" ] && [ "$live" != "$stored" ]; then
+      # Adopt the live one: it is the conversation actually in progress, and the whole point of
+      # `restart` is to bring back the conversation the user is having, not the one state remembers.
+      save_sid "$key" "$live"
+      err "note: '$key' had drifted — state recorded $stored but the live conversation is $live."
+      err "      Adopting the live one, so the restart resumes what you are actually talking to."
+      err "      The $stored branch stays on disk; nothing is lost."
+      stored="$live"
     fi
     require_uuid "stored sessionId" "$stored"
     transcript_exists "$stored" || die \
