@@ -12,6 +12,10 @@
 # Managed by kb-sync.timer (every 15 min). Canonical source: <ORG>/infra.
 set -uo pipefail
 
+# Raise through one helper so the propagation check can see these guards. The printed line is
+# byte-identical to the echo it replaces.
+fail() { printf '%s kb-sync: FATAL %s\n' "$(date -Is)" "$1" >&2; exit 1; }
+
 # Fleet roster — single source of truth (installed from infra/fleet-agents).
 # NO built-in fallback list. The previous version fell back to a hardcoded
 # example list` with a WARN on stderr and still exited 0 — so when a fourth agent joined the fleet, a missing
@@ -20,12 +24,12 @@ set -uo pipefail
 # non-zero so the unit lands in `failed` and agentic-monitor pages, rather than guessing.
 ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
 if [ ! -f "$ROSTER_FILE" ]; then
-  echo "$(date -Is) kb-sync: FATAL roster $ROSTER_FILE missing — refusing to guess the fleet. Run install-host-services." >&2
+  fail "roster $ROSTER_FILE missing — refusing to guess the fleet. Run install-host-services."
   exit 1
 fi
 AGENTS="$(grep -vE '^\s*(#|$)' "$ROSTER_FILE" | tr -d ' \t\r' | tr '\n' ' ')"
 if [ -z "${AGENTS// /}" ]; then
-  echo "$(date -Is) kb-sync: FATAL roster $ROSTER_FILE is empty — nothing would be synced." >&2
+  fail "roster $ROSTER_FILE is empty — nothing would be synced."
   exit 1
 fi
 
@@ -55,6 +59,6 @@ for u in $AGENTS; do
   done
 done
 if [ "$seen" -gt 0 ] && [ "$ok" -eq 0 ]; then
-  echo "$(date -Is) kb-sync: FATAL all ${seen} repos failed to pull — token expired? network/GitHub down? Nothing synced." >&2
+  fail "all ${seen} repos failed to pull — token expired? network/GitHub down? Nothing synced."
   exit 1
 fi

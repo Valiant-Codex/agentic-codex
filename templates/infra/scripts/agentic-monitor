@@ -18,13 +18,16 @@
 # Dry run (no ping): agentic-monitor --dry-run
 set -uo pipefail
 
+# Raise through one helper so the propagation check can see these guards.
+fail() { printf 'FATAL: %s\n' "$1" >&2; exit 1; }
+
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
 
 CONF=/etc/agentic-monitor.env
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
 : "${HC_URL:?HC_URL not set in $CONF}"
-case "$HC_URL" in *REPLACE-*) echo "FATAL: HC_URL in $CONF is still the placeholder — the dead-man's switch is pinging nothing. Set a real healthchecks.io URL." >&2; exit 1;; esac
+case "$HC_URL" in *REPLACE-*) fail "HC_URL in $CONF is still the placeholder — the dead-man's switch is pinging nothing. Set a real healthchecks.io URL.";; esac
 DISK_MAX="${DISK_MAX:-90}"
 MONITOR_EXCLUDE_CONTAINERS="${MONITOR_EXCLUDE_CONTAINERS:-}"
 MONITOR_EXCLUDE_UNITS="${MONITOR_EXCLUDE_UNITS:-}"

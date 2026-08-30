@@ -15,6 +15,11 @@
 #   e.g. ORG=acme-labs provision-agent root-agent kb-agent-ops-root-agent
 set -euo pipefail
 
+# Raise through one helper so the propagation check can see these guards. Extra arguments are printed
+# as further lines before exiting, so multi-line remediation text is not swallowed. Output stays on
+# stdout, exactly where these messages already went.
+fail() { printf 'FATAL: %s\n' "$1"; shift; for l in "$@"; do printf '%s\n' "$l"; done; exit 1; }
+
 # --- self-elevate (runuser + /usr/local/bin + linger need root) ---
 # Forward the vars explicitly: a `!setenv` sudoers policy strips `sudo -E`, which would silently
 # fall back to defaults instead of failing.
@@ -39,9 +44,9 @@ fi
 
 # `getent | cut` always exits 0 (the pipeline status is cut's), so `|| true` was dead and a
 # nonexistent user fell through to the emptiness check below. Ask getent directly instead.
-getent passwd "$U" >/dev/null || { echo "FATAL: no such user '$U'"; exit 1; }
+getent passwd "$U" >/dev/null || fail "no such user '$U'"
 H="$(getent passwd "$U" | cut -d: -f6)"
-[ -n "${H:-}" ] || { echo "FATAL: user '$U' has no home directory"; exit 1; }
+[ -n "${H:-}" ] || fail "user '$U' has no home directory"
 BASE="$H/github/$ORG"
 
 # NEVER `bash -lc` here. A login shell sources the target user's OWN ~/.profile, so an
@@ -63,12 +68,11 @@ echo "== provision-agent: $U ($BRAIN) on $(hostname -s) =="
 
 # 0) Precondition — secret must already be restored (not carried in git).
 if ! asU 'gh auth status >/dev/null 2>&1'; then
-  echo "FATAL: '$U' has no working gh auth."
-  echo "  Restore the bot token to ~$U/.config/gh/hosts.yml (mode 600) first — it is a secret,"
-  echo "  never in git. Then set the git identity and re-run:"
-  echo "    git config --global user.name  <bot-username>"
-  echo "    git config --global user.email  <id>+<bot-username>@users.noreply.github.com"
-  exit 1
+  fail "'$U' has no working gh auth." \
+       "  Restore the bot token to ~$U/.config/gh/hosts.yml (mode 600) first — it is a secret," \
+       "  never in git. Then set the git identity and re-run:" \
+       "    git config --global user.name  <bot-username>" \
+       "    git config --global user.email  <id>+<bot-username>@users.noreply.github.com"
 fi
 
 # 0b) Wrapper preconditions — READ-ONLY git checks, done BEFORE anything is mutated.
