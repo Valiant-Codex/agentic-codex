@@ -42,6 +42,15 @@ Keep this list tight. Step 4 runs on every invocation, so a loop that fires on t
 - **Never supply a number the owner cannot check.** A statistic without its source in the same line is
   confabulation wearing the costume of data. This rule has been broken here before: the version of this
   skill retired on 2026-08-27 justified its own central step with an unsourced "3-4x".
+- **And never supply a number you did not just measure or copy.** The same rule turned inward, and it is
+  the one that actually breaks. A number describing your own work — lines changed, files touched, how
+  long something took, what a source said — gets **counted or quoted, never recalled**. Measured across
+  65 commits: the only two false claims both had this shape, *"four lines"* where the diff had seven,
+  and *"eleven minutes"* where the source said eleven **seconds**. In both the substance was right and
+  only the remembered number was wrong, which is what makes it survive review: nobody re-reads a detail
+  that supports a conclusion they already accept. A pre-commit gate for this was considered and
+  **rejected on measurement** — it would have fired once in six days at 25% precision, and it cannot see
+  the quoted-number case at all. The cheap control is the habit, not the check.
 
 ## Procedure
 
