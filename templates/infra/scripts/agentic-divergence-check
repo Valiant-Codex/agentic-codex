@@ -89,14 +89,20 @@ INFRA_DIR="${INFRA_DIR:-/nonexistent}"
 # assertion that keeps that from becoming the next silent manual step.
 STRICT_CLEAN_REPOS="${STRICT_CLEAN_REPOS-infra kb-agent-shared}"
 
-# Always-on context budget, in bytes: CLAUDE.md + its @-imports + the runtime auto-memory index.
-# Count the index: the runtime injects it on every session and it lives OUTSIDE the repo, so a budget
-# watching only CLAUDE.md can be — and in the reference deployment was — watching the cheaper half.
+# The auto-memory INDEX has a hard cliff, and it is the runtime's, not yours: Claude Code loads only
+# the first 200 lines or 25 KB of MEMORY.md at session start and SILENTLY DROPS the rest. That is the
+# one always-on number with a loss attached, so it is the one asserted. Vendor constants, not
+# derivable from disk — pinned to https://code.claude.com/docs/en/memory as read on 2026-09-06
+# (Claude Code 2.1.263); re-read that page when the runtime is updated. 25 KB is taken as 25,000 so
+# a stale reading fails towards firing early, never towards silence.
 #
-# Set it WITH HEADROOM. This assertion is for abnormal growth, not a permanent squeeze: the authored
-# layer is a small share of a session next to the harness base, so trimming here optimises the wrong
-# thing — and a budget treated as a target is how a curated memory file gets over-trimmed.
-CONTEXT_BUDGET="${CONTEXT_BUDGET-30000}"
+# A TOTAL "always-on budget" (CLAUDE.md + imports + index) was asserted here in earlier versions and
+# retired on 2026-09-06: it derived from nothing on disk, was raised whenever it stung, fired long
+# before the real cliff, and prescribed the wrong remedy (shortening the index — which is recall).
+# The total is still REPORTED on every run so the trend stays visible; it is not asserted. What
+# manages growth is a named step in agent-audit, where a human reads the diff — not a threshold.
+MEMIDX_MAX_BYTES="${MEMIDX_MAX_BYTES-25000}"
+MEMIDX_MAX_LINES="${MEMIDX_MAX_LINES-200}"
 
 # Agents that are DORMANT: still on the box, still in the roster, deliberately not running. A dormant
 # agent keeps its Unix user, clones and roster entry — removing it would leave an unswept home and
@@ -316,12 +322,18 @@ check_brain(){ # <user> <repo>
     local memidx="$_bhome/.claude/projects/-$(echo "${_bhome#/}" | tr '/' '-')/memory/MEMORY.md"
     local memsz=0
     [ -f "$memidx" ] && memsz=$(wc -c < "$memidx")
+    local memlines=0
+    [ -f "$memidx" ] && memlines=$(wc -l < "$memidx")
     local total=$((cmsz + impsz + memsz))
     # Reported EVERY run, not only on breach. The index grows by normal operation — every memory the
     # runtime writes adds a line — so the useful signal is the trend, and a number you only see once
     # it is already too late is a number you cannot plan around.
-    echo "  [info] $n: always-on ${total}B = CLAUDE.md ${cmsz} + imports ${impsz} + memory index ${memsz} (budget ${CONTEXT_BUDGET})"
-    [ "$total" -gt "$CONTEXT_BUDGET" ] && drift "$n: always-on context is ${total} bytes (CLAUDE.md ${cmsz} + imports ${impsz} + auto-memory index ${memsz}) — over the ${CONTEXT_BUDGET} working budget. Shorten the index HOOKS or push reference material out of CLAUDE.md into skills/ — do NOT delete index lines: a memory with no line in MEMORY.md is invisible to recall, which is a loss, not a saving."
+    echo "  [info] $n: always-on ${total}B = CLAUDE.md ${cmsz} + imports ${impsz} + memory index ${memsz}B/${memlines} lines (index read limit ${MEMIDX_MAX_BYTES}B / ${MEMIDX_MAX_LINES} lines)"
+    if [ "$memsz" -gt "$MEMIDX_MAX_BYTES" ] || [ "$memlines" -gt "$MEMIDX_MAX_LINES" ]; then
+      drift "$n: auto-memory index is ${memsz}B / ${memlines} lines — over the runtime's ${MEMIDX_MAX_BYTES}B / ${MEMIDX_MAX_LINES}-line read limit: everything past it is SILENTLY DROPPED at session start, so those memories are already invisible to recall. Retire dead index lines in agent-audit's memory pass, where a human reads the diff — do not trim in the session that noticed"
+    elif [ "$memsz" -gt $((MEMIDX_MAX_BYTES * 8 / 10)) ] || [ "$memlines" -gt $((MEMIDX_MAX_LINES * 8 / 10)) ]; then
+      echo "  [info] $n: auto-memory index at ${memsz}B / ${memlines} lines — past 80% of the runtime's read limit (${MEMIDX_MAX_BYTES}B / ${MEMIDX_MAX_LINES} lines); schedule agent-audit's index retirement step before it is reached"
+    fi
   fi
 
   # 2) Skills: folders with SKILL.md, frontmatter name == dirname, non-empty description.
