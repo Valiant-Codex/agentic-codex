@@ -6,7 +6,7 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
-## [Unreleased]
+## [0.8.10] — 2026-09-06 — A budget you raise whenever it stings is not measuring anything
 
 ### Changed
 

@@ -110,6 +110,17 @@ Three traps that will give you wrong numbers:
 3. **Model choice barely matters.** A cheap model measures the same context as an expensive one
    (verified within 1.5% here), so measure with the cheap one.
 
+## The one number that is not a budget
+
+Everything above is about *where the tokens go*, and the answer is "mostly not your content". There is
+one exception, and it is a cliff rather than a budget: the runtime loads only the first **200 lines or
+25 KB of `MEMORY.md`**, and drops the rest silently. Past that line a memory exists, is mirrored into
+Git, and never reaches a session.
+
+Do not turn that into a total context budget over `CLAUDE.md` + imports + index. The reference
+deployment tried, moved the number three times in three days as it stung, and retired it — see
+[`memory.md`](memory.md) for the accounting and what replaced it.
+
 ## Where MCP configuration actually lives
 
 Worth stating plainly, because the obvious assumption is wrong. In a deployment where the supervised
