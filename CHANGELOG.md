@@ -6,6 +6,43 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [Unreleased]
+
+### Changed
+
+- **The always-on context budget is retired; the divergence check now asserts the runtime's own read
+  limit on the auto-memory index.** A total budget over `CLAUDE.md` + its `@`-imports + the index
+  derived from nothing on disk: in the reference deployment it was set at 20,000 bytes, then 30,000,
+  then 40,000 within three days, moved each time it stung, and it watched a number with no loss
+  attached. Measured on the same box, it would have fired about eight times before the one limit that
+  actually costs you something — the runtime loads only the first 200 lines or 25 KB of `MEMORY.md`
+  at session start and **silently drops the rest**, so a memory past that point is already invisible
+  to recall. Worse, its remedy said to shorten the index, which is the recall surface. Now:
+  `MEMIDX_MAX_BYTES` / `MEMIDX_MAX_LINES` drift on breach, an `[info]` line past 80%, and the full
+  total still prints every run because the trend is the signal. These are vendor constants, not
+  derived ones — the one deliberate exception to
+  [`decisions`' derive-the-expectation rule](docs/divergence-check.md) — so the script pins the docs
+  URL and the date they were read, and takes 25 KB as 25,000 so a stale reading fails towards firing
+  early rather than towards silence. Proven against lowered thresholds before shipping: silent at the
+  defaults, drift at 10,000 bytes and at 50 lines, `[info]` at 16,000.
+- **`agent-audit`'s memory pass gains the two growth steps, and the cross-tier checks from the
+  reference deployment's 2026-09-03 pass.** What keeps the index under the runtime's limit is this
+  pass, with a human reading the diff — never a threshold, and never the session that happened to
+  notice the number. The steps: retire dead episodic index lines (the *line* goes, the memory file
+  stays, so a future session can still `grep` for it) and reduce curated bullets to verdict + pointer
+  wherever the bullet already names the decision record holding its reasoning. On the reference agent
+  13 of 79 index lines were dead episodic notes, and the curated file had grown 2.4× in fifteen days
+  by carrying reasoning that a named record already held. The same pass also picks up the checks that
+  had not been ported: whether the two tiers *agree* rather than merely not duplicating, and ordering
+  present-state re-verification by the frontmatter `modified` field instead of file mtime — a bulk
+  restore resets mtime for a whole store at once, and on the reference store 26 of 72 memories shared
+  a single mtime minute.
+
+### Fixed
+
+- The date of the second over-trim of the reference deployment's curated memory file, in
+  `agent-audit`: 2026-08-18, not 2026-08-22 — the 22nd was the *restore*. Caught by an advisor pass.
+
 ## [0.8.9] — 2026-08-30 — A restart that reports success can still have lost three days
 
 The runtime mints sessionIds and re-keys them silently on `/clear` and on compaction. The wrapper

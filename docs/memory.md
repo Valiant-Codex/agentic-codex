@@ -17,6 +17,30 @@ scheduled ever touches identity or capabilities.
 High-signal facts are **distilled from the working tier into the canonical tier**, so the durable brain
 — not a runtime cache — is the source of truth.
 
+## The one hard limit, and what manages growth
+
+Everything above is about *what* is stored. This is the constraint on *how much*, and it is the
+runtime's, not yours: Claude Code loads only the first **200 lines or 25 KB of `MEMORY.md`** at
+session start and silently drops the rest. A memory past that point still exists on disk and is still
+mirrored into Git — but nothing puts it in front of a fresh session. That is the one always-on number
+with a real loss attached, so it is the one the [divergence check](divergence-check.md) asserts.
+
+Two things follow, and both are easy to get backwards.
+
+**Do not set a total context budget.** The obvious move is to add up `CLAUDE.md`, its imports and the
+index and assert a ceiling. The reference deployment did exactly that, moved the number three times
+in three days as it stung (20 → 30 → 40 KB), and retired it: it derived from nothing, it fired long
+before the real cliff, and its remedy — shorten the index — was the one action that loses memories.
+Worse, a budget is read as a target: that fleet over-trimmed its curated memory file twice, both
+times by a session dutifully making a number go down. Report the total as a trend; assert the cliff.
+
+**Growth is a human pass, not a threshold.** The [`agent-audit`](skills.md) memory pass retires dead
+episodic index lines — a handoff that landed, a WIP whose work shipped — by deleting the *index line*
+while the memory file stays, and reduces curated bullets to verdict + pointer wherever the reasoning
+already sits in a named decision record. A threshold cannot tell a dead handoff from a standing rule;
+a person reading the diff can. And it must never be the session that happened to notice the number
+doing the trimming — that session is the one with a reason to hurry.
+
 ## The nightly mirror (optional, deterministic)
 
 > **Enabled by `provision-agent`, with disclosure.** Provisioning an agent turns its mirror timer on
