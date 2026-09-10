@@ -472,7 +472,7 @@ check_brain(){ # <user> <repo>
     done <<< "$unit_keys"
     # Has the stored pointer come loose from the conversation? Two ways it can, and this used to
     # see only the first: a split still IN PROGRESS (stored != live), and a split ALREADY DONE
-    # (a newer branch exists on the topic's bridge). On 2026-08-30 both `durin` and galadriel's
+    # (a newer branch exists on the topic's bridge). On 2026-08-30 both `<agent-a>`'s and `<agent-b>`'s
     # `ideas` reported CLEAN with orphaned branches on disk, because by then the damage was done
     # and the live session agreed with the pointer that had caused it.
     #

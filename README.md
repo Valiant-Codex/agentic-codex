@@ -166,7 +166,13 @@ tick.
 The **happy path is Claude Code on a Debian-based VPS**. The templates are the same shape running in production for
 the reference deployment. Adapt the placeholders (`<ORG>`, `<VPS_HOST>`, `<AGENT>`, …) to your setup.
 The application layer (Dokploy / n8n / Cloudflare) is **documented, not templated** here — see
-[`docs/app-layer.md`](docs/app-layer.md).
+[`docs/app-layer.md`](docs/app-layer.md). So is the optional **control console**: the reference
+deployment runs a small tailnet-only web UI for its fleet, and
+[`docs/console.md`](docs/console.md) gives you the pattern, the identity model and the traps —
+**deliberately without the code**. Its feature list (host patching, container stacks, automation
+health) encodes one operator's stack, and shipping a root-privileged web app would contradict the
+"no extra always-on gateway" line above. The one framework-level piece did cross:
+`claude-topic list --json`, for anything that wants machine-readable fleet state.
 
 ## License
 

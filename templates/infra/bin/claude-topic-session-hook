@@ -24,7 +24,7 @@
 #     — inherits TOPIC_KEY and fires SessionStart with a foreign session id. Demonstrated on this
 #     box before anyone noticed: 2026-08-30 14:24:09, a plain `claude` run with cwd /tmp and no
 #     Remote Control bridge at all wrote `hooktest -> 12163b9a…` into topics.state. It was harmless
-#     only because `hooktest` was not a real topic key. With TOPIC_KEY=durin inherited, it would
+#     only because `hooktest` was not a real topic key. With TOPIC_KEY=<a real key> inherited, it would
 #     have overwritten a live topic's pointer with a throwaway conversation — the very defect this
 #     hook exists to prevent, caused by the hook.
 #

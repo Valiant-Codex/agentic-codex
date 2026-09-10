@@ -248,7 +248,13 @@ usage() {
   # any future alias, and the help should match how it was invoked.
   cat <<EOF
 Usage (systemd-managed topics — no tmux):
-  $PROG list                        list topics: key, state, sessionId, display name
+  $PROG list [--json]               list topics: key, state, sessionId, display name.
+                                    --json prints one JSON document for machines: every
+                                           status --porcelain field per topic, joined by
+                                           cgroup to the live process status that
+                                           'claude agents --json' reports (busy/idle/waiting),
+                                           plus any session of this user with no topic unit
+                                           under "other_sessions". Never parse the table.
   $PROG urls                        list every topic's Remote Control URL (test them by hand)
   $PROG rotate <key>                abandon the conversation and start fresh, so the topic
                                            gets a NEW bridge id — the fix when a topic is
@@ -471,6 +477,72 @@ cmd_list() {
   done
 }
 
+# `list --json` exists for a machine consumer (a dashboard, a status page, any script). It joins two sources that
+# do not share a key: this wrapper knows topics by systemd unit, `claude agents --json` knows
+# sessions by pid and by a display name it invents (`<agent>-82`), which matches neither the topic
+# key nor the registry name. The one thing both can see is the cgroup: /proc/<pid>/cgroup names
+# the unit the process runs in. Verified in the reference deployment on every topic of two agents. Everything that
+# cannot be joined is still reported (`other_sessions`), and a `claude agents` that is missing or
+# fails yields `status: unknown` for every topic plus a `warning` — never a silent "idle".
+cmd_list_json() {
+  require_systemd
+  local tmp agents k
+  tmp="$(mktemp)"
+  for k in $(all_keys); do
+    printf '\x1e%s\n' "$k"                     # record separator + key, then the porcelain block
+    if unit_known "$k"; then cmd_status_porcelain "$k"; else printf 'active\tnot-started\n'; fi
+  done > "$tmp"
+  # `claude agents --json` needs no TTY; give it a bounded time so a hung CLI cannot hang the
+  # caller. Its failure is data (see header), not an exit.
+  agents="$(timeout 20 claude agents --json 2>/dev/null || true)"
+  AGENTS_JSON="$agents" python3 - "$tmp" <<'PY'
+import json, os, re, sys
+recs = {}
+key = None
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    line = line.rstrip("\n")
+    if line.startswith("\x1e"):
+        key = line[1:]; recs[key] = {"key": key}; continue
+    if key is None or "\t" not in line: continue
+    f, v = line.split("\t", 1); recs[key][f] = v
+warning = None
+try:
+    agents = json.loads(os.environ.get("AGENTS_JSON") or "")
+    if not isinstance(agents, list): raise ValueError("not a list")
+except Exception as e:
+    agents, warning = [], "claude agents --json unavailable: %s" % e.__class__.__name__
+for r in recs.values():
+    r["status"] = "not-running" if r.get("active") != "active" else ("unknown" if warning else "unknown")
+other = []
+for a in agents:
+    pid = a.get("pid")
+    unit_key = None
+    if isinstance(pid, int):
+        try:
+            cg = open("/proc/%d/cgroup" % pid).read()
+            m = re.search(r"claude-topic@([A-Za-z0-9._-]+)\.service", cg)
+            if m: unit_key = m.group(1)
+        except OSError:
+            pass
+    # `id` is the SHORT id `claude stop|rm|attach|logs` take; sessionId is the full UUID and those
+    # verbs reject it ("No job matching ..."). Both are published: the caller needs the short one to
+    # act and the full one to find the transcript.
+    entry = {"pid": pid, "id": a.get("id"), "name": a.get("name"), "kind": a.get("kind"),
+             "session_id": a.get("sessionId"), "started_at": a.get("startedAt"),
+             "status": a.get("status") or a.get("state") or "unknown",
+             "waiting_for": a.get("waitingFor")}
+    if unit_key and unit_key in recs:
+        recs[unit_key].update({"status": entry["status"], "waiting_for": entry["waiting_for"],
+                               "pid": pid, "agents_name": entry["name"]})
+    else:
+        other.append(entry)
+out = {"topics": [recs[k] for k in sorted(recs)], "other_sessions": other}
+if warning: out["warning"] = warning
+json.dump(out, sys.stdout, indent=1, sort_keys=True); print()
+PY
+  rm -f "$tmp"
+}
+
 # --- status ------------------------------------------------------------------
 # `--porcelain` exists because the daily divergence check used to recover the live sessionId by
 # running `sed -n 's/.*(live: \(...\)).*/\1/p'` over the PROSE below. That regex returns empty —
@@ -484,8 +556,8 @@ cmd_list() {
 # tell must be able to say so instead of staying quiet.
 #
 # It also publishes `newest_on_bridge`, which is what makes an ALREADY-COMPLETED split visible.
-# stored-vs-live only ever sees a split still in progress: on 2026-08-30 both `durin` and
-# galadriel's `ideas` reported CLEAN with orphaned branches sitting on disk, because by then the
+# stored-vs-live only ever sees a split still in progress: on 2026-08-30 both `ops` and
+# the other agent's `ideas` reported CLEAN with orphaned branches sitting on disk, because by then the
 # damage was done and the live session agreed with the pointer that had caused it.
 cmd_status_porcelain() {
   local k="$1" stored live newest bridge act ena drift
@@ -791,7 +863,7 @@ cmd_restart() {
     # command, a new chat started in the app. From that moment state is stale and silent, and the next
     # restart resumes the OLD branch, orphaning everything said since. That is exactly what happened on
     # 2026-08-27: state said 67de1312, the live conversation was cd4f4314, and the 2026-08-30 restart
-    # jumped back three days. Nothing was lost, but neither Durin nor Dario could see the split from
+    # jumped back three days. Nothing was lost, but neither the agent nor its owner could see the split from
     # inside — the restart reported success, because by its own definition it had succeeded.
     live="$(session_id_live "$key")"
     if [ -z "$stored" ]; then
@@ -943,7 +1015,7 @@ main() {
   [ $# -ge 1 ] || { usage; exit 2; }
   local cmd="$1"; shift
   case "$cmd" in
-    list)             cmd_list ;;
+    list)             case "${1:-}" in "") cmd_list ;; --json) cmd_list_json ;; *) usage; exit 2 ;; esac ;;
     urls)             cmd_urls ;;
     rotate)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_rotate "$1" ;;
     rotate-all)       cmd_rotate_all "$@" ;;

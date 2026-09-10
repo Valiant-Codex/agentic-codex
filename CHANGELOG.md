@@ -6,6 +6,64 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.9.0] — 2026-09-10 — A console is yours to build; here is the pattern and the trap that nearly shipped
+
+The reference deployment built a tailnet-only web console for its fleet. **Its code is deliberately
+not in this repo** — the reasoning is in the new doc, and it is the same reasoning as `app-layer.md`:
+a console encodes one operator's stack, and a root-privileged web app with a dependency tree would
+contradict the "no extra always-on gateway to keep patched" line this repo leads with. What crosses
+is the framework-level verb it needed, and everything that was learned building it.
+
+### Added
+
+- **`claude-topic list --json`** (`templates/infra/bin/claude-topic`). One JSON document for machine
+  consumers: every `status --porcelain` field per topic, joined to the live process status the
+  runtime reports (`busy` / `idle` / `waiting` and what it is waiting for), plus any session of that
+  user with no topic unit under `other_sessions`. The join is the point: the runtime knows sessions
+  by pid and by a display name it invents, which matches neither the topic key nor the registry
+  name — the one fact both sides share is that `/proc/<pid>/cgroup` names the unit the process runs
+  in. A missing or broken `claude agents` yields `status: unknown` plus a `warning`, never a silent
+  `idle`; proved against three fixtures (binary absent, bogus pid, non-JSON output). `other_sessions`
+  publishes **both** ids, because `claude stop|rm` take the runtime's short id and answer
+  `No job matching …` if handed the session UUID — a real bug in the reference deployment's console,
+  found in its own action log.
+- **[`docs/console.md`](docs/console.md)** — the pattern, documented not templated: what a console is
+  for, the identity model on a tailnet, the verb discipline (call the CLI you already have; a missing
+  verb is a missing verb), background jobs for long commands, confirmations that state what is lost,
+  and how to verify a page a headless browser is not allowed to reach. Listed in `docs/README.md`,
+  and the README says plainly that the code is absent on purpose.
+
+### Security
+
+- **Documented, with its reproduction: a tailnet identity header is not an authentication check on a
+  multi-user box.** Tailscale Serve adds `Tailscale-User-Login` and strips client copies, but it
+  proxies to loopback — so any local process, including an unprivileged agent that ingests untrusted
+  content, can present the same header and be indistinguishable from the operator. Ask the kernel
+  instead: the process that owns the socket resolves the client's uid (`/proc/net/tcp`, or the
+  Tailscale local API). No header is a refusal, never "local, therefore allowed".
+- **And the trap that nearly shipped, because the lesson generalises.** The Node adapter the console
+  was built on emits two servers: the handler the custom wrapper imports, and the adapter's own
+  standalone server. Both run the same identity hook; only one owns the socket. The standalone one
+  binds `0.0.0.0` by default and forwards client headers untouched — so the uid the app read was
+  whatever the caller typed. It sat unused in the installed tree on a host with a public IP; started
+  by hand, an unprivileged local user with two forged headers got a `200`. Nothing ran it, so nothing
+  was breached, and the application code was correct throughout: the hole was a second path to it.
+  The fixes are in the doc — a per-process token the wrapper mints and stamps, checked before
+  anything else, plus not shipping the other entry point at all. The general rule: when a check
+  depends on owning the socket, make it structurally impossible to reach the app without having done
+  it.
+
+### Changed
+
+- **De-identification and release-hygiene fixes the pre-tag checklist is supposed to catch, and had
+  not.** Four comments across `templates/infra/bin/claude-topic`,
+  `templates/infra/bin/claude-topic-session-hook` and
+  `templates/infra/scripts/agentic-divergence-check` still named the reference deployment's agents
+  and its owner; placeholders now, per CONTRIBUTING ground rule 1. And `0.8.9` and `0.8.10` shipped
+  without their CHANGELOG link definitions, so those two versions' links did not resolve — added,
+  along with this one. The checklist itself is fine; it was run by eye. Both were found by running
+  it mechanically this time, which is the only way it fires.
+
 ## [0.8.10] — 2026-09-06 — A budget you raise whenever it stings is not measuring anything
 
 ### Changed
@@ -1515,6 +1573,9 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.9.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.9.0
+[0.8.10]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.10
+[0.8.9]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.9
 [0.8.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.8
 [0.8.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.7
 [0.8.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.6

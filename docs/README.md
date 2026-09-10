@@ -18,6 +18,7 @@ The write-up behind the templates. Read in this order for the full picture:
 10. **[secrets.md](secrets.md)** — secrets out of Git, in a store you can restore (Vaultwarden on Dokploy).
 11. **[multi-agent-governance.md](multi-agent-governance.md)** — lanes, least privilege, and the honest limits of the separation.
 12. **[app-layer.md](app-layer.md)** — the service layer (Dokploy / Cloudflare / apps): documented, not templated.
-13. **[reference-architecture.md](reference-architecture.md)** — the real deployment this was distilled from.
+13. **[console.md](console.md)** — a control console for the fleet (identity on a tailnet, the verb discipline, the traps): documented, not templated.
+14. **[reference-architecture.md](reference-architecture.md)** — the real deployment this was distilled from.
 
 To actually build it, follow **[../README_AGENT.md](../README_AGENT.md)**.
