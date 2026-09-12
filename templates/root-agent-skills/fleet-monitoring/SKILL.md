@@ -13,7 +13,7 @@ timestamp: 2026-07-24T00:00:00Z
 ---
 # Monitoring & Alerting
 
-Design + rationale: the Agentic Codex docs (`monitoring.md`). This is the operational side.
+Design + rationale: the Claude Fleet Codex docs (`monitoring.md`). This is the operational side.
 
 ## What runs
 
@@ -59,7 +59,7 @@ Design + rationale: the Agentic Codex docs (`monitoring.md`). This is the operat
 
 Clone `<ORG>/infra`, run `scripts/install-host-services` (installs kb-sync + agentic-monitor +
 timers), then set `/etc/agentic-monitor.env` (`HC_URL` from your healthchecks.io check). See
-the Agentic Codex docs (`config-model.md`).
+the Claude Fleet Codex docs (`config-model.md`).
 
 ## Not covered (by choice)
 

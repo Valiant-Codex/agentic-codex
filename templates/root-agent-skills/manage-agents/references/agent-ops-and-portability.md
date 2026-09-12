@@ -48,7 +48,7 @@ secret on <OWNER>'s behalf from chat — <OWNER> does not need shell access.
 
 **Secret backup/portability.** For a fresh-VPS restore you need the secrets somewhere restorable without
 pasting each one by hand. The recommended approach is a **self-hosted secret store — Vaultwarden on
-Dokploy — backed up off the box** (see the Agentic Codex docs (`secrets.md`)); `age`-encrypted-in-git
+Dokploy — backed up off the box** (see the Claude Fleet Codex docs (`secrets.md`)); `age`-encrypted-in-git
 was considered and rejected as too heavy. Either way, "restore secrets" is an out-of-band step in the
 recovery procedure below.
 
@@ -149,7 +149,7 @@ needs a new step, the step belongs in `provision-agent`, not in a runbook someon
 ## Fresh-VPS recovery / migration (disaster recovery)
 
 The bring-up is a single privileged step — `infra/scripts/provision-agent` — not a manual checklist. See
-the Agentic Codex docs (`config-model.md`) for why (git = portable source of truth; provisioning = apply + security
+the Claude Fleet Codex docs (`config-model.md`) for why (git = portable source of truth; provisioning = apply + security
 boundary; kb-sync auto-syncs only inert data).
 
 Bring an agent up on a new box:
@@ -169,6 +169,6 @@ Bring an agent up on a new box:
 
 ## Related
 
-- the Agentic Codex docs (`config-model.md`) — the runtime pattern (topics, restart mechanics, ownership) and the
+- the Claude Fleet Codex docs (`config-model.md`) — the runtime pattern (topics, restart mechanics, ownership) and the
   provisioning / portability / security boundary.
-- the Agentic Codex docs (`monitoring.md`) — how topic sessions are monitored for liveness.
+- the Claude Fleet Codex docs (`monitoring.md`) — how topic sessions are monitored for liveness.

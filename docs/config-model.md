@@ -6,9 +6,9 @@ change how anything is wired.
 
 ## The problem it solves
 
-You want agents to be **portable**: move to another VPS, recover a broken one, or switch agent
-framework, and get every brain and its configuration back with minimal effort — *clone and run*, not
-*rebuild from scratch*. The obvious way to get there is to put everything in Git and auto-sync it into
+You want agents to be **portable between machines**: move to another VPS, or recover a broken one,
+and get every brain and its configuration back with minimal effort — *clone and run*, not *rebuild
+from scratch*. The obvious way to get there is to put everything in Git and auto-sync it into
 the live locations on a short timer.
 
 The trap: if one low-trust, unreviewed, auto-applied channel (git → 15-min sync → live location)
@@ -76,9 +76,10 @@ It is simultaneously:
 - **The wrapper is root-owned and only written by Tier-3.** The one thing every agent *executes* is
   installed by root and never touched by the auto-sync.
 - **Moving VPS** = restore the agent's secret (its `gh` token), then `provision-agent <user> <brain>`.
-  **Changing framework** requires rewriting the Tier-3 runtime wiring — the session wrapper, the
-  systemd unit, the settings file and skills discovery are all runtime-specific. What moves unchanged is
-  the valuable part: brains and governance, as framework-agnostic Markdown.
+  **Changing harness** is not something this framework supports: the wrapper, the unit, the settings
+  file, skills discovery, the memory store and the brain files themselves are Claude Code's. What you
+  would carry to another harness is the model — Git as source of truth, one provisioning boundary, a
+  shared governance repo — rebuilt, not copied ([`portability.md`](portability.md)).
 
 ## What lives where (quick reference)
 

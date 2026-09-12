@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # provision-agent — bring an agent up on THIS box from git + secrets.
 #
-# Tier-3 of the config model (see the Agentic Codex docs, config-model.md): the explicit,
+# Tier-3 of the config model (see the Claude Fleet Codex docs, config-model.md): the explicit,
 # reviewable step that APPLIES what git carries — clones the brain + shared sibling,
 # wires the symlinks, installs the root-owned topic wrapper + per-user systemd unit,
 # materializes settings as a real copy (not a live symlink into the auto-synced repo),

@@ -1,7 +1,7 @@
 <!-- title: Architecture -->
 # Architecture
 
-Agentic Codex runs AI agents as long-lived **Claude Code** sessions on a single Debian-based VPS. Three
+Claude Fleet Codex runs AI agents as long-lived **Claude Code** sessions on a single Debian-based VPS. Three
 layers, each with a clear owner and a clear trust level.
 
 ```
@@ -41,7 +41,7 @@ Markdown ([OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspir
 - `shared/` — a symlink to the sibling clone of `kb-agent-shared`.
 
 Because a brain is just Markdown in Git, you can read it, diff it, edit it from your phone, roll it
-back, and move it to another box or another framework. See [`portability.md`](portability.md).
+back, and move it to another box. See [`portability.md`](portability.md).
 
 ### 2. Governance — one shared repo
 
@@ -82,8 +82,8 @@ kept off broad content-ingesting integrations; everyone else unprivileged. See
 
 - **Claude Code + Remote Control** is the happy path because it surfaces each long-lived session on
   web, iOS/Android, and desktop at once — you talk to your agents from anywhere, no extra gateway to
-  run and patch. The brains themselves are framework-agnostic ([`portability.md`](portability.md)), so
-  this is a runtime choice, not a lock-in.
+  run and patch. It is the only harness this framework runs on; the brain files are its own, and what
+  ports elsewhere is the shape, not the files ([`portability.md`](portability.md)).
 - **A Debian-based distro** because the resilience model is plain **systemd** (user services + timers + linger) — no
   bespoke supervisor.
 

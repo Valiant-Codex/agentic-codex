@@ -1,7 +1,7 @@
 <!-- title: The application layer (documented, not templated) -->
 # The application layer
 
-Agentic Codex templates the **agent + host layer**. The **application layer** — the services your
+Claude Fleet Codex templates the **agent + host layer**. The **application layer** — the services your
 agents operate (a website, automations, databases, a secret store) — is **documented here, not shipped
 as templates**, because it's the part that varies most between users. This doc shows the shape that
 works well with the rest of the system, and how the reference deployment uses it.

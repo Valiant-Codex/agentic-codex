@@ -1,7 +1,7 @@
 <!-- title: Reference architecture — the deployment this came from -->
 # Reference architecture
 
-Agentic Codex is the distilled, genericized version of a system that runs in production for
+Claude Fleet Codex is the distilled, genericized version of a system that runs in production for
 **[Valiant Codex](https://github.com/Valiant-Codex)**. This page describes that concrete deployment as
 a worked example, so the abstract templates have a real referent. (No hostnames, tokens, emails, or
 other secrets appear here — those never leave the private side.)
@@ -76,10 +76,11 @@ the foundations are" — a reminder that the privilege is a liability to handle,
 
 The private side keeps decision records; the load-bearing ones are baked into these docs:
 
-- **GitHub + OKF-structured Markdown as the canonical agent brain** — durable, portable, reviewable,
-  low-lock-in.
-- **Claude Code on the VPS as the primary runtime** — chosen specifically for Remote Control's
-  multi-device reach; no extra gateway; brains kept framework-agnostic anyway.
+- **GitHub + OKF-structured Markdown as the canonical agent brain** — durable, reviewable, movable
+  between machines.
+- **Claude Code on the VPS as the only runtime** — chosen specifically for Remote Control's
+  multi-device reach; no extra gateway. The brain files are the harness's own; the shape is what would
+  carry elsewhere.
 - **`shared` as a sibling clone, not a submodule** — always-latest governance, no pinning overhead.
 - **Provisioning as the portability + security boundary** — the three-tier model.
 - **A single host-level dead-man's-switch** for observability — reuse, not a monitoring stack.

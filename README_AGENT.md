@@ -27,7 +27,7 @@ You cannot do these for yourself; verify them, don't assume them:
 5. Your **GitHub bot account** exists with rights to **create + write repos** in `<ORG>`, and its token
    is wired for your Unix user: `gh auth status` succeeds and `gh api user -q .login` returns your bot
    name. Git identity is set (`git config --global user.name/user.email`).
-6. This repo (`agentic-codex`) is cloned — these steps assume **`~/agentic-codex`** — and you were told
+6. This repo (`claude-fleet-codex`) is cloned — these steps assume **`~/claude-fleet-codex`** — and you were told
    to read this file.
 7. **Runtime deps present:** `git`, `gh` (the GitHub CLI — required by the token wiring and by
    `provision-agent`'s auth check), `rsync` (used nightly by `memory-mirror`) and `python3`
@@ -80,7 +80,7 @@ You have create+write on `<ORG>`. Create three repos and seed them from this rep
 replacing placeholders as you go. Keep repos **private** to start.
 
 ```bash
-AC=~/agentic-codex                        # where you cloned this repo (step 0)
+AC=~/claude-fleet-codex                        # where you cloned this repo (step 0)
 BASE=~/github/<ORG>; mkdir -p "$BASE"; cd "$BASE"
 
 # a) copy each template into a new local repo dir ('/.' also copies dotfiles like .gitignore)
@@ -112,7 +112,7 @@ turn, so do not skip them:
 ```bash
 # b) commit + create the private remote + push, per repo (run AFTER substituting placeholders)
 for r in kb-agent-shared infra <BRAIN>; do
-  ( cd "$r" && git init -q && git add -A && git commit -qm "seed from agentic-codex" )
+  ( cd "$r" && git init -q && git add -A && git commit -qm "seed from claude-fleet-codex" )
   gh repo create "<ORG>/$r" --private --source="$r" --remote=origin --push
 done
 ```

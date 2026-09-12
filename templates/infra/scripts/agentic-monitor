@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # agentic-monitor — host-level health check + heartbeat to an external dead-man's switch.
 #
-# The single monitoring component (see the Agentic Codex docs, monitoring.md).
+# The single monitoring component (see the Claude Fleet Codex docs, monitoring.md).
 # Runs on the HOST (systemd timer, ~5 min),
 # OUTSIDE Docker, so it survives a Dokploy/Docker failure. Each run does a few binary
 # local checks, then pings healthchecks.io:

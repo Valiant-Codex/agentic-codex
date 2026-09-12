@@ -9,7 +9,7 @@ The write-up behind the templates. Read in this order for the full picture:
 1. **[architecture.md](architecture.md)** — the three layers (brains, governance, host) and how they fit.
 2. **[config-model.md](config-model.md)** — the three-tier boundary (git / kb-sync / provision) that makes it portable *and* safe. The key idea.
 3. **[context-budget.md](context-budget.md)** — what a session actually loads, and why your prose is not the expensive part.
-4. **[portability.md](portability.md)** — one canonical `CLAUDE.md` per agent; recover/migrate in minutes.
+4. **[portability.md](portability.md)** — machines yes, harnesses no; which ideas travel; recover/migrate a box in minutes.
 5. **[runtime.md](runtime.md)** — topics, systemd supervision, the `claude-topic` wrapper, multi-device Remote Control.
 6. **[skills.md](skills.md)** — folder-per-skill (`SKILL.md`), auto-registration, fleet-common skills, `skillify` + `agent-audit`.
 7. **[memory.md](memory.md)** — two-tier memory, the human-gated autonomy line, and a published negative result.

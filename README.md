@@ -1,8 +1,9 @@
-<!-- title: Agentic Codex -->
-# Agentic Codex
+<!-- title: Claude Fleet Codex -->
+# Claude Fleet Codex
 
-**Run your own fleet of AI agents on a VPS — with brains you can read, own, and move.**
-Portable brains, Claude Code runtime. Minimal attack surface. Reachable from web, mobile, and desktop.
+**Run your own fleet of persistent Claude Code agents on a VPS — with brains you can read, own, and
+move between machines.** Built for Claude Code and nothing else; the ideas travel, the files do not.
+Minimal attack surface. Reachable from web, mobile, and desktop.
 
 *By [Valiant Codex](https://github.com/Valiant-Codex) · created by Dario Valiant Casilli. MIT licensed.*
 
@@ -24,13 +25,14 @@ Portable brains, Claude Code runtime. Minimal attack surface. Reachable from web
 
 ## What this is
 
-Agentic Codex is a **blueprint + ready-to-use templates** for running one or more AI agents as
+Claude Fleet Codex is a **blueprint + ready-to-use templates** for running one or more AI agents as
 long-lived [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions on a plain Debian-based VPS,
 where:
 
-- **Each agent's "brain" is a Git repo** — its identity, memory, skills, and tools are plain Markdown
-  you can read, diff, edit from your phone, and move to another machine with one command — or carry to
-  another agent framework by rewriting the runtime wiring, with the brain content moving unchanged.
+- **Each agent's "brain" is a Git repo** — its identity, memory, skills, and tools are Markdown you can
+  read, diff, edit from your phone, and move to another machine with one command. The files are Claude
+  Code's (its entry file, its skills format, its memory store); what carries to another harness is the
+  shape, not the files — see [`docs/portability.md`](docs/portability.md).
 - **The runtime is supervised and self-healing** — sessions survive crashes and reboots (systemd, no
   tmux) and are reachable from any device via Claude Code **Remote Control** (web, iOS/Android, desktop).
 - **Portability and security are one clean boundary** — Git is the portable source of truth; a single
@@ -50,7 +52,7 @@ These were the design drivers — if you share them, this repo is for you:
 | Goal | How it's met |
 |---|---|
 | **Own your agents' memory** | Brains are Git repos of Markdown (an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog)-inspired structure), not a vendor's memory store. |
-| **Portable brains** | The whole contract lives in one `CLAUDE.md` of plain Markdown, so the brain *content* is not tied to one runtime. The wiring is deliberately Claude-Code-only (Remote Control is the reason this stack exists); adopting another runtime means rewriting the wiring, not the brains — see the honest accounting in [`docs/portability.md`](docs/portability.md). |
+| **Brains you own** | The whole contract lives in one `CLAUDE.md` plus `memory/` and `skills/`, in Git, per agent. Claude Code only — Remote Control is the reason this stack exists, and the brain files are the harness's own. What ports to another harness is the shape (brains in Git, a shared governance repo, one provisioning boundary), not the files — the accounting is in [`docs/portability.md`](docs/portability.md). |
 | **Talk to agents from anywhere** | Claude Code Remote Control surfaces each session on web/mobile/desktop — the reason this happy path is Claude Code. |
 | **Minimal attack surface** | One privileged agent, unprivileged others; no extra always-on gateway; a root-owned wrapper no agent can rewrite. |
 | **Recover / migrate in minutes** | `clone + provision-agent`. Nothing important lives only on the box. See [`docs/config-model.md`](docs/config-model.md). |
@@ -66,14 +68,14 @@ If you are shopping for a self-hosted agent you will also find
 
 **They are runtimes; this is a blueprint.** OpenClaw and Hermes ship a program you install: a
 gateway daemon, a skill/plugin system, their own memory subsystem, routing across many model
-providers. Agentic Codex ships no daemon of its own — it is a documented shape plus templates for
+providers. Claude Fleet Codex ships no daemon of its own — it is a documented shape plus templates for
 running an existing runtime (Claude Code) as long-lived supervised sessions, with each agent's brain
 in Git.
 
-| Design driver | OpenClaw / Hermes Agent | Agentic Codex |
+| Design driver | OpenClaw / Hermes Agent | Claude Fleet Codex |
 |---|---|---|
 | **Where memory lives** | On your box, inside the runtime's own workspace and stores (Hermes also keeps Markdown context files) | A Git repo of Markdown per agent; the box holds no canonical state |
-| **Model & runtime choice** | Model-agnostic by design — many providers, local models | Claude Code on the happy path only — the price paid for the reachability below |
+| **Model & runtime choice** | Model-agnostic by design — many providers, local models | Claude Code only — the price paid for the reachability below |
 | **How you reach it** | A built-in gateway bridging messaging channels (WhatsApp, Telegram, Slack, Discord, …) | No gateway: Claude Code Remote Control (web / mobile / desktop) |
 | **Attack surface** | An always-on service taking inbound DMs; both address it (sender pairing, sandboxing) | No extra always-on service to patch; privilege split across Unix users, root-owned wrapper |
 | **Shape** | One personal assistant, many channels | A small fleet: one privileged agent, unprivileged lanes, a shared governance repo |
@@ -84,11 +86,11 @@ any model, with the least setup? Use OpenClaw or Hermes. Want a small fleet whos
 and rules you read, diff and review in Git, with a deliberately minimal surface, and you are happy on
 Claude Code? That is this.
 
-**And they compose.** The brain shape here is deliberately runtime-neutral — one `CLAUDE.md` of plain
-Markdown, plus `memory/` and `skills/`. Nothing stops you from keeping
-brains-in-Git and pointing a different runtime at them; that is exactly what
-[`docs/portability.md`](docs/portability.md) is about — including its honest accounting of what has
-and has not been exercised.
+**And the ideas compose.** Brains in Git, a shared governance repo every agent reads, one explicit
+provisioning boundary, a nightly memory mirror, a drift check, a dead-man's switch: none of that is
+Claude Code's, and you can rebuild it under OpenClaw or Hermes. The files here are not the way to do it
+— they are written for Claude Code and were never exercised elsewhere. [`docs/portability.md`](docs/portability.md)
+draws the line.
 
 ## The mental model
 

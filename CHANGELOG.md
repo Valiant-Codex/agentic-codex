@@ -1,10 +1,40 @@
 # Changelog
 
-All notable changes to **agentic-codex** are documented here. The format is based on
+All notable changes to **claude-fleet-codex** are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/). Pre-1.0: the framework is still evolving, so minor
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
+
+## [0.10.1] — 2026-09-12 — Renamed to claude-fleet-codex: named for what it is, a Claude Code fleet, not a portable one
+
+Nothing executable changes in this release; it is a patch by the owner's call because every script,
+unit and template behaves exactly as in 0.10.0. What changes is what the repo says about itself.
+
+### Changed
+
+- **`agentic-codex` is now `claude-fleet-codex`.** Three reasons. The repo runs on Claude Code and on
+  nothing else, and the old name did not say so. "Agentic" had stopped meaning anything. And a name of
+  the shape `claude-…-codex` needs a real word between the two — `fleet`, which is already the repo's
+  own vocabulary (`fleet-agents`, `fleet-dormant`, the roster) — because `claude` and `codex` adjacent
+  read as a hybrid of two vendors' products, which this is not. GitHub redirects the old name for
+  clones, fetches and links; update your remotes when convenient
+  (`git remote set-url origin https://github.com/<ORG>/claude-fleet-codex.git`). Tags and release
+  subjects before this version keep the old name in their text; they are history.
+- **The claim that brain content ports to another harness is retired.** It was stated with an honest
+  accounting since 0.7.0 and it stopped being true as the framework grew: `CLAUDE.md` and its `@`-imports,
+  the auto-memory store and its index cliff that the memory model is built around, the `SKILL.md` format,
+  the sub-agent-based skills (`decision-loop`, `advisor-review`, `agent-audit`), the settings schema and the
+  SessionStart hook, and a topic's very identity (a Remote Control bridge) are all Claude Code's. Point
+  another harness at a brain and you get Markdown it cannot act on; nothing here was ever exercised
+  elsewhere. `docs/portability.md` is rewritten around the two things that are true: **the deployment
+  moves between machines** (Git as source of truth plus one provisioning step — exercised), and **the
+  ideas travel** — a brain as a Git repo of Markdown on GitHub, a shared governance repo every agent reads,
+  one explicit provisioning boundary, persistent agents as supervised services under separate Unix users,
+  a nightly memory mirror, a structural drift check, a dead-man's switch, decision records with a
+  human-gated autonomy line. Rebuild those on any harness; do not copy these files to one. The README,
+  `architecture.md`, `config-model.md`, `reference-architecture.md`, the brain template's README and the
+  shared bootstrap no longer promise otherwise.
 
 ## [0.10.0] — 2026-09-12 — Topics resume at boot; rotation is a verb you run on purpose
 
@@ -1646,34 +1676,35 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
-[0.10.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.10.0
-[0.9.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.9.0
-[0.8.10]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.10
-[0.8.9]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.9
-[0.8.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.8
-[0.8.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.7
-[0.8.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.6
-[0.8.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.5
-[0.8.4]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.4
-[0.8.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.3
-[0.8.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.2
-[0.8.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.1
-[0.8.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.0
-[0.7.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.2
-[0.7.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.1
-[0.7.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.7.0
-[0.6.8]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.8
-[0.6.7]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.7
-[0.6.6]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.6
-[0.6.5]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.5
-[0.6.4]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.4
-[0.6.3]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.3
-[0.6.2]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.2
-[0.6.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.1
-[0.6.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.6.0
-[0.5.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.5.0
-[0.4.1]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.1
-[0.4.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.4.0
-[0.3.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.3.0
-[0.2.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.2.0
-[0.1.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.1.0
+[0.10.1]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.10.1
+[0.10.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.10.0
+[0.9.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.9.0
+[0.8.10]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.10
+[0.8.9]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.9
+[0.8.8]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.8
+[0.8.7]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.7
+[0.8.6]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.6
+[0.8.5]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.5
+[0.8.4]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.4
+[0.8.3]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.3
+[0.8.2]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.2
+[0.8.1]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.1
+[0.8.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.8.0
+[0.7.2]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.7.2
+[0.7.1]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.7.1
+[0.7.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.7.0
+[0.6.8]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.8
+[0.6.7]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.7
+[0.6.6]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.6
+[0.6.5]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.5
+[0.6.4]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.4
+[0.6.3]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.3
+[0.6.2]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.2
+[0.6.1]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.1
+[0.6.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.6.0
+[0.5.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.5.0
+[0.4.1]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.4.1
+[0.4.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.4.0
+[0.3.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.3.0
+[0.2.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.2.0
+[0.1.0]: https://github.com/Valiant-Codex/claude-fleet-codex/releases/tag/v0.1.0

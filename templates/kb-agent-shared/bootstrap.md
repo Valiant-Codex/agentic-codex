@@ -1,7 +1,7 @@
 ---
 type: reference
 title: Shared Bootstrap Capsule
-description: Minimal vendor-agnostic bootstrap, ecosystem state, and governance contract shared by all of your org's agents.
+description: Minimal bootstrap, ecosystem state, and governance contract shared by all of your org's agents.
 tags:
 - bootstrap
 - shared
@@ -14,14 +14,14 @@ timestamp: 2026-08-11T00:00:00Z
 This repository (`kb-agent-shared`) is the **shared governance layer** for all of `<ORG>`'s agents:
 global policies, ecosystem state, conventions, cross-agent decisions, and templates. Each agent has
 its own repository (`kb-agent-<role>-<name>`) that reaches this repo through a `shared` symlink to a
-**sibling clone** at `../kb-agent-shared` (not a git submodule — see the Agentic Codex docs (`config-model.md`)).
+**sibling clone** at `../kb-agent-shared` (not a git submodule — see the Claude Fleet Codex docs (`config-model.md`)).
 
 Your own `CLAUDE.md` is already loaded — it is the one always-on file. Read from `shared/`
 only what the task needs. Keep the initial context small.
 
 ## Human
 
-`<OWNER>` is building `<ORG>` and wants pragmatic, portable, low-lock-in systems for AI-assisted
+`<OWNER>` is building `<ORG>` and wants pragmatic, owned, reviewable systems for AI-assisted
 work. They prefer lean knowledge bases, direct language, concrete execution, skeptical analysis, and
 one question at a time.
 
@@ -32,7 +32,7 @@ When older files disagree, prefer this section and the active policies/decisions
 **Runtimes / interfaces**
 
 - **Claude Code** on the VPS (Remote-Control sessions supervised by systemd user services — no tmux)
-  is the primary/sole operational runtime and tool host. See the Agentic Codex docs (`config-model.md`).
+  is the primary/sole operational runtime and tool host. See the Claude Fleet Codex docs (`config-model.md`).
 - An interactive reasoning/drafting cockpit can read/write selected GitHub and your business KB when authorized.
 - Runtime memories (LLM runtime / vector stores) are caches/working memory, not canonical truth.
 
@@ -52,14 +52,14 @@ Give each agent a short, memorable name and one of the shared archetypes:
 - **root-agent** — narrow, privileged infrastructure/operations agent on `<VPS_HOST>`, runs with sudo (`kb-agent-ops-<name>`).
 - **dev-agent** — dedicated build/dev agent for the website, small web apps, and automation
   engineering; self-contained token + deploy rights, never root (`kb-agent-dev-<name>`).
-  See the Agentic Codex docs (`multi-agent-governance.md`).
+  See the Claude Fleet Codex docs (`multi-agent-governance.md`).
 - Scaffold further agents from `kb-agent-template`.
 
 **Deprecated / historical**
 
 - Retired runtimes and superseded KB-sync layers stay recorded in `decisions/` but do not override this
   section unless explicitly reintroduced.
-- Superseded work-management tooling: see the Agentic Codex docs (`multi-agent-governance.md`). Your current work tracker
+- Superseded work-management tooling: see the Claude Fleet Codex docs (`multi-agent-governance.md`). Your current work tracker
   (e.g. Jira/Linear) is the active choice.
 
 ## Bootstrap

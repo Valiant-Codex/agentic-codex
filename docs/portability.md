@@ -1,74 +1,56 @@
-<!-- title: Portability — one canonical identity, many framework adapters -->
+<!-- title: Portability — machines yes, harnesses no; the ideas travel -->
 # Portability
 
-A core reason this system exists: **your agents' accumulated knowledge should never be trapped in one
-vendor's store.** Portability here has two independent axes — the *brain content* is portable across
-frameworks, and the *deployment* is portable across machines. The runtime wiring is not portable, and
-this page is explicit about where that line falls.
+Two claims used to live on this page. One is still true and exercised: **the deployment moves between
+machines** — everything but secrets and volatile runtime state is in Git, and one command rebuilds a box.
+The other — that the *brain content* moves unchanged to another agent framework — is retired as of
+0.10.1, because it stopped being true as the framework grew. This page is explicit about both.
 
-## Axis 1 — brain portability (across agent frameworks)
+## Axis 1 — what does and does not port across harnesses
 
-**`CLAUDE.md` is canonical, complete, and the only always-on file.** It holds *who the agent is*
-(identity, voice, principles) and *what it does* (scope, delegation, threat model, human-confirm gates)
-in plain, framework-agnostic Markdown. It is written with **absolute** `~/github/...` paths so it
-resolves from any working directory; `provision-agent` symlinks it to `~/CLAUDE.md`, and the supervised
-topic session runs with `WorkingDirectory=%h`, so that symlink is what the running agent loads. Editing
-the repo edits the live contract — a symlink, never a fork. Shared facts about the owner and org live
-once in `shared/owner-profile.md`.
+**This framework runs on Claude Code and nothing else.** That was always true of the wiring; it is now
+true of the brain content too. What the brains contain is written for this harness:
 
-```
-  kb-agent-<role>-<name>/
-    CLAUDE.md      ← the whole always-on contract — identity + scope + gates (the value)
-    memory/        ← distilled-memory.md + auto/ (nightly machine mirror)
-    skills/        ← folder-per-skill; the one retrievable layer the runtime advertises itself
-    shared/        → sibling clone of the governance layer
-```
-
-> **Why one file and not two.** Through 0.6.x this framework split identity by *durability* —
-> `SOUL.md` for who the agent is, `OPERATING.md` for what it does, `CLAUDE.md` a thin pointer at both.
-> Measurement killed it (0.7.0): nothing but `CLAUDE.md` is auto-loaded, so the other two entered
-> context only when the model chose to obey an instruction to read them — 16–54% of substantial
-> sessions across the reference deployment — while 45–70% of each `OPERATING.md` was gates, threat
-> model and delegation map. **A layer that loads only by instruction is not a layer, it is a
-> suggestion.** Git already distinguishes what changes rarely from what changes often, for free.
-
-> That was the second time this framework learned the same lesson. v0.6.0 had already collapsed a
-> three-file *bootstrap* arrangement (`deploy/home-CLAUDE.md` plus repo-root `CLAUDE.md`/`AGENTS.md`
-> adapters) for exactly the same reason: only one file was ever loaded, the others restated it, nothing
-> caught them drifting — and they drifted. 0.7.0 finished the job on the *identity* layer.
->
-> **And why Claude Code.** The *wiring* here is deliberately built around it, because **Remote Control**
-> (sessions reachable from phone, web and desktop) is the reason the whole stack works the way it does;
-> no other runtime currently offers an equivalent. What stays portable is the part with accumulated
-> value: the brain content. Adopting another runtime means writing its entry file and rewriting the
-> wiring — not migrating your memory, skills or identity.
-
-### Why this matters beyond convenience
-- **No lock-in.** Your agents' accumulated knowledge isn't trapped in one vendor's memory store.
-- **Reviewable + versioned.** Identity changes are Git diffs, not opaque settings.
-- **Editable from anywhere.** It's Markdown in GitHub — edit from a laptop or a phone.
-
-## What is Claude-Code-specific (an honest list)
-
-Framework-agnosticism here is a property of the **brain content**, not of the whole system. Being
-straight about the split is what makes the claim usable:
-
-**Moves unchanged to another framework** — `CLAUDE.md`, `memory/`, `skills/` bodies,
-`tools/`, and everything in the shared governance layer. This is plain Markdown, and it is
-where the accumulated value lives.
-
-**Would have to be rewritten** — the runtime wiring:
-
-| Piece | Why it's runtime-specific |
+| Piece of a brain | Why it is Claude Code's, not generic Markdown |
 |---|---|
-| `claude-topic` (the session wrapper) | Captures and resumes Claude Code session IDs, drives `--remote-control`, allocates a pty |
-| `claude-topic@.service` | Supervises that wrapper |
-| `deploy/claude-settings.json` | Claude Code's settings/permissions schema |
-| `~/.claude/skills` symlink | How Claude Code discovers skills |
-| `SKILL.md` frontmatter | Anthropic's Agent Skills format |
-| `~/.claude.json` trust/onboarding flags | Claude Code first-run state |
-| Remote Control itself | The multi-device access path, and the reason this happy path is Claude Code |
+| `CLAUDE.md` | The one file the harness auto-loads, with its `@`-import syntax for the distilled memory and the runtime's own rules about what reaches context |
+| `memory/auto/` | A nightly mirror of the harness's **auto-memory store**, whose index has the harness's hard read limit — the memory model is built around that cliff ([`memory.md`](memory.md), [`context-budget.md`](context-budget.md)) |
+| `skills/*/SKILL.md` | Anthropic's Agent Skills format, discovered through `~/.claude/skills` |
+| `decision-loop`, `advisor-review`, `agent-audit` | Written against the harness's sub-agent tool: an advisor pass *is* a fresh sub-agent |
+| `deploy/claude-settings.json`, the SessionStart hook | The harness's settings schema; the hook that keeps `topics.state` honest fires on the harness's own session events |
+| `deploy/topics.tsv` and everything a topic is | A topic is a `claude --resume … --remote-control` session; its identity is the Remote Control bridge ([`runtime.md`](runtime.md)) |
 
+Point another harness at one of these repos and you get Markdown it cannot act on. Nothing here has been
+exercised on another harness, and the framework no longer claims it could be.
+
+**What travels are the ideas**, and they are the reason the repo exists — each is a pattern you can
+rebuild on any harness that can read a file and run a process:
+
+- **A brain is a Git repo of Markdown**, per agent, on GitHub: identity, memory and skills you read,
+  diff, review and edit from a phone. Not a vendor's memory store.
+- **A shared governance repo** (`kb-agent-shared`: owner profile, policies, decision records, fleet-common
+  skills) reached from every brain, refreshed by a sync that only ever pulls inert data, written by exactly
+  one agent.
+- **One explicit provisioning step** applies Git to a live box; nothing on the box is canonical
+  ([`config-model.md`](config-model.md)).
+- **Persistent agents as supervised services**, one Unix user each, one privileged and the rest not
+  ([`multi-agent-governance.md`](multi-agent-governance.md)).
+- **A nightly memory mirror** from the harness's store into the brain repo, so memory survives the box.
+- **A structural drift check** that asserts invariants, never vocabulary ([`divergence-check.md`](divergence-check.md)).
+- **A dead-man's switch** where silence is the alarm ([`monitoring.md`](monitoring.md)).
+- **Decision records and a human-gated autonomy line** as the way an owner and a fleet stay coherent.
+
+That is the portable part: the shape. The files are Claude Code's.
+
+## Why Claude Code
+
+**Remote Control.** Sessions reachable from phone, web and desktop, with the process and the filesystem
+staying on your machine, no gateway of your own to run and patch. No other harness offers an equivalent,
+and it is the reason the whole stack has the shape it has. Two consequences worth knowing before you
+adopt: remote attach is a *harness* property, not a model property — put a different model behind Claude
+Code and Remote Control switches off; and the harness's resume semantics (which conversation a session
+reconnects to after a restart or a reboot) changed four times in thirty minor versions, so this framework
+states the runtime version it depends on ([`runtime.md`](runtime.md)).
 
 ## Axis 2 — deployment portability (across machines)
 
@@ -101,8 +83,8 @@ Everything else is a `git clone` away.
 
 ## The takeaway
 
-Portability isn't a feature bolted on; it *is* the architecture — but it is specific about what it
-covers. Canonical identity in framework-agnostic Markdown + thin adapters means the *brains* would
-follow you to another runtime (you would rewrite the wiring, not the agents); Git-as-source-of-truth +
-explicit provisioning gives you real machine freedom, exercised. The happy path is Claude Code because
-of Remote Control ([`runtime.md`](runtime.md)).
+Portability here is the machine axis, exercised: Git-as-source-of-truth plus one explicit provisioning
+step means a dead VPS is a clone away. Across harnesses, what you keep is the shape — brains in Git, a
+shared governance repo, one provisioning boundary, supervised agents, a mirror, a drift check, a
+dead-man's switch — and you rewrite the files for whatever you run. The files here are Claude Code's, on
+purpose, because of Remote Control ([`runtime.md`](runtime.md)).

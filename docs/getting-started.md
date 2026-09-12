@@ -146,8 +146,8 @@ Now the payoff. As the agent user, clone this project and start a Claude session
 
 ```bash
 cd ~
-git clone https://github.com/Valiant-Codex/agentic-codex.git
-cd agentic-codex
+git clone https://github.com/Valiant-Codex/claude-fleet-codex.git
+cd claude-fleet-codex
 claude
 ```
 

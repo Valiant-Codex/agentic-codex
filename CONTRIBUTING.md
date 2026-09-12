@@ -1,7 +1,7 @@
 <!-- title: Contributing -->
 # Contributing
 
-Thanks for looking under the hood. Agentic Codex is a **blueprint + templates**, so contributions are
+Thanks for looking under the hood. Claude Fleet Codex is a **blueprint + templates**, so contributions are
 mostly docs, templates, and portability fixes rather than a running app.
 
 ## Ways to help
@@ -53,7 +53,7 @@ the delta mechanically instead:
    **minor**; a single scoped security/robustness fix is a **patch**.
 3. Add the link definition at the bottom: `[X.Y.Z]: .../releases/tag/vX.Y.Z`.
 4. Commit as `vX.Y.Z: <headline>`, then an **annotated** tag `vX.Y.Z` with subject
-   `agentic-codex vX.Y.Z — <headline>`.
+   `claude-fleet-codex vX.Y.Z — <headline>`.
 5. Push commits **and** tags (`git push && git push --tags`), then publish the GitHub Release from the
    tag so the CHANGELOG's links resolve.
 

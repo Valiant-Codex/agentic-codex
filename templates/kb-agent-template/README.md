@@ -32,12 +32,13 @@ the worked example, entirely with placeholders. Fill them in and the same shape 
 ## The portability pattern
 
 The **whole always-on contract lives in `CLAUDE.md`** — identity and voice, scope, threat model, gates —
-in framework-agnostic Markdown. It is symlinked to `~/CLAUDE.md` and written with absolute
+in Markdown, in the form Claude Code loads. It is symlinked to `~/CLAUDE.md` and written with absolute
 `~/github/...` paths so it resolves from any cwd, and it is **the only file the runtime loads by
 itself**. That is why there is no second identity file: a layer that loads only when the model chooses
-to obey an instruction is a suggestion, not a layer. The brain *content* (contract, memory, skills,
-tools) is plain Markdown and portable to another runtime; the wiring is Claude-Code-specific. See
-docs/portability.md in the agentic-codex repo.
+to obey an instruction is a suggestion, not a layer. The brain files (contract, memory, skills) are
+written for Claude Code — its entry file, its skills format, its memory store — and are not portable to
+another harness as they stand; the shape of a brain-in-Git is. See docs/portability.md in the
+claude-fleet-codex repo.
 
 ## Repo shape
 
@@ -48,8 +49,8 @@ docs/portability.md in the agentic-codex repo.
 | `deploy/claude-settings.json` | Curated, portable runtime settings (permissions, notifications). |
 | `.mcp.json` | MCP server structure with `${ENV}` placeholders — **no secrets**. Documentation of intent: it is only *read* if the session's cwd is this repo, or if it is passed explicitly with `--mcp-config`. See docs/context-budget.md. |
 | `tools/` | This agent's tool notes. |
-| `skills/` | This agent's skills, **folder-per-skill** (`<name>/SKILL.md`); fleet-common ones symlink `shared/skills/*`. See docs/skills.md in the agentic-codex repo. |
-| `memory/` | This agent's durable memory — two tiers: `distilled-memory.md` (hand-curated standing decisions) and machine-mirrored `auto/`. See docs/memory.md in the agentic-codex repo. |
+| `skills/` | This agent's skills, **folder-per-skill** (`<name>/SKILL.md`); fleet-common ones symlink `shared/skills/*`. See docs/skills.md in the claude-fleet-codex repo. |
+| `memory/` | This agent's durable memory — two tiers: `distilled-memory.md` (hand-curated standing decisions) and machine-mirrored `auto/`. See docs/memory.md in the claude-fleet-codex repo. |
 | `shared/` | Symlink → sibling clone `../kb-agent-shared` (global policies, decisions, runtime reference). |
 
 ## The `shared` symlink (sibling clone, not a submodule)
@@ -63,7 +64,7 @@ shared -> ../kb-agent-shared
 
 Clone both repos as siblings under `~/github/<ORG>/`, and a sync timer fast-forwards them (no submodule
 commands). If `shared/` does not resolve, clone `<ORG>/kb-agent-shared` next to this repo. See
-docs/config-model.md in the agentic-codex repo for why sibling-clone
+docs/config-model.md in the claude-fleet-codex repo for why sibling-clone
 over submodule.
 
 ## How a root agent scaffolds a new brain
