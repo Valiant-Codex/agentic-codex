@@ -76,7 +76,9 @@ claude-topic restart <key>            # systemctl restart (resumes the same sess
 claude-topic restart --new <key>      # explicit opt-in: start a FRESH conversation
 claude-topic rotate <key>             # abandon the conversation, mint a NEW bridge id — the fix when a
                                      #   topic is active but the app says "session can't be found"
-claude-topic rotate-all [--dry-run]   # rotate every enabled topic (what the boot unit runs)
+claude-topic fork <key>               # same conversation, NEW sessionId + NEW bridge, history carried over —
+                                     #   the recovery when a bridge is really dead and rotate would cost context
+claude-topic rotate-all [--dry-run]   # rotate every enabled topic — manual, fleet-wide reset (no longer at boot)
 claude-topic stop <key>               # stop + disable the service (sessionId is kept)
 claude-topic remove <key>             # unregister for good: topics.tsv + state + unit (use this, not just `stop`,
                                      #   when a topic is deleted — else agentic-monitor keeps reporting it)
@@ -91,11 +93,16 @@ the conversation, and nothing on the box can observe it: a topic can be `active`
 `restart` does not help, because resuming re-announces the same dead bridge; only `rotate` mints a
 new one. `urls` prints what the session *announced*, so opening one is the only proof.
 
-Because the failure is invisible locally, reachability after a reboot is not checked but *acted on*:
-`claude-topic-rotate-on-boot.service` runs `rotate-all` once per boot and writes a digest of the
-abandoned sessions and new URLs to `~/.config/agent/last-boot-rotation.tsv`. The cost is deliberate —
-**every topic starts a fresh conversation after a reboot**, so nothing that matters should live only
-in a conversation.
+**At boot, topics plain-resume — nothing rotates (0.10.0).** Until 0.10.0 a `rotate-on-boot` unit
+ran `rotate-all` at every boot, so every topic came back blank by design. On a current runtime
+(≥ 2.1.232) `claude --resume` reconnects to the bridge recorded in the conversation — the reference
+deployment saw fifteen topics come back with full history, twice — and mints a replacement itself
+when the server reports the session gone. The unit is retired; `provision-agent` removes a stale copy.
+`claude-topic run` waits (bounded) for the network before exec, which the boot rotation used to paper
+over. **After a reboot: open the apps.** A topic that answers "session can't be found" gets
+`claude-topic fork <key>` — new bridge, history kept; `rotate` only when the history is not worth
+keeping. Nothing local can tell you which topics need it. Still recommended: nothing that matters
+should live only in a conversation.
 
 The wrapper fails fast rather than letting systemd fail-loop a topic: unknown keys are
 rejected before `systemctl` is called (`claude-topic@<typo>` is a valid template instance

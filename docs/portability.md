@@ -94,7 +94,7 @@ fresh conversations.
 | **MCP server configuration** | Lives in the runtime's user-scoped config, which also holds credentials — a `.mcp.json` in the brain repo is decorative unless you pass it explicitly with `--mcp-config`. See [`context-budget.md`](context-budget.md). | The box |
 | `~/.config/agent/topics.state` (session IDs) | Per-machine runtime state | The box |
 | `~/.config/agent/topics.rotated` | Per-machine log of abandoned session IDs | The box |
-| `~/.config/agent/last-boot-rotation.tsv` | Per-boot digest written by rotate-on-boot | The box |
+| `~/.config/agent/last-boot-rotation.tsv` | Digest written by `rotate-all` when someone runs it (per-boot until 0.10.0) | The box |
 | `~/.claude/settings.local.json` | Auto-accumulated per-session approvals | The box, git-ignored |
 
 Everything else is a `git clone` away.

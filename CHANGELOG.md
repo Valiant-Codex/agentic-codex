@@ -6,6 +6,79 @@ All notable changes to **agentic-codex** are documented here. The format is base
 versions may include structural changes. `1.0.0` is reserved for a deliberate "stable and proven"
 milestone.
 
+## [0.10.0] — 2026-09-12 — Topics resume at boot; rotation is a verb you run on purpose
+
+Since 0.6.5 a `rotate-on-boot` unit abandoned every topic's conversation at each reboot, on the
+premise that a reboot kills the server-side Remote Control bridge and a resumed session would announce
+a dead id forever. On a current runtime the premise no longer holds, and the cost — every topic blank
+after every kernel or glibc reboot — was being paid for nothing. The reference deployment measured it:
+on Claude Code 2.1.270, fifteen plain-resumed topics reconnected to their **pre-reboot** bridge ids with
+full history, once by a manual restore an hour after a reboot and once at boot itself. The vendor now
+documents the mechanism (`claude --resume` reconnects to the session recorded in the conversation, and
+since v2.1.232 mints a replacement itself when the server reports it gone). The boot rotation was
+throwing history away to obtain a bridge the runtime keeps.
+
+### Changed
+
+- **The `rotate-on-boot` unit is gone.** At boot each `claude-topic@<key>` unit does what it did between
+  boots: resume the stored conversation. `templates/infra/systemd/claude-topic-rotate-on-boot.service` is
+  removed; `provision-agent` no longer installs or enables it and instead **removes a stale copy** (unit
+  file plus `WantedBy` link) from an agent provisioned before this release — a leftover would blank every
+  conversation at the next reboot. `agentic-divergence-check` stops excluding the unit from its
+  "unexpected user units" assertion for the same reason: a leftover is drift now, not fleet code.
+  **Runtime dependency stated in `docs/runtime.md`: ≥ 2.1.232.** The vendor's own "reconnect history"
+  note shows the resume-time behaviour changed four times between 2.1.200 and 2.1.232.
+- What this does **not** cover is stated in the same place: a topic that comes back announcing its old
+  bridge id while the server has forgotten it — the client sees no failure, so nothing is minted. That
+  shape was observed once, after a crash reboot on 2.1.224, and was the reason the boot rotation existed.
+  Nothing local can detect it (the standing "active is not reachable" rule is unchanged). After a reboot,
+  open the apps; a topic that answers "session can't be found" gets `fork`.
+
+### Added
+
+- **`claude-topic fork <key>`** (`templates/infra/bin/claude-topic`): same conversation, new sessionId,
+  new bridge id, **history carried over** — `claude --resume <sid> --fork-session --remote-control`.
+  The recovery verb for a bridge that is really dead, where `rotate` would cost the context. Same shape
+  as `rotate`: the source sessionId is appended to `topics.rotated` before anything changes and the verb
+  refuses if it cannot; the new sessionId is captured after start. The fork happens inside `run` at exec
+  time through a one-shot marker (`~/.config/agent/fork-next/<key>`) that `run` consumes **before** exec,
+  so a fail-loop can never fork twice. The history upload is observed behaviour, not documented by the
+  vendor — which is exactly why it is a verb you run on purpose and not the boot path.
+- **`claude-topic run` waits for the network before exec** — bounded (120 s, `CLAUDE_TOPIC_NET_WAIT`),
+  fails closed (logs and proceeds on timeout). With rotation gone, nothing else restarts a topic that came
+  up before the network and stayed alive with Remote Control off: `Restart=always` only sees a process
+  that exits, and the old boot unit was, by accident, the late-boot retry that hid this. It is a
+  readiness gate ("does the API host answer at all"), never a reachability check.
+- **`claude-topic rotate-all --agent <user>`**: rotate another fleet agent's topics from any topic that
+  still answers, by delegating to the target's own `systemctl --user` under the target's uid with a
+  clean environment (`XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS` unset, `HOME` from passwd). Refuses a
+  user outside the roster and any dormant agent (`fleet-dormant`), and needs root or passwordless sudo —
+  it refuses rather than half-rotating and reporting success. Written in the reference deployment on
+  2026-08-30 for exactly the day this release makes rarer; ported because a fleet-wide dead-bridge day is
+  still possible and a hand-written `runuser` incantation is how it used to be recovered.
+
+### Fixed
+
+- **`agentic-divergence-check` measures `CLAUDE.md` as the runtime sees it.** Block-level HTML comments
+  are stripped before injection, so counting them reported an overage that did not exist and pushed
+  people into trimming real content to clear it; the reference scan strips them for the same reason — a
+  path named only in a maintainer note is not a claim the agent can act on. Fixed in the reference
+  deployment on 2026-08-25 and never propagated; found by this release's diff, which is what the release
+  procedure exists for.
+
+### Docs
+
+- `docs/runtime.md`: the "after a reboot" section rewritten around resume, `fork`, the network wait, the
+  runtime dependency and the uncovered failure shape; bring-up recap updated. `docs/portability.md`: the
+  rotation digest is now written only when someone runs `rotate-all`. `templates/infra/README.md`: unit
+  row removed. `manage-agents` (skill and its ops reference): verbs and the post-reboot procedure.
+  Template hygiene: one reference-deployment name that had survived in `templates/infra/fleet-dormant`.
+
+### Left private on purpose
+
+- `install-host-services` in the reference deployment installs an `n8n-backup` timer and resolves its
+  workspace path from a fixed org; both are deployment-specific and stay out of the template.
+
 ## [0.9.0] — 2026-09-10 — A console is yours to build; here is the pattern and the trap that nearly shipped
 
 The reference deployment built a tailnet-only web console for its fleet. **Its code is deliberately
@@ -1573,6 +1646,7 @@ actually does, and adds the one new thing that prevents the same rot returning: 
   infra (systemd-supervised Remote Control topics, `kb-sync`, `provision-agent`, monitoring with a
   dead-man's switch); and the docs write-up.
 
+[0.10.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.10.0
 [0.9.0]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.9.0
 [0.8.10]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.10
 [0.8.9]: https://github.com/Valiant-Codex/agentic-codex/releases/tag/v0.8.9

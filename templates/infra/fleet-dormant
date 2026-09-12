@@ -7,7 +7,7 @@
 #
 # What reads this:
 #   - install-host-services --enable-writers : skips these, so a re-install does not resurrect a
-#     nightly writer that pushes to an archived repo (403 -> failed unit -> a nightly page for Dario).
+#     nightly writer that pushes to an archived repo (403 -> failed unit -> a nightly page for the owner).
 #   - agentic-divergence-check              : inverts its timer assertion for these — a dormant
 #     agent's memory-mirror timer must be OFF, and an ENABLED one is drift.
 #

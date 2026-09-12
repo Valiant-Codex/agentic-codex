@@ -35,7 +35,10 @@ Description=Claude Code Remote Control topic %i
 # NO After=network-online.target here: this is a USER unit, and the user manager has no
 # network-online.target (verified: `systemctl --user list-units network-online.target` -> not-found),
 # so that dependency was a silent no-op. At boot this unit may start before the network is up; the
-# restart policy below is what actually absorbs that.
+# restart policy below absorbs the case where claude EXITS; the case where it starts, fails the
+# Remote Control reconnect and stays alive with Remote Control off is absorbed by the bounded
+# network wait in `claude-topic run` (the retired rotate-on-boot unit used to hide it by
+# restarting everything a few seconds after boot).
 # NO start limit: with the old StartLimitIntervalSec=60/Burst=5, five fast failures (e.g. claude
 # exiting quickly while the network is still down at boot) parked the unit in 'failed' until a human
 # ran reset-failed — on a box whose whole point is unattended recovery. A permanently-broken topic

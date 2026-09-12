@@ -44,6 +44,18 @@ die() { err "$*"; exit 1; }
 
 [ -n "$HOME_DIR" ] || die "HOME is not set"
 
+# Fleet roster, installed by install-host-services. Read-only here: this script never
+# writes it, and an absent roster must not silently mean "any username is fine".
+ROSTER_FILE="${ROSTER_FILE:-/usr/local/share/agentic/fleet-agents}"
+DORMANT_FILE="${DORMANT_FILE:-/usr/local/share/agentic/fleet-dormant}"
+
+# Exact-line membership test, comments and blank lines ignored, whitespace stripped.
+# grep -qxF, never a substring match: "ops" must not match a hypothetical "ops-test".
+roster_has() {
+  [ -f "$1" ] || return 1
+  grep -vE '^[[:space:]]*(#|$)' "$1" | tr -d ' \t\r' | grep -qxF "$2"
+}
+
 # This agent's own repo: kb-agent-<role>-<this Unix username>, pinned to $(id -un)
 # rather than a bare kb-agent-*-* glob — kb-agent-shared/kb-agent-template can
 # never match this (neither ends in the username), so no separate exclusion is
@@ -76,6 +88,7 @@ REG="${AGENT_REPO}/deploy/topics.tsv"          # versioned: key<TAB>Display Name
 STATE_DIR="${HOME_DIR}/.config/agent"
 STATE="${STATE_DIR}/topics.state"              # runtime: key<TAB>sessionId
 ROTATED="${STATE_DIR}/topics.rotated"          # append-only: when<TAB>key<TAB>abandoned sessionId<TAB>name
+FORK_DIR="${STATE_DIR}/fork-next"              # one marker per key: `fork` writes it, `run` consumes it once
 
 svc()       { echo "claude-topic@${1}.service"; }
 # awk (exact field match), not grep -P: keys may contain '.', a regex metachar.
@@ -261,10 +274,20 @@ Usage (systemd-managed topics — no tmux):
                                            active but the app says "session can't be
                                            found". The abandoned sessionId is appended to
                                            topics.rotated first, so it stays addressable.
-  $PROG rotate-all [--dry-run]      rotate EVERY enabled topic — what the boot unit runs, so
-                                           reachability after a reboot never depends on a
-                                           check that cannot see the failure. Writes a
-                                           digest of what was abandoned + the new URLs.
+  $PROG fork <key>                  same conversation, NEW sessionId and NEW bridge id, with
+                                           the history carried over — the recovery verb when
+                                           a bridge is really dead and rotate would cost the
+                                           context. The source sessionId is appended to
+                                           topics.rotated first and stays on disk.
+  $PROG rotate-all [--dry-run] [--agent <user>]
+                                    rotate EVERY enabled topic — a manual, fleet-wide reset
+                                           for a dead-bridge day (it no longer runs at boot:
+                                           topics resume and reconnect, decision 2026-09-12).
+                                           Writes a digest of what was abandoned + new URLs.
+                                    --agent runs it as ANOTHER fleet agent (needs root or
+                                           passwordless sudo): their topics are systemd --user
+                                           units this process cannot otherwise see. Refuses a
+                                           user outside the roster, and any dormant agent.
   $PROG new <key> "<Display Name>"  register + start a new topic under systemd
   $PROG restart <key>               systemctl restart (resumes the same sessionId)
   $PROG stop <key>                  stop + disable the topic's service (survives as state)
@@ -694,7 +717,60 @@ cmd_rotate() {
   fi
 }
 
-# Rotate every enabled topic. This is what claude-topic-rotate-on-boot.service runs.
+# Fork a topic: same conversation, NEW sessionId, NEW bridge — the recovery verb for a bridge that
+# is really dead, when `rotate` would cost the history. `claude --resume <sid> --fork-session
+# --remote-control <name>` copies the transcript under a fresh sessionId and mints a fresh bridge with
+# the history uploaded (observed 2026-09-12; NOT in the vendor's Remote Control docs — which is why
+# this is a verb you run on purpose and not the boot path; decision 2026-09-12). The fork itself
+# happens inside `run`, at exec time, because that is the only place the unit launches claude: this
+# verb writes a one-shot marker and restarts the unit, and `run` consumes the marker before exec.
+# Same shape as `rotate`: record what is being left behind BEFORE anything changes, refuse if the
+# record cannot be written, then capture the new ids after start.
+cmd_fork() {
+  local key="$1" src got st b
+  require_valid_key "$key"; require_systemd; require_registry; require_known_key "$key"
+  [ -n "$(reg_name "$key")" ] || \
+    die "'$key' has no display name in $REG — refusing to fork (the service would fail-loop)"
+  src="$(sid_to_abandon "$key")"
+  [ -n "$src" ] || die "'$key' has no conversation to fork — '$PROG restart --new $key' is the fresh start"
+  require_uuid "source sessionId" "$src"
+  transcript_exists "$src" || die "source sessionId $src for '$key' has no transcript on disk ($PROJ_DIR/*/$src.jsonl) — nothing to fork"
+  umask 077
+  mkdir -p "$FORK_DIR" || die "could not create $FORK_DIR"
+  printf '%s\t%s\t%s\t%s\n' "$(date -Is)" "$key" "$src" "forked:$(reg_name "$key")" >> "$ROTATED" \
+    || die "could not append to $ROTATED — refusing to fork with no record of the source"
+  printf '%s\n' "$src" > "$FORK_DIR/$key" || die "could not write the fork marker $FORK_DIR/$key"
+  err "note: '$key' will fork $src into a NEW conversation carrying the same history; $src stays on disk"
+  systemctl --user restart "$(svc "$key")" || { rm -f "$FORK_DIR/$key"; die "systemctl restart failed for $(svc "$key")"; }
+  got="$(wait_session_id "$key")"
+  st="$(svc_state "$key")"
+  [ "$st" = active ] || die "'$key' is '$st' after fork — journalctl --user -u $(svc "$key") -n 50"
+  if [ "$(systemctl --user is-enabled "$(svc "$key")" 2>/dev/null || true)" != enabled ]; then
+    systemctl --user enable "$(svc "$key")" >/dev/null 2>&1 \
+      && err "note: '$key' was disabled — re-enabled so it survives a reboot" \
+      || err "warning: '$key' is running but NOT enabled — it will not come back after a reboot"
+  fi
+  if [ -z "$got" ]; then
+    err "warning: '$key' is active but reported no sessionId within 15s — '$PROG status $key'"
+  elif [ "$got" = "$src" ]; then
+    err "warning: '$key' came back on the SAME sessionId $src — the fork did not happen. Check the journal for the marker; state left unchanged."
+  else
+    save_sid "$key" "$got"
+    err "note: recorded forked sessionId $got for '$key' — future restarts resume the fork, not $src"
+  fi
+  b="$(wait_bridge_id "$key")"
+  if [ -n "$b" ]; then
+    echo "new Remote Control URL: https://claude.ai/code/$b"
+    echo "open it — that is the only proof the fork took, and that the history came with it."
+  else
+    err "warning: '$key' is running but announced no bridge within 20s — '$PROG status $key'"
+  fi
+}
+
+# Rotate every enabled topic. Until 2026-09-12 this was what claude-topic-rotate-on-boot.service
+# ran at every boot; that unit is gone (decision 2026-09-12: topics plain-resume at boot, and on a
+# current runtime they reconnect to their bridge with history). This stays as the blunt manual tool
+# for a fleet-wide dead-bridge day; prefer `fork <key>` per topic when the history is worth keeping.
 #
 # WHY UNCONDITIONAL, and not "rotate only the broken ones". A dead bridge is not observable
 # from this host: every local signal — the session file, the transcript's bridge_status line —
@@ -715,18 +791,81 @@ cmd_rotate() {
 #
 # Only ENABLED units are touched: `stop` disables deliberately, and a topic someone stopped on
 # purpose must not be resurrected by a reboot.
+# Rotate another agent's topics by re-running this script AS that agent. The gap this closes:
+# every agent's topics are systemd --user units, so claude-topic only ever sees the caller's own.
+# When one agent's bridges die, recovering another agent's twelve-topic fleet meant a hand-written
+# runuser incantation. It is one verb now, driven from any topic that still answers.
+#
+# This is deliberately the ONLY cross-user path, and it delegates rather than reaching across:
+# the target's own systemd manager does the work, under the target's own uid, with the target's
+# own registry. Nothing here writes into another agent's home.
+delegate_rotate_all() {
+  local agent="$1" dry="$2" home runner
+  [ -n "$agent" ] || die "--agent needs a fleet agent's Unix username"
+  case "$agent" in
+    *[!A-Za-z0-9._-]* ) die "invalid agent name '$agent' — allowed: letters, digits, '.', '_', '-'" ;;
+  esac
+  roster_has "$ROSTER_FILE" "$agent" \
+    || die "'$agent' is not in the fleet roster ($ROSTER_FILE) — refusing to rotate an unknown user's topics"
+  # A dormant agent is deliberately not running. Rotating its topics would start conversations
+  # nobody reads, and is exactly how a dormant agent gets quietly resurrected — the failure
+  # install-host-services was fixed for on 2026-08-22 (--enable-writers reviving a dormant writer).
+  if roster_has "$DORMANT_FILE" "$agent"; then
+    die "'$agent' is dormant ($DORMANT_FILE) — refusing to rotate a dormant agent's topics"
+  fi
+  home="$(getent passwd "$agent" | cut -d: -f6)"
+  [ -n "$home" ] || die "'$agent' is in the roster but has no Unix account on this host"
+
+  # The canonical installed copy, never "$0": the target user must be able to EXECUTE what we
+  # hand it, and a repo checkout under another agent's home is not readable by them. If the
+  # installed copy is missing, say so — do not fall back to a path that will fail as a
+  # permission error three layers down.
+  [ -x /usr/local/bin/claude-topic ] \
+    || die "/usr/local/bin/claude-topic is not installed or not executable — cannot delegate to '$agent'"
+
+  if [ "$(id -u)" = 0 ]; then runner=root
+  elif sudo -n true 2>/dev/null; then runner=sudo
+  else
+    die "rotating another agent's topics needs root: run as root, or as a user with passwordless sudo.
+  '$(id -un)' has neither. Refusing rather than half-rotating '$agent' and reporting success."
+  fi
+
+  # env -u / HOME=: this process's XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS and HOME all point at
+  # the CALLER. Inherited across the user switch, the first two make systemctl --user talk to the
+  # wrong user manager, and HOME sends AGENT_REPO discovery into the caller's home — so the target
+  # would be told it has no agent repo, or worse, act on ours. Unset the two that this script
+  # defaults from id -u (top of file), and set HOME explicitly from passwd.
+  set -- /usr/local/bin/claude-topic rotate-all
+  [ "$dry" = 1 ] && set -- "$@" --dry-run
+  err "delegating rotate-all to '$agent' (home=$home)"
+  if [ "$runner" = root ]; then
+    exec runuser -u "$agent" -- env -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS "HOME=$home" "$@"
+  else
+    exec sudo -n -u "$agent" env -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS "HOME=$home" "$@"
+  fi
+}
+
 cmd_rotate_all() {
-  local dry=0
+  local dry=0 agent=''
   # Reject unknown arguments. This accepted ONLY the exact string --dry-run and fell through to
   # the destructive path for anything else: --dryrun, --dry, -n, or a stray key would blank every
   # conversation on the box. A typo must not be a fleet-wide rotate.
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) dry=1 ;;
-      *) die "rotate-all takes no arguments except --dry-run (got '$1')" ;;
+      --agent)   shift; [ $# -gt 0 ] || die "--agent needs a fleet agent's Unix username"
+                 agent="$1" ;;
+      *) die "rotate-all takes no arguments except --dry-run and --agent <user> (got '$1')" ;;
     esac
     shift
   done
+
+  # --agent naming the caller is the local path, not an error: a loop over the roster must not
+  # have to special-case the user it happens to be running as. Delegation never returns (exec).
+  if [ -n "$agent" ] && [ "$agent" != "$(id -un)" ]; then
+    delegate_rotate_all "$agent" "$dry"
+  fi
+
   require_systemd; require_registry
   local digest="${STATE_DIR}/last-boot-rotation.tsv"
   local k name old new rc total=0 done=0 failed=0
@@ -1004,11 +1143,49 @@ cmd_run() {
     # claude's own failure here is ANSI-mangled in the journal; log the cause in plain text.
     transcript_exists "$sid" || err \
       "warning: no transcript for sessionId $sid — 'claude --resume' will likely fail and this unit will fail-loop; fix with '$PROG restart --new $key'"
+    wait_network "$key"
+    # A fork marker is consumed BEFORE exec, unconditionally: if the forked start dies and
+    # Restart=always re-runs this, the second run must resume, not fork again — otherwise a
+    # fail-loop would mint a new conversation every 10 seconds. The marker names the sessionId
+    # `fork` intended; the derived $sid above is what actually gets forked (it is the same
+    # live-wins derivation `fork` used, so a mismatch means the conversation moved in between).
+    if [ -f "$FORK_DIR/$key" ]; then
+      local _want; _want="$(head -n1 "$FORK_DIR/$key" 2>/dev/null || true)"
+      rm -f "$FORK_DIR/$key"
+      [ "$_want" = "$sid" ] || err "note: fork marker named $_want but the live-wins derivation chose $sid — forking $sid"
+      err "forking '$key' from $sid into a NEW conversation with the same history (see '$PROG fork')"
+      exec claude --resume "$sid" --fork-session --remote-control "$name"
+    fi
     exec claude --resume "$sid" --remote-control "$name"
   else
+    rm -f "$FORK_DIR/$key" 2>/dev/null || true   # nothing to fork from; never leave a marker behind
     err "no stored sessionId for '$key' — starting a NEW conversation"
+    wait_network "$key"
     exec claude --remote-control "$name"
   fi
+}
+
+# Bounded wait for the network before exec'ing claude (decision 2026-09-12). Since rotation at boot
+# is gone, nothing restarts a topic that came up before the network: `claude` resumes, fails the
+# Remote Control reconnect, and keeps running locally with Remote Control OFF — alive, so
+# Restart=always never fires, and unreachable. The old boot unit was, by accident, the late-boot
+# retry that hid this. This is a readiness gate, not a reachability check: it asks "is there a
+# network and does the API host answer at all" (any HTTP status counts — the root path is a 404),
+# never "is my bridge alive", which decision 3 of 2026-08-06 forbids. Fails CLOSED: on timeout it
+# logs and proceeds, so a topic is never parked on a probe.
+wait_network() {
+  local key="$1" i=0 max="${CLAUDE_TOPIC_NET_WAIT:-120}" code
+  while [ "$i" -lt "$max" ]; do
+    if getent hosts api.anthropic.com >/dev/null 2>&1; then
+      code="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' https://api.anthropic.com/ 2>/dev/null || true)"
+      case "$code" in
+        [0-9][0-9][0-9]) [ "$i" -gt 0 ] && err "note: network reachable after ${i}s — starting '$key'"; return 0 ;;
+      esac
+    fi
+    sleep 3; i=$((i + 3))
+  done
+  err "warning: api.anthropic.com not reachable after ${max}s — starting '$key' anyway. If Remote Control comes up OFF, '$PROG restart $key' once the network is back."
+  return 0
 }
 
 main() {
@@ -1018,6 +1195,7 @@ main() {
     list)             case "${1:-}" in "") cmd_list ;; --json) cmd_list_json ;; *) usage; exit 2 ;; esac ;;
     urls)             cmd_urls ;;
     rotate)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_rotate "$1" ;;
+    fork)             [ $# -ge 1 ] || { usage; exit 2; }; cmd_fork "$1" ;;
     rotate-all)       cmd_rotate_all "$@" ;;
     status)           [ $# -ge 1 ] || { usage; exit 2; }; cmd_status "$@" ;;
     new)              [ $# -ge 2 ] || { usage; exit 2; }; cmd_new "$1" "$2" ;;

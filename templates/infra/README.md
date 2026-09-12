@@ -13,7 +13,6 @@ the Agentic Codex docs (`secrets.md`)).
 | `systemd/claude-topic@.service` | Per-agent **user** unit that supervises one `claude --remote-control` session (survives crash + reboot, no tmux). |
 | `systemd/kb-sync.{service,timer}` | Host timer that fast-forwards every agent's git clones every 15 min (Tier-2: inert data only). |
 | `systemd/agentic-monitor.{service,timer,env.example}` | Host timer (~5 min) — health check + dead-man's-switch heartbeat to healthchecks.io. See the Agentic Codex docs (`monitoring.md`). |
-| `systemd/claude-topic-rotate-on-boot.service` | Per-agent unit installed by `provision-agent`: rotates every enabled topic on boot, because a Remote Control bridge dies with its conversation and a restart cannot revive it. |
 | `fleet-dormant` | Agents that are deliberately asleep. Read by both `install-host-services --enable-writers` (skips them) and `agentic-divergence-check` (inverts its timer assertion). Empty means none. |
 | `systemd/agentic-divergence-check.{service,timer}` | Daily structural drift check + OS/Dokploy update report, alarmed via its own healthchecks.io ping. See the Agentic Codex docs (`divergence-check.md`). |
 | `systemd/memory-mirror@.{service,timer}` | Per-agent nightly mirror of the runtime's auto-memory into the brain repo (an unattended writer — enabled per agent by `provision-agent`, with disclosure). |

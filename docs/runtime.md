@@ -45,7 +45,8 @@ claude-topic new <key> "<Name>"   # register + start under systemd, capture the 
 claude-topic restart <key>        # systemctl restart — resumes the SAME conversation
 claude-topic restart --new <key>  # explicit opt-in: start a FRESH conversation
 claude-topic rotate <key>         # abandon the conversation, mint a NEW bridge id
-claude-topic rotate-all           # rotate every enabled topic (what the boot unit runs)
+claude-topic fork <key>           # same conversation, NEW sessionId + NEW bridge, history kept
+claude-topic rotate-all           # rotate every enabled topic — a manual, fleet-wide reset
 claude-topic stop <key>           # stop + disable the service (sessionId is kept)
 claude-topic remove <key>         # unregister for good (registry + state + unit)
 claude-topic status <key>         # service state + stored/live/derived sessionId + bridge URL
@@ -126,15 +127,33 @@ So the honest statement of the limitation:
   same dead bridge. Only **`rotate`** abandons the conversation and mints a new bridge id. The
   abandoned sessionId is appended to `topics.rotated` first, so the history stays addressable.
 
-Because the failure is invisible locally, the fix is not a check — it's an unconditional action:
-**`claude-topic-rotate-on-boot.service` runs `rotate-all` once per boot**, so reachability after a
-reboot never depends on a check that cannot see the failure. It writes a digest of what it abandoned
-and the new URLs to `~/.config/agent/last-boot-rotation.tsv`.
+**At boot, topics plain-resume — nothing rotates (0.10.0).** Until 0.10.0 a `rotate-on-boot` unit
+ran `rotate-all` at every boot, so every topic came back blank by design, on the premise that a
+reboot killed the server-side bridge. On a current runtime that premise does not hold: the reference
+deployment saw it twice on Claude Code 2.1.270 — once by a manual restore an hour after a reboot,
+once at boot itself — and both times fifteen plain-resumed topics reconnected to their pre-reboot
+bridge ids with full history. The vendor documents the mechanism —
+`claude --resume` reconnects to the Remote Control session recorded in the conversation, and since
+v2.1.232, when the server reports that session gone, Claude Code mints a replacement itself
+(reachable, local context intact, remote scroll-back empty). The boot rotation was throwing history
+away to obtain a bridge the runtime keeps. **This depends on runtime ≥ 2.1.232**; the vendor's own
+"reconnect history" note shows that behaviour changed four times between 2.1.200 and 2.1.232.
 
-The trade is deliberate and worth stating plainly: **every topic loses its conversation context on
-every reboot.** Reboots are rare; a silently unreachable fleet is worse than a fresh one. Anything
-that must survive a reboot belongs in the brain repo or in memory, not in a conversation — which is
-the same rule the [memory model](memory.md) already asks you to follow.
+Two things replace it. `claude-topic run` now waits (bounded, fails closed) for the API host to answer
+before exec'ing `claude`: with rotation gone, nothing else restarts a topic that came up before the
+network and stayed alive with Remote Control off — the old boot unit was, by accident, that late-boot
+retry. And **`claude-topic fork <key>`** is the recovery verb: `--resume <sid> --fork-session
+--remote-control` copies the conversation under a new sessionId and mints a new bridge **with the
+history uploaded** (observed in the reference deployment; not in the vendor's docs — which is why it
+is a verb you run on purpose, not the boot path). The source sessionId is appended to
+`topics.rotated` first. `rotate` stays for when the history is not worth keeping.
+
+What nothing covers, stated plainly: a topic that comes back announcing its **old** bridge id while
+the server has forgotten it — the client sees no failure, so no replacement is minted. That shape was
+observed once, after a crash reboot on 2.1.224, and is the reason the boot rotation existed. Nothing
+local can detect it (see the standing rule above). **After a reboot, open the apps.** A topic that
+answers "session can't be found" gets `fork`. Anything that must survive anything belongs in the
+brain repo or in memory, not in a conversation — the [memory model](memory.md) already asks that.
 
 ## Multi-device access = Remote Control
 
@@ -150,8 +169,8 @@ on the go and your laptop at the desk, with no extra gateway service to run, sec
 ## Bring-up recap
 
 `provision-agent` reads the brain's `deploy/topics.tsv` and `enable --now`s each topic, so a freshly
-provisioned agent comes up with its sessions live. It also `enable`s (not `--now`) the
-rotate-on-boot unit, so the next reboot mints fresh bridges by itself.
+provisioned agent comes up with its sessions live. Re-provisioning an agent that predates 0.10.0
+removes its stale `rotate-on-boot` unit; the divergence check reports a leftover copy as drift.
 
 Verify with `claude-topic list`; each key should be `active` with a session ID. Then verify the part
 the box cannot verify for you: run `claude-topic urls` and **open one** in the apps. `active` is not

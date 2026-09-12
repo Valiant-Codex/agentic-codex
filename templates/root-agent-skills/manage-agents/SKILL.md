@@ -140,7 +140,7 @@ repo (the daily divergence check reports a dirty infra clone until you do).
 The wrapper itself — every subcommand, the self-kill guard, rename, rotate, the restart/`--new`
 history trap — lives in the shared `topic-management` skill, which every agent loads. Do not restate
 it here: two descriptions of one wrapper drift, and this section already had (its command list was
-missing `remove`, `urls`, `rotate` and `rotate-all`).
+missing `remove`, `urls`, `rotate`, `rotate-all` and `fork`).
 
 What is **privileged-agent-only** is reaching *another* agent's topics. `claude-topic` scopes itself to
 the caller's own repo via `kb-agent-*-$(id -un)`, so cross-agent work means becoming that agent:

@@ -298,7 +298,12 @@ check_brain(){ # <user> <repo>
     # Count @-imports too. An `@path` in CLAUDE.md is INLINED by the runtime, so the always-on cost is
     # the sum, not the file. Measuring CLAUDE.md alone would let the budget be defeated by moving text
     # one hop away — which is exactly what an import is for, and exactly why it must be counted.
-    local cmsz; cmsz=$(wc -c < "$r/CLAUDE.md")
+    # Measure what the RUNTIME sees, not what is on disk: block-level HTML comments are stripped
+    # before injection (documented, and the reason maintainer notes are free), so counting them would
+    # report an overage that does not exist and push someone into trimming real content to clear it.
+    # Same reason the reference scan below strips them: a path named only in a maintainer note is not
+    # a claim the agent can act on.
+    local cmsz; cmsz=$(perl -0777 -pe 's/<!--.*?-->//gs' "$r/CLAUDE.md" | wc -c)
     local imp impsz=0
     while IFS= read -r imp; do
       [ -n "$imp" ] || continue
@@ -547,7 +552,7 @@ check_brain(){ # <user> <repo>
       || drift "$n: ~/CLAUDE.md resolves to '$got', not $r/CLAUDE.md (the single supported bootstrap)"
     while IFS= read -r f; do
       [ -e "$r/$f" ] || drift "$n: ~/CLAUDE.md bootstrap names a missing file: $f"
-    done < <(grep -oE '[A-Za-z0-9_/.-]+\.md' "$hc" 2>/dev/null | grep -v '^CLAUDE.md$' | sed "s#.*kb-agent-[A-Za-z0-9-]*/##" | sort -u)
+    done < <(perl -0777 -pe 's/<!--.*?-->//gs' "$hc" 2>/dev/null | grep -oE '[A-Za-z0-9_/.-]+\.md' | grep -v '^CLAUDE.md$' | sed "s#.*kb-agent-[A-Za-z0-9-]*/##" | sort -u)
   fi
 
   # 7) Referenced paths exist. Vocabulary-free and self-maintaining: renames/removals self-report.
@@ -698,11 +703,12 @@ PY
   for dsrc in "$r"/deploy/*.service "$r"/deploy/*.timer; do
     [ -f "$dsrc" ] || continue
     uname="$(basename "$dsrc")"
-    # claude-topic@ and rotate-on-boot are installed by provision-agent FROM INFRA, not declared in
-    # the agent's deploy/ — they are fleet code, not per-agent config, so "not in deploy/" is correct
-    # for them, not drift. rotate-on-boot landed in 0.6.5 and this exclusion was never extended, so it
-    # reported every agent every day since.
-    case "$uname" in claude-topic@*|claude-topic-rotate-on-boot.service) continue;; esac
+    # claude-topic@ is installed by provision-agent FROM INFRA, not declared in the agent's deploy/
+    # — fleet code, not per-agent config, so "not in deploy/" is correct for it, not drift.
+    # claude-topic-rotate-on-boot.service was excluded here too until 0.10.0; it is retired and
+    # deliberately NOT excluded any more: a leftover copy on any agent would blank every
+    # conversation at the next reboot, and that is exactly drift.
+    case "$uname" in claude-topic@*) continue;; esac
     dlive="$home/.config/systemd/user/$uname"
     if [ ! -f "$dlive" ]; then
       drift "$n: deploy/$uname is declared but not installed to ~/.config/systemd/user/ (service missing on this box)"
@@ -712,11 +718,12 @@ PY
   done
   while IFS= read -r uname; do
     [ -n "$uname" ] || continue
-    # claude-topic@ and rotate-on-boot are installed by provision-agent FROM INFRA, not declared in
-    # the agent's deploy/ — they are fleet code, not per-agent config, so "not in deploy/" is correct
-    # for them, not drift. rotate-on-boot landed in 0.6.5 and this exclusion was never extended, so it
-    # reported every agent every day since.
-    case "$uname" in claude-topic@*|claude-topic-rotate-on-boot.service) continue;; esac
+    # claude-topic@ is installed by provision-agent FROM INFRA, not declared in the agent's deploy/
+    # — fleet code, not per-agent config, so "not in deploy/" is correct for it, not drift.
+    # claude-topic-rotate-on-boot.service was excluded here too until 0.10.0; it is retired and
+    # deliberately NOT excluded any more: a leftover copy on any agent would blank every
+    # conversation at the next reboot, and that is exactly drift.
+    case "$uname" in claude-topic@*) continue;; esac
     [ -f "$r/deploy/$uname" ] \
       || drift "$n: user unit '$uname' is enabled but not declared in deploy/ — it exists only on this box and will NOT survive a rebuild"
   done < <(find "$home"/.config/systemd/user/ -path '*.target.wants/*' \
